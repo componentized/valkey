@@ -1,0 +1,11 @@
+package componentized:client;
+
+let valkey-ops = new componentized:valkey-ops { ... };
+let keyvalue = new componentized:keyvalue-to-valkey {
+    "componentized:valkey/store": valkey-ops.store,
+    "componentized:valkey/resp": valkey-ops.resp,
+    ...
+};
+
+export valkey-ops...;
+export keyvalue...;

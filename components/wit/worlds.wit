@@ -1,0 +1,20 @@
+package componentized:valkey-client;
+
+world cli {
+    include wasi:cli/imports@0.2.3;
+    import componentized:valkey/store;
+}
+
+world valkey-ops {
+    include wasi:sockets/imports@0.2.3;
+    export componentized:valkey/resp;
+    export componentized:valkey/store;
+}
+
+world keyvalue-to-valkey {
+    import componentized:valkey/store;
+    import wasi:config/store@0.2.0-draft;
+    export wasi:keyvalue/store@0.2.0-draft2;
+    export wasi:keyvalue/atomics@0.2.0-draft2;
+    export wasi:keyvalue/batch@0.2.0-draft2;
+}
