@@ -24,6 +24,8 @@ jobs:
       run: cargo binstall --force cargo-component
     - name: Install wac
       run: cargo binstall --force wac-cli
+    - name: Install wasmtime
+      run: cargo binstall --force wasmtime-cli
     - name: Install wkg
       run: cargo binstall --force wkg
     - name: Sync wit
