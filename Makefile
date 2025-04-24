@@ -32,14 +32,14 @@ define BUILD_COMPONENT
 lib/$1.wasm: $4 Cargo.toml Cargo.lock components/wit/deps $(shell find components/wit -type f) $(shell find components/$1 -type f)
 	cargo $3 component build -p $1 --target $2 --release
 	$(if $(findstring $1,cli),
-		wac plug target/$2/release/$(subst -,_,$1).wasm --plug lib/valkey-client.wasm -o lib/$1.wasm,
+		wac plug target/$2/release/$(subst -,_,$1).wasm --plug lib/valkey-ops.wasm -o lib/$1.wasm,
 		cp target/$2/release/$(subst -,_,$1).wasm lib/$1.wasm)
 	cp components/$1/README.md lib/$1.wasm.md
 
 lib/$1.debug.wasm: $5 Cargo.toml Cargo.lock wit/deps $(shell find components/$1 -type f)
 	cargo +nightly component build -p $1 --target wasm32-wasip2
 	$(if $(findstring $1,cli),
-		wac plug target/$2/debug/$(subst -,_,$1).wasm --plug lib/valkey-client.debug.wasm -o lib/$1.debug.wasm,
+		wac plug target/$2/debug/$(subst -,_,$1).wasm --plug lib/valkey-ops.debug.wasm -o lib/$1.debug.wasm,
 		cp target/wasm32-wasip2/debug/$(subst -,_,$1).wasm lib/$1.debug.wasm)
 	cp components/$1/README.md lib/$1.debug.wasm.md
 
@@ -47,7 +47,7 @@ endef
 
 $(eval $(call BUILD_COMPONENT,valkey-ops,wasm32-unknown-unknown))
 $(eval $(call BUILD_COMPONENT,keyvalue-to-valkey,wasm32-unknown-unknown))
-$(eval $(call BUILD_COMPONENT,cli,wasm32-wasip2,+nightly,lib/valkey-client.wasm,lib/valkey-client.debug.wasm))
+$(eval $(call BUILD_COMPONENT,cli,wasm32-wasip2,+nightly,lib/valkey-ops.wasm,lib/valkey-ops.debug.wasm))
 
 lib/valkey-client.wasm: components/valkey-client.wac lib/valkey-ops.wasm lib/keyvalue-to-valkey.wasm
 	wac compose -o lib/valkey-client.wasm \
@@ -71,6 +71,10 @@ wit/deps: wkg.toml $(shell find wit -type f -name "*.wit" -not -path "deps")
 
 components/wit/deps: wit/deps components/wkg.toml $(shell find components/wit -type f -name "*.wit" -not -path "deps")
 	(cd components && wkg wit fetch)
+
+.PHONY: test
+test:
+	@$(MAKE) run cmd="hello"
 
 .PHONY: publish
 publish: $(shell find lib -type f -name "*.wasm" | sed -e 's:^lib/:publish-:g')
