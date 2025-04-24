@@ -41,6 +41,10 @@ jobs:
         name: components.tar
         path: components.tar
         retention-days: 7
+    - name: Start Valkey service
+      run: docker run --rm --name valkey -d -p 6379:6379 valkey/valkey:8
+    - name: Test
+      run: make test
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
