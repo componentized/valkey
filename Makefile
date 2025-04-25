@@ -16,7 +16,7 @@ run: lib/cli.debug.wasm
 	@wasmtime run $(WASMTIME_RUN_FLAGS) lib/cli.debug.wasm $(cmd)
 
 .PHONY: components
-components: lib/interface.wasm lib/cli.wasm lib/cli.debug.wasm lib/keyvalue-to-valkey.wasm lib/keyvalue-to-valkey.debug.wasm lib/valkey-client.wasm lib/valkey-client.debug.wasm lib/valkey-ops.wasm lib/valkey-ops.debug.wasm
+components: lib/interface.wasm lib/cli.wasm lib/cli.debug.wasm lib/keyvalue-to-valkey.wasm lib/keyvalue-to-valkey.debug.wasm lib/valkey-client.wasm lib/valkey-client.debug.wasm lib/valkey-ops.wasm lib/valkey-ops.debug.wasm lib/sample-http-incrementor.wasm lib/sample-http-incrementor.debug.wasm
 
 lib/interface.wasm: wit/deps README.md
 	wkg wit build -o lib/interface.wasm
@@ -48,6 +48,7 @@ endef
 $(eval $(call BUILD_COMPONENT,valkey-ops,wasm32-unknown-unknown))
 $(eval $(call BUILD_COMPONENT,keyvalue-to-valkey,wasm32-unknown-unknown))
 $(eval $(call BUILD_COMPONENT,cli,wasm32-wasip2,+nightly,lib/valkey-ops.wasm,lib/valkey-ops.debug.wasm))
+$(eval $(call BUILD_COMPONENT,sample-http-incrementor,wasm32-unknown-unknown))
 
 lib/valkey-client.wasm: components/valkey-client.wac lib/valkey-ops.wasm lib/keyvalue-to-valkey.wasm
 	wac compose -o lib/valkey-client.wasm \
