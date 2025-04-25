@@ -161,10 +161,7 @@ impl GuestConnection for ValkeyConnection {
             Value::BulkString(username),
         ])?;
         match response {
-            Value::Integer(1) => Ok(()),
-            Value::Integer(count) => Err(Error::Client(format!(
-                "Unexpected response: {count} users deleted"
-            )))?,
+            Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
             response => Err(Error::Client(format!(
                 "Unexpected response type: {:?}",
@@ -249,10 +246,7 @@ impl GuestConnection for ValkeyConnection {
             Value::BulkString(key),
         ])?;
         match response {
-            Value::Integer(1) => Ok(()),
-            Value::Integer(count) => Err(Error::Client(format!(
-                "Unexpected response: {count} keys deleted"
-            )))?,
+            Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
             response => Err(Error::Client(format!(
                 "Unexpected response type: {:?}",
@@ -310,10 +304,7 @@ impl GuestConnection for ValkeyConnection {
             Value::BulkString(field),
         ])?;
         match response {
-            Value::Integer(1) => Ok(()),
-            Value::Integer(count) => Err(Error::Client(format!(
-                "Unexpected response: {count} keys deleted"
-            )))?,
+            Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
             response => Err(Error::Client(format!(
                 "Unexpected response type: {:?}",
@@ -818,10 +809,7 @@ impl GuestConnection for ValkeyConnection {
             Value::BulkString(value),
         ])?;
         match response {
-            Value::Integer(1) => Ok(()),
-            Value::Integer(count) => Err(Error::Client(format!(
-                "Unexpected response: {count} fields set"
-            )))?,
+            Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
             response => Err(Error::Client(format!(
                 "Unexpected response type: {:?}",
