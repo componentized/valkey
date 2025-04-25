@@ -4,6 +4,7 @@ A WASM component client for Valkey (and Redis).
 
 - [Build](#build)
 - [Run](#run)
+  - [Samples](#samples)
 - [Community](#community)
   - [Code of Conduct](#code-of-conduct)
   - [Communication](#communication)
@@ -44,6 +45,10 @@ To aid incremental development a make target is available to rebuild and run the
 ```sh
 make run cmd="hello"
 ```
+
+### Samples
+
+- [`http-incrementor`](./components/sample-http-incrementor/)
 
 ## Community
 
