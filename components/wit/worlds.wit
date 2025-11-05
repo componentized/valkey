@@ -13,7 +13,7 @@ world valkey-ops {
 
 world keyvalue-to-valkey {
     import componentized:valkey/store;
-    import wasi:config/store@0.2.0-draft;
+    import wasi:config/store@0.2.0-rc.1;
     export wasi:keyvalue/store@0.2.0-draft2;
     export wasi:keyvalue/atomics@0.2.0-draft2;
     export wasi:keyvalue/batch@0.2.0-draft2;
