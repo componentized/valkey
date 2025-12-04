@@ -8,4 +8,4 @@ exclude = [
 ]
 
 [workspace.dependencies]
-wit-bindgen = "0.48.0"
+wit-bindgen = "0.49.0"
