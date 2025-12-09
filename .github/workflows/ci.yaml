@@ -26,6 +26,8 @@ jobs:
       run: cargo binstall --force wasmtime-cli
     - name: Install wkg
       run: cargo binstall --force wkg
+    - name: Install wasm-tools
+      run: cargo binstall --force wasm-tools
     - name: Sync wit
       run: make wit
     - name: Check for drift in generated wit
@@ -45,6 +47,14 @@ jobs:
       run: docker run --rm --name valkey -d -p 6379:6379 valkey/valkey:8
     - name: Test
       run: make test
+    - name: Capture WIT
+      working-directory: ./lib
+      run: |
+        for component in *.wasm ; do
+          echo "::group::${component}"
+            wasm-tools component wit "${component}"
+          echo "::endgroup::"
+        done
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
