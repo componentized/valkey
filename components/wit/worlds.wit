@@ -1,12 +1,12 @@
 package componentized:valkey-client;
 
 world cli {
-    include wasi:cli/imports@0.2.3;
+    include wasi:cli/imports@0.2.6;
     import componentized:valkey/store;
 }
 
 world valkey-ops {
-    include wasi:sockets/imports@0.2.3;
+    include wasi:sockets/imports@0.2.6;
     export componentized:valkey/resp;
     export componentized:valkey/store;
 }
@@ -22,5 +22,5 @@ world keyvalue-to-valkey {
 world sample-http-incrementor {
     import wasi:keyvalue/store@0.2.0-draft2;
     import wasi:keyvalue/atomics@0.2.0-draft2;
-    export wasi:http/incoming-handler@0.2.3;
+    export wasi:http/incoming-handler@0.2.6;
 }

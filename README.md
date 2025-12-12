@@ -16,7 +16,7 @@ A WASM component client for Valkey (and Redis).
 ## Build
 
 Prereqs:
-- a rust toolchain with `wasm32-unknown-unknown` and `wasm32-wasip2` targets (`rustup target add wasm32-unknown-unknown` and `rustup target add wasm32-wasip2`)
+- a rust toolchain
 - [`cargo component`](https://github.com/bytecodealliance/cargo-component)
 - [`wac`](https://github.com/bytecodealliance/wac)
 - [`wkg`](https://github.com/bytecodealliance/wasm-pkg-tools)
