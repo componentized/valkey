@@ -5,5 +5,5 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.5.54", features = ["derive"] }
 wit-bindgen = { workspace = true }
