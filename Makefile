@@ -71,6 +71,8 @@ wit/deps: wkg.toml $(shell find wit -type f -name "*.wit" -not -path "deps")
 
 components/wit/deps: wit/deps components/wkg.toml $(shell find components/wit -type f -name "*.wit" -not -path "deps")
 	(cd components && wkg wit fetch)
+	# TODO remove once wkg consumes wit-component 0.245
+	perl -pi -e 's/ map\(/ %map\(/g' components/wit/deps/componentized-valkey/package.wit
 
 .PHONY: test
 test:
