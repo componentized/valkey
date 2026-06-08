@@ -1,4 +1,4 @@
-use clap::{arg, ArgAction, Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand};
 use componentized::valkey::{
     resp::{self, Value},
     store::{connect, Error, HelloOpts, HrandfieldOpts, HscanOpts},
