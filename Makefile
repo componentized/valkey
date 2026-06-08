@@ -24,22 +24,22 @@ lib/interface.wasm: wit/deps README.md
 
 define BUILD_COMPONENT
 # $1 - component
-# $2 - release target
+# $2 - target
 # $3 - release target deps
 # $4 - debug target deps
 
 lib/$1.wasm: $3 Cargo.toml Cargo.lock components/wit/deps $(shell find components/wit -type f) $(shell find components/$1 -type f)
-	cargo component build -p $1 --target $2 --release
+	cargo build -p $1 --target $2 --release
 	$(if $(findstring $1,cli),
 		wac plug target/$2/release/$(subst -,_,$1).wasm --plug lib/valkey-ops.wasm -o lib/$1.wasm,
-		cp target/$2/release/$(subst -,_,$1).wasm lib/$1.wasm)
+		wasm-tools component new target/$2/release/$(subst -,_,$1).wasm -o lib/$1.wasm)
 	cp components/$1/README.md lib/$1.wasm.md
 
 lib/$1.debug.wasm: $4 Cargo.toml Cargo.lock wit/deps $(shell find components/$1 -type f)
-	cargo component build -p $1 --target wasm32-wasip2
+	cargo build -p $1 --target $2
 	$(if $(findstring $1,cli),
 		wac plug target/$2/debug/$(subst -,_,$1).wasm --plug lib/valkey-ops.debug.wasm -o lib/$1.debug.wasm,
-		cp target/wasm32-wasip2/debug/$(subst -,_,$1).wasm lib/$1.debug.wasm)
+		wasm-tools component new target/$2/debug/$(subst -,_,$1).wasm -o lib/$1.debug.wasm)
 	cp components/$1/README.md lib/$1.debug.wasm.md
 
 endef
@@ -95,12 +95,20 @@ endif
 	@$(eval REVISION := $(shell git rev-parse HEAD)$(shell git diff --quiet HEAD && echo "+dirty"))
 	@$(eval TAG := $(shell echo "${VERSION}" | sed 's/[^a-zA-Z0-9_.\-]/--/g'))
 
-	wkg oci push \
-        --annotation "org.opencontainers.image.title=${COMPONENT}" \
-        --annotation "org.opencontainers.image.description=${DESCRIPTION}" \
-        --annotation "org.opencontainers.image.version=${VERSION}" \
-        --annotation "org.opencontainers.image.source=https://github.com/componentized/valkey.git" \
-        --annotation "org.opencontainers.image.revision=${REVISION}" \
-        --annotation "org.opencontainers.image.licenses=Apache-2.0" \
-        "${REPOSITORY}/${COMPONENT}:${TAG}" \
-        "lib/${FILE}"
+	@echo "::group::${FILE} -> ${REPOSITORY}/${COMPONENT}:${TAG}"
+	@DIGEST=$$( \
+		wkg oci push \
+			--annotation "org.opencontainers.image.title=${COMPONENT}" \
+			--annotation "org.opencontainers.image.description=${DESCRIPTION}" \
+			--annotation "org.opencontainers.image.version=${VERSION}" \
+			--annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}.git" \
+			--annotation "org.opencontainers.image.revision=${REVISION}" \
+			--annotation "org.opencontainers.image.licenses=Apache-2.0" \
+			"${REPOSITORY}/${COMPONENT}:${TAG}" \
+			"lib/${FILE}" \
+			2>&1 \
+			| tee /dev/stderr \
+			| grep -o 'sha256:[a-f0-9]\{64\}' \
+	) ; \
+	cosign sign --yes "${REPOSITORY}/${COMPONENT}:${TAG}@$${DIGEST}"
+	@echo "::endgroup::"

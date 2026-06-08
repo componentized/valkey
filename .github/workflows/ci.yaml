@@ -3,7 +3,8 @@ name: CI
 on:
   push: 
     branches:
-    - main
+    - '**'
+    - '!dependabot/**'
     tags:
     - 'v[0-9]+\.[0-9]+\.[0-9]+-?**'
   pull_request: {}
@@ -16,8 +17,6 @@ jobs:
     - uses: actions-rust-lang/setup-rust-toolchain@v1
     - name: Install cargo binstall
       uses: cargo-bins/cargo-binstall@main
-    - name: Install cargo component
-      run: cargo binstall --force cargo-component
     - name: Install wac
       run: cargo binstall --force wac-cli
     - name: Install wasmtime
@@ -49,18 +48,19 @@ jobs:
       working-directory: ./lib
       run: |
         for component in *.wasm ; do
-          echo "::group::${component}"
+          echo "::group::${component} ($(du -h ${component} | cut -f1 ))"
             wasm-tools component wit "${component}"
           echo "::endgroup::"
         done
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && ( startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' )
     needs:
     - build
     permissions:
       contents: write
       packages: write
+      id-token: write
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
@@ -69,7 +69,10 @@ jobs:
       uses: cargo-bins/cargo-binstall@main
     - name: Install wkg
       run: cargo binstall --force wkg
-    - name: Get the version
+    - name: Install cosign
+      uses: sigstore/cosign-installer@v4.1.2
+    - name: Get tag version
+      if: startsWith(github.ref, 'refs/tags/')
       id: get_version
       run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
     - name: Download components.tar
@@ -88,8 +91,9 @@ jobs:
       run: make publish
       env:
         REPOSITORY: "ghcr.io/${{ github.repository }}"
-        VERSION: "${{ steps.get_version.outputs.VERSION }}"
+        VERSION: "${{ case(github.ref == 'refs/heads/main', 'dev', steps.get_version.outputs.VERSION) }}"
     - name: Draft GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v3
       with:
         draft: true
