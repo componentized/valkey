@@ -15,9 +15,11 @@ A WASM component client for Valkey (and Redis).
 
 ## Build
 
+A [dev container](https://containers.dev) is available that contains the necessary tools and configuration out of the box.
+
 Prereqs:
 - a rust toolchain
-- [`cargo component`](https://github.com/bytecodealliance/cargo-component)
+- [`wasm-tools`](https://github.com/bytecodealliance/wasm-tools)
 - [`wac`](https://github.com/bytecodealliance/wac)
 - [`wkg`](https://github.com/bytecodealliance/wasm-pkg-tools)
 
