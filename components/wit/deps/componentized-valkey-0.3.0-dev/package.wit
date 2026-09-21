@@ -1,4 +1,4 @@
-package componentized:valkey;
+package componentized:valkey@0.3.0-dev;
 
 interface resp {
   type error = string;
