@@ -2,8 +2,8 @@ package componentized:valkey;
 
 let ops = new local:ops { ... };
 let keyvalue = new local:as-keyvalue {
-    "local:valkey/store@0.3.0-dev": ops.store,
-    "local:valkey/resp@0.3.0-dev": ops.resp,
+    "componentized:valkey/store@0.3.0-dev": ops.store,
+    "componentized:valkey/resp@0.3.0-dev": ops.resp,
     ...
 };
 
