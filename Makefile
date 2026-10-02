@@ -89,9 +89,12 @@ ifndef REPOSITORY
 endif
 	@$(eval FILE := $(@:publish-%=%))
 	@$(eval COMPONENT := $(if $(filter %.debug.wasm,$(FILE)),$(FILE:%.debug.wasm=%),$(FILE:%.wasm=%)))
-	@$(eval TITLE := $(if $(filter %.debug.wasm,$(FILE)),$(COMPONENT) (debug),$(COMPONENT)))
+	@$(eval TITLE := $(subst /,:,$(GITHUB_REPOSITORY))$(if $(filter interface,$(COMPONENT)),,-$(COMPONENT))$(if $(filter %.debug.wasm,$(FILE)), (debug)))
 	@$(eval DESCRIPTION := $(shell head -n 3 "lib/${FILE}.md" | tail -n 1))
-	@$(eval REVISION := $(shell git rev-parse HEAD)$(shell git diff --quiet HEAD && echo "+dirty"))
+	@$(eval COMMIT := $(shell git rev-parse HEAD))
+	@$(eval README_DIR := $(if $(wildcard components/$(COMPONENT)/README.md),/components/$(COMPONENT)))
+	@$(eval URL := https://github.com/${GITHUB_REPOSITORY}/tree/${COMMIT}${README_DIR})
+	@$(eval REVISION := ${COMMIT}$(shell git diff --quiet HEAD || echo "+dirty"))
 	@$(eval COMPONENT_VERSION := $(if $(filter %.debug.wasm,$(FILE)),${VERSION}+debug,${VERSION}))
 	@$(eval TAG := $(patsubst v%,%,$(subst +,_,$(COMPONENT_VERSION))))
 	@$(eval IMAGE := $(if $(filter interface.wasm,$(FILE)),${REPOSITORY}:${TAG},${REPOSITORY}/${COMPONENT}:${TAG}))
@@ -102,6 +105,7 @@ endif
 			--annotation "org.opencontainers.image.title=${TITLE}" \
 			--annotation "org.opencontainers.image.description=${DESCRIPTION}" \
 			--annotation "org.opencontainers.image.version=${COMPONENT_VERSION}" \
+			--annotation "org.opencontainers.image.url=${URL}" \
 			--annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}.git" \
 			--annotation "org.opencontainers.image.revision=${REVISION}" \
 			--annotation "org.opencontainers.image.licenses=Apache-2.0" \
