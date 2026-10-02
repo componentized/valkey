@@ -51,15 +51,15 @@ $(eval $(call BUILD_COMPONENT,sample-http-incrementor,wasm32-unknown-unknown))
 
 lib/client.wasm: components/client.wac lib/ops.wasm lib/as-keyvalue.wasm
 	wac compose -o lib/client.wasm \
-		-d componentized:ops=./lib/ops.wasm \
-		-d componentized:as-keyvalue=./lib/as-keyvalue.wasm \
+		-d local:ops=./lib/ops.wasm \
+		-d local:as-keyvalue=./lib/as-keyvalue.wasm \
 		components/client.wac
 	cp README.md lib/client.wasm.md
 
 lib/client.debug.wasm: components/client.wac lib/ops.debug.wasm lib/as-keyvalue.debug.wasm
 	wac compose -o lib/client.debug.wasm \
-		-d componentized:ops=./lib/ops.debug.wasm \
-		-d componentized:as-keyvalue=./lib/as-keyvalue.debug.wasm \
+		-d local:ops=./lib/ops.debug.wasm \
+		-d local:as-keyvalue=./lib/as-keyvalue.debug.wasm \
 		components/client.wac
 	cp README.md lib/client.debug.wasm.md
 
