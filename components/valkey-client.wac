@@ -1,7 +1,7 @@
 package componentized:client;
 
 let valkey-ops = new componentized:valkey-ops { ... };
-let keyvalue = new componentized:keyvalue-to-valkey {
+let keyvalue = new componentized:as-keyvalue {
     "componentized:valkey/store@0.3.0-dev": valkey-ops.store,
     "componentized:valkey/resp@0.3.0-dev": valkey-ops.resp,
     ...

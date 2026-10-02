@@ -16,7 +16,7 @@ run: lib/cli.debug.wasm
 	@wasmtime run $(WASMTIME_RUN_FLAGS) lib/cli.debug.wasm $(cmd)
 
 .PHONY: components
-components: lib/interface.wasm lib/cli.wasm lib/cli.debug.wasm lib/keyvalue-to-valkey.wasm lib/keyvalue-to-valkey.debug.wasm lib/valkey-client.wasm lib/valkey-client.debug.wasm lib/valkey-ops.wasm lib/valkey-ops.debug.wasm lib/sample-http-incrementor.wasm lib/sample-http-incrementor.debug.wasm
+components: lib/interface.wasm lib/cli.wasm lib/cli.debug.wasm lib/as-keyvalue.wasm lib/as-keyvalue.debug.wasm lib/valkey-client.wasm lib/valkey-client.debug.wasm lib/valkey-ops.wasm lib/valkey-ops.debug.wasm lib/sample-http-incrementor.wasm lib/sample-http-incrementor.debug.wasm
 
 lib/interface.wasm: wit/deps README.md
 	wkg build -o lib/interface.wasm
@@ -45,21 +45,21 @@ lib/$1.debug.wasm: $4 Cargo.toml Cargo.lock wit/deps $(shell find components/$1 
 endef
 
 $(eval $(call BUILD_COMPONENT,valkey-ops,wasm32-unknown-unknown))
-$(eval $(call BUILD_COMPONENT,keyvalue-to-valkey,wasm32-unknown-unknown))
+$(eval $(call BUILD_COMPONENT,as-keyvalue,wasm32-unknown-unknown))
 $(eval $(call BUILD_COMPONENT,cli,wasm32-wasip2,lib/valkey-ops.wasm,lib/valkey-ops.debug.wasm))
 $(eval $(call BUILD_COMPONENT,sample-http-incrementor,wasm32-unknown-unknown))
 
-lib/valkey-client.wasm: components/valkey-client.wac lib/valkey-ops.wasm lib/keyvalue-to-valkey.wasm
+lib/valkey-client.wasm: components/valkey-client.wac lib/valkey-ops.wasm lib/as-keyvalue.wasm
 	wac compose -o lib/valkey-client.wasm \
 		-d componentized:valkey-ops=./lib/valkey-ops.wasm \
-		-d componentized:keyvalue-to-valkey=./lib/keyvalue-to-valkey.wasm \
+		-d componentized:as-keyvalue=./lib/as-keyvalue.wasm \
 		components/valkey-client.wac
 	cp README.md lib/valkey-client.wasm.md
 
-lib/valkey-client.debug.wasm: components/valkey-client.wac lib/valkey-ops.debug.wasm lib/keyvalue-to-valkey.debug.wasm
+lib/valkey-client.debug.wasm: components/valkey-client.wac lib/valkey-ops.debug.wasm lib/as-keyvalue.debug.wasm
 	wac compose -o lib/valkey-client.debug.wasm \
 		-d componentized:valkey-ops=./lib/valkey-ops.debug.wasm \
-		-d componentized:keyvalue-to-valkey=./lib/keyvalue-to-valkey.debug.wasm \
+		-d componentized:as-keyvalue=./lib/as-keyvalue.debug.wasm \
 		components/valkey-client.wac
 	cp README.md lib/valkey-client.debug.wasm.md
 
