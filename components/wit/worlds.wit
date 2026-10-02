@@ -5,7 +5,7 @@ world cli {
     import componentized:valkey/store@0.3.0-dev;
 }
 
-world valkey-ops {
+world ops {
     include wasi:sockets/imports@0.2.6;
     export componentized:valkey/resp@0.3.0-dev;
     export componentized:valkey/store@0.3.0-dev;

@@ -16,7 +16,7 @@ run: lib/cli.debug.wasm
 	@wasmtime run $(WASMTIME_RUN_FLAGS) lib/cli.debug.wasm $(cmd)
 
 .PHONY: components
-components: lib/interface.wasm lib/cli.wasm lib/cli.debug.wasm lib/as-keyvalue.wasm lib/as-keyvalue.debug.wasm lib/valkey-client.wasm lib/valkey-client.debug.wasm lib/valkey-ops.wasm lib/valkey-ops.debug.wasm lib/sample-http-incrementor.wasm lib/sample-http-incrementor.debug.wasm
+components: lib/interface.wasm lib/cli.wasm lib/cli.debug.wasm lib/as-keyvalue.wasm lib/as-keyvalue.debug.wasm lib/valkey-client.wasm lib/valkey-client.debug.wasm lib/ops.wasm lib/ops.debug.wasm lib/sample-http-incrementor.wasm lib/sample-http-incrementor.debug.wasm
 
 lib/interface.wasm: wit/deps README.md
 	wkg build -o lib/interface.wasm
@@ -31,34 +31,34 @@ define BUILD_COMPONENT
 lib/$1.wasm: $3 Cargo.toml Cargo.lock components/wit/deps $(shell find components/wit -type f) $(shell find components/$1 -type f)
 	cargo build -p $1 --target $2 --release
 	$(if $(findstring $1,cli),
-		wac plug target/$2/release/$(subst -,_,$1).wasm --plug lib/valkey-ops.wasm -o lib/$1.wasm,
+		wac plug target/$2/release/$(subst -,_,$1).wasm --plug lib/ops.wasm -o lib/$1.wasm,
 		wasm-tools component new target/$2/release/$(subst -,_,$1).wasm -o lib/$1.wasm)
 	cp components/$1/README.md lib/$1.wasm.md
 
 lib/$1.debug.wasm: $4 Cargo.toml Cargo.lock wit/deps $(shell find components/$1 -type f)
 	cargo build -p $1 --target $2
 	$(if $(findstring $1,cli),
-		wac plug target/$2/debug/$(subst -,_,$1).wasm --plug lib/valkey-ops.debug.wasm -o lib/$1.debug.wasm,
+		wac plug target/$2/debug/$(subst -,_,$1).wasm --plug lib/ops.debug.wasm -o lib/$1.debug.wasm,
 		wasm-tools component new target/$2/debug/$(subst -,_,$1).wasm -o lib/$1.debug.wasm)
 	cp components/$1/README.md lib/$1.debug.wasm.md
 
 endef
 
-$(eval $(call BUILD_COMPONENT,valkey-ops,wasm32-unknown-unknown))
+$(eval $(call BUILD_COMPONENT,ops,wasm32-unknown-unknown))
 $(eval $(call BUILD_COMPONENT,as-keyvalue,wasm32-unknown-unknown))
-$(eval $(call BUILD_COMPONENT,cli,wasm32-wasip2,lib/valkey-ops.wasm,lib/valkey-ops.debug.wasm))
+$(eval $(call BUILD_COMPONENT,cli,wasm32-wasip2,lib/ops.wasm,lib/ops.debug.wasm))
 $(eval $(call BUILD_COMPONENT,sample-http-incrementor,wasm32-unknown-unknown))
 
-lib/valkey-client.wasm: components/valkey-client.wac lib/valkey-ops.wasm lib/as-keyvalue.wasm
+lib/valkey-client.wasm: components/valkey-client.wac lib/ops.wasm lib/as-keyvalue.wasm
 	wac compose -o lib/valkey-client.wasm \
-		-d componentized:valkey-ops=./lib/valkey-ops.wasm \
+		-d componentized:ops=./lib/ops.wasm \
 		-d componentized:as-keyvalue=./lib/as-keyvalue.wasm \
 		components/valkey-client.wac
 	cp README.md lib/valkey-client.wasm.md
 
-lib/valkey-client.debug.wasm: components/valkey-client.wac lib/valkey-ops.debug.wasm lib/as-keyvalue.debug.wasm
+lib/valkey-client.debug.wasm: components/valkey-client.wac lib/ops.debug.wasm lib/as-keyvalue.debug.wasm
 	wac compose -o lib/valkey-client.debug.wasm \
-		-d componentized:valkey-ops=./lib/valkey-ops.debug.wasm \
+		-d componentized:ops=./lib/ops.debug.wasm \
 		-d componentized:as-keyvalue=./lib/as-keyvalue.debug.wasm \
 		components/valkey-client.wac
 	cp README.md lib/valkey-client.debug.wasm.md

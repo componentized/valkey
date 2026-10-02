@@ -1106,7 +1106,7 @@ impl From<NestedValue> for Value {
 }
 
 wit_bindgen::generate!({
-    world: "valkey-ops",
+    world: "ops",
     path: "../wit",
     generate_all
 });
