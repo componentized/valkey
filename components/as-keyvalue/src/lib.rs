@@ -176,7 +176,7 @@ impl From<valkey::Error> for Error {
 }
 
 wit_bindgen::generate!({
-    world: "keyvalue-to-valkey",
+    world: "as-keyvalue",
     path: "../wit",
     generate_all
 });

@@ -3,10 +3,10 @@
 Sample component that exposes wasi:http incrementing a counter based on the http path.
 
 
-Compose with the valkey-client:
+Compose with the valkey client:
 
 ```sh
-wac plug sample-http-incrementor.wasm --plug valkey-client.wasm -o valkey-http-incrementor.wasm
+wac plug sample-http-incrementor.wasm --plug client.wasm -o valkey-http-incrementor.wasm
 ```
 
 Start a Valkey server:
