@@ -6,7 +6,7 @@ use componentized::valkey::{
 use std::{fmt, process};
 
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(name = "cli", version, about, long_about = None)]
 struct Cli {
     /// Host or ip address hosting the Valkey service
     #[arg(long, default_value = "127.0.0.1")]

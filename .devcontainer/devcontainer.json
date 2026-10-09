@@ -1,7 +1,7 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/rust
 {
-	"name": "valkey",
+	"name": "componentized-valkey",
     "dockerComposeFile": "docker-compose.yml",
     "service": "devcontainer",
     "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
@@ -26,7 +26,7 @@
 	},
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "cargo check",
+	"postCreateCommand": "./scripts/init-devcontainer.sh",
 
 	// Configure tool-specific properties.
 	"customizations": {
