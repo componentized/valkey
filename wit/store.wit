@@ -27,41 +27,41 @@ interface store {
         no-values: option<bool>,
     }
 
-    resource connection{
-        send: func(command: list<value>) -> result<value, error>;
+    resource connection {
+        send: async func(command: list<value>) -> result<value, error>;
 
-        acl-deluser: func(username: string) -> result<_, error>;
-        acl-genpass: func() -> result<string, error>;
-        acl-setuser: func(username: string, rules: list<string>) -> result<_, error>;
-        auth: func(username: string, password: string) -> result<_, error>;
-        del: func(key: string) -> result<_, error>;
-        exists: func(key: string) -> result<bool, error>;
-        get: func(key: string) -> result<option<string>, error>;
-        hdel: func(key: string, field: string) -> result<_, error>;
-        hello: func(opts: option<hello-opts>) -> result<list<tuple<string, value>>, error>;
-        hexists: func(key: string, field: string) -> result<bool, error>;
-        hget: func(key: string, field: string) -> result<option<string>, error>;
-        hgetall: func(key: string) -> result<list<tuple<string, string>>, error>;
-        hincrby: func(key: string, field: string, increment: s64) -> result<s64, error>;
-        hincrbyfloat: func(key: string, field: string, increment: f64) -> result<string, error>;
-        hkeys: func(key: string) -> result<list<string>, error>;
-        hlen: func(key: string) -> result<u64, error>;
-        hmget: func(key: string, fields: list<string>) -> result<list<option<string>>, error>;
-        hmset: func(key: string, fields: list<tuple<string, string>>) -> result<_, error>;
-        hrandfield: func(key: string, opts: option<hrandfield-opts>) -> result<option<list<tuple<string, option<string>>>>, error>;
-        hscan: func(key: string, cursor: option<string>, opts: option<hscan-opts>) -> result<tuple<option<string>, list<tuple<string, option<string>>>>, error>;
-        hset: func(key: string, field: string, value: string) -> result<_, error>;
-        hsetnx: func(key: string, field: string, value: string) -> result<bool, error>;
-        hstrlen: func(key: string, field: string) -> result<u64, error>;
-        hvals: func(key: string) -> result<list<string>, error>;
-        incr: func(key: string) -> result<s64, error>;
-        incrby: func(key: string, increment: s64) -> result<s64, error>;
-        keys: func(pattern: string) -> result<list<string>, error>;
-        ping: func() -> result<_, error>;
-        publish: func(channel: string, message: string) -> result<s64, error>;
-        quit: func() -> result<_, error>;
-        set: func(key: string, value: string) -> result<_, error>;
+        acl-deluser: async func(username: string) -> result<_, error>;
+        acl-genpass: async func() -> result<string, error>;
+        acl-setuser: async func(username: string, rules: list<string>) -> result<_, error>;
+        auth: async func(username: string, password: string) -> result<_, error>;
+        del: async func(key: string) -> result<_, error>;
+        exists: async func(key: string) -> result<bool, error>;
+        get: async func(key: string) -> result<option<string>, error>;
+        hdel: async func(key: string, field: string) -> result<_, error>;
+        hello: async func(opts: option<hello-opts>) -> result<list<tuple<string, value>>, error>;
+        hexists: async func(key: string, field: string) -> result<bool, error>;
+        hget: async func(key: string, field: string) -> result<option<string>, error>;
+        hgetall: async func(key: string) -> result<list<tuple<string, string>>, error>;
+        hincrby: async func(key: string, field: string, increment: s64) -> result<s64, error>;
+        hincrbyfloat: async func(key: string, field: string, increment: f64) -> result<string, error>;
+        hkeys: async func(key: string) -> result<list<string>, error>;
+        hlen: async func(key: string) -> result<u64, error>;
+        hmget: async func(key: string, fields: list<string>) -> result<list<option<string>>, error>;
+        hmset: async func(key: string, fields: list<tuple<string, string>>) -> result<_, error>;
+        hrandfield: async func(key: string, opts: option<hrandfield-opts>) -> result<option<list<tuple<string, option<string>>>>, error>;
+        hscan: async func(key: string, cursor: option<string>, opts: option<hscan-opts>) -> result<tuple<option<string>, list<tuple<string, option<string>>>>, error>;
+        hset: async func(key: string, field: string, value: string) -> result<_, error>;
+        hsetnx: async func(key: string, field: string, value: string) -> result<bool, error>;
+        hstrlen: async func(key: string, field: string) -> result<u64, error>;
+        hvals: async func(key: string) -> result<list<string>, error>;
+        incr: async func(key: string) -> result<s64, error>;
+        incrby: async func(key: string, increment: s64) -> result<s64, error>;
+        keys: async func(pattern: string) -> result<list<string>, error>;
+        ping: async func() -> result<_, error>;
+        publish: async func(channel: string, message: string) -> result<s64, error>;
+        quit: async func() -> result<_, error>;
+        set: async func(key: string, value: string) -> result<_, error>;
     }
 
-    connect: func(host: string, port: u16, opts: option<hello-opts>) -> result<connection, error>;
+    connect: async func(host: string, port: u16, opts: option<hello-opts>) -> result<connection, error>;
 }

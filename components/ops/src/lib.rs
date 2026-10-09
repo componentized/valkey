@@ -24,7 +24,7 @@ pub mod resp;
 struct ValkeyOps;
 
 impl ValkeyOps {
-    fn open(address: IpSocketAddress) -> Result<ValkeyConnection, Error> {
+    async fn open(address: IpSocketAddress) -> Result<ValkeyConnection, Error> {
         let socket = match address {
             IpSocketAddress::Ipv4(_) => create_tcp_socket(IpAddressFamily::Ipv4)?,
             IpSocketAddress::Ipv6(_) => create_tcp_socket(IpAddressFamily::Ipv6)?,
@@ -40,7 +40,10 @@ impl ValkeyOps {
         })
     }
 
-    fn resolve_ip_socket_addresses(host: &str, port: u16) -> Result<Vec<IpSocketAddress>, Error> {
+    async fn resolve_ip_socket_addresses(
+        host: &str,
+        port: u16,
+    ) -> Result<Vec<IpSocketAddress>, Error> {
         let ip_addresses = match host.parse() {
             Ok(IpAddr::V4(addr)) => {
                 // host is an ipv4 address
@@ -65,7 +68,7 @@ impl ValkeyOps {
             }
             Err(_) => {
                 // resolve as a hostname
-                Self::resolve_ip_addresses(host)?
+                Self::resolve_ip_addresses(host).await?
             }
         };
 
@@ -91,7 +94,7 @@ impl ValkeyOps {
         Ok(socket_addresses)
     }
 
-    fn resolve_ip_addresses(host: &str) -> Result<Vec<IpAddress>, Error> {
+    async fn resolve_ip_addresses(host: &str) -> Result<Vec<IpAddress>, Error> {
         let network = instance_network();
         let address_stream = resolve_addresses(&network, host)?;
         let mut addresses = vec![];
@@ -109,23 +112,21 @@ impl ValkeyOps {
 impl StoreGuest for ValkeyOps {
     type Connection = ValkeyConnection;
 
-    fn connect(host: String, port: u16, opts: Option<HelloOpts>) -> Result<Connection, Error> {
-        let connection = Self::resolve_ip_socket_addresses(&host, port)?
-            .into_iter()
-            .find_map(|addr| match Self::open(addr) {
+    async fn connect(
+        host: String,
+        port: u16,
+        opts: Option<HelloOpts>,
+    ) -> Result<Connection, Error> {
+        for addr in Self::resolve_ip_socket_addresses(&host, port).await? {
+            if let Ok(conn) = Self::open(addr).await {
                 // check the connection is alive
-                Ok(conn) => match conn.hello(opts.clone()) {
-                    Ok(_) => Some(conn),
-                    // TODO distinguish between IO and Valkey errors
-                    Err(_) => None,
-                },
-                // TODO distinguish between IO and Valkey errors
-                Err(_) => None,
-            });
-        match connection {
-            Some(connection) => Ok(Connection::new(connection)),
-            None => Err(Error::Client(format!("unable to connect to {host}:{port}"))),
+                if conn.hello(opts.clone()).await.is_ok() {
+                    // it's alive
+                    return Ok(Connection::new(conn));
+                }
+            }
         }
+        Err(Error::Client(format!("unable to connect to {host}:{port}")))
     }
 }
 
@@ -136,7 +137,7 @@ struct ValkeyConnection {
 }
 
 impl GuestConnection for ValkeyConnection {
-    fn send(&self, command: Vec<Value>) -> Result<Value, Error> {
+    async fn send(&self, command: Vec<Value>) -> Result<Value, Error> {
         let request = encode(Value::Array(
             command.into_iter().map(|c| c.into()).collect(),
         ));
@@ -151,15 +152,17 @@ impl GuestConnection for ValkeyConnection {
         decode(response).map(|r| r.into())
     }
 
-    fn acl_deluser(&self, username: String) -> Result<(), Error> {
+    async fn acl_deluser(&self, username: String) -> Result<(), Error> {
         // https://valkey.io/commands/acl-deluser/
         // ACL DELUSER username [ username ... ]
 
-        let response = self.send(vec![
-            Value::BulkString("ACL".to_string()),
-            Value::BulkString("DELUSER".to_string()),
-            Value::BulkString(username),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("ACL".to_string()),
+                Value::BulkString("DELUSER".to_string()),
+                Value::BulkString(username),
+            ])
+            .await?;
         match response {
             Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -170,14 +173,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn acl_genpass(&self) -> Result<String, Error> {
+    async fn acl_genpass(&self) -> Result<String, Error> {
         // https://valkey.io/commands/acl-genpass/
         // ACL GENPASS [ bits ]
 
-        let response = self.send(vec![
-            Value::BulkString("ACL".to_string()),
-            Value::BulkString("GENPASS".to_string()),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("ACL".to_string()),
+                Value::BulkString("GENPASS".to_string()),
+            ])
+            .await?;
         match response {
             Value::BulkString(pass) => Ok(pass),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -188,7 +193,7 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn acl_setuser(&self, username: String, rules: Vec<String>) -> Result<(), Error> {
+    async fn acl_setuser(&self, username: String, rules: Vec<String>) -> Result<(), Error> {
         // https://valkey.io/commands/acl-setuser/
         // ACL SETUSER username [ rule ] [ [ rule ] ... ]
 
@@ -200,7 +205,7 @@ impl GuestConnection for ValkeyConnection {
         for rule in rules {
             command.push(Value::BulkString(rule));
         }
-        let response = self.send(command)?;
+        let response = self.send(command).await?;
         match response {
             Value::String(msg) => match msg.as_str() {
                 "OK" => Ok(()),
@@ -214,15 +219,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn auth(&self, username: String, password: String) -> Result<(), Error> {
+    async fn auth(&self, username: String, password: String) -> Result<(), Error> {
         // https://valkey.io/commands/auth/
         // AUTH [ username ] password
 
-        let response = self.send(vec![
-            Value::BulkString("AUTH".to_string()),
-            Value::BulkString(username),
-            Value::BulkString(password),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("AUTH".to_string()),
+                Value::BulkString(username),
+                Value::BulkString(password),
+            ])
+            .await?;
         match response {
             Value::String(msg) => match msg.as_str() {
                 "OK" => Ok(()),
@@ -236,15 +243,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn del(&self, key: String) -> Result<(), Error> {
+    async fn del(&self, key: String) -> Result<(), Error> {
         // https://valkey.io/commands/del/
         // DEL key [ key ... ]
 
         // TODO handle multiple keys
-        let response = self.send(vec![
-            Value::BulkString("DEL".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("DEL".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -255,15 +264,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn exists(&self, key: String) -> Result<bool, Error> {
+    async fn exists(&self, key: String) -> Result<bool, Error> {
         // https://valkey.io/commands/exists/
         // EXISTS key [ key ... ]
 
         // TODO handle multiple keys
-        let response = self.send(vec![
-            Value::BulkString("EXISTS".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("EXISTS".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             Value::Integer(0) => Ok(false),
             Value::Integer(1) => Ok(true),
@@ -275,14 +286,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn get(&self, key: String) -> Result<Option<String>, Error> {
+    async fn get(&self, key: String) -> Result<Option<String>, Error> {
         // https://valkey.io/commands/get/
         // GET key
 
-        let response = self.send(vec![
-            Value::BulkString("GET".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("GET".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             Value::BulkString(value) => Ok(Some(value)),
             Value::Null => Ok(None),
@@ -294,15 +307,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hdel(&self, key: String, field: String) -> Result<(), Error> {
+    async fn hdel(&self, key: String, field: String) -> Result<(), Error> {
         // https://valkey.io/commands/hdel/
         // HDEL key field [ field ... ]
 
-        let response = self.send(vec![
-            Value::BulkString("HDEL".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HDEL".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+            ])
+            .await?;
         match response {
             Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -313,7 +328,7 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hello(&self, opts: Option<HelloOpts>) -> Result<Vec<(String, Value)>, Error> {
+    async fn hello(&self, opts: Option<HelloOpts>) -> Result<Vec<(String, Value)>, Error> {
         // https://valkey.io/commands/hello/
         // HELLO [ protover [ AUTH username password ] [ SETNAME clientname ] ]
 
@@ -343,7 +358,7 @@ impl GuestConnection for ValkeyConnection {
                 cmd.push(Value::BulkString(client_name));
             }
         }
-        let response = self.send(cmd)?;
+        let response = self.send(cmd).await?;
         match response {
             // convert RESP2 array
             Value::Array(items) => {
@@ -379,15 +394,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hexists(&self, key: String, field: String) -> Result<bool, Error> {
+    async fn hexists(&self, key: String, field: String) -> Result<bool, Error> {
         // https://valkey.io/commands/hexists/
         // HEXISTS key field
 
-        let response = self.send(vec![
-            Value::BulkString("HEXISTS".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HEXISTS".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+            ])
+            .await?;
         match response {
             Value::Integer(0) => Ok(false),
             Value::Integer(1) => Ok(true),
@@ -399,15 +416,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hget(&self, key: String, field: String) -> Result<Option<String>, Error> {
+    async fn hget(&self, key: String, field: String) -> Result<Option<String>, Error> {
         // https://valkey.io/commands/hget/
         // HGET key field
 
-        let response = self.send(vec![
-            Value::BulkString("HGET".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HGET".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+            ])
+            .await?;
         match response {
             Value::BulkString(value) => Ok(Some(value)),
             Value::Null => Ok(None),
@@ -419,14 +438,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hgetall(&self, key: String) -> Result<Vec<(String, String)>, Error> {
+    async fn hgetall(&self, key: String) -> Result<Vec<(String, String)>, Error> {
         // https://valkey.io/commands/hgetall/
         // HGETALL key
 
-        let response = self.send(vec![
-            Value::BulkString("HGETALL".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HGETALL".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             // RESP2
             Value::Array(items) => {
@@ -468,16 +489,18 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hincrby(&self, key: String, field: String, increment: i64) -> Result<i64, Error> {
+    async fn hincrby(&self, key: String, field: String, increment: i64) -> Result<i64, Error> {
         // https://valkey.io/commands/hincrby/
         // HINCRBY key field increment
 
-        let response = self.send(vec![
-            Value::BulkString("HINCRBY".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-            Value::BulkString(increment.to_string()),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HINCRBY".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+                Value::BulkString(increment.to_string()),
+            ])
+            .await?;
         match response {
             Value::Integer(value) => Ok(value),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -488,16 +511,23 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hincrbyfloat(&self, key: String, field: String, increment: f64) -> Result<String, Error> {
+    async fn hincrbyfloat(
+        &self,
+        key: String,
+        field: String,
+        increment: f64,
+    ) -> Result<String, Error> {
         // https://valkey.io/commands/hincrbyfloat/
         // HINCRBYFLOAT key field increment
 
-        let response = self.send(vec![
-            Value::BulkString("HINCRBYFLOAT".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-            Value::BulkString(increment.to_string()),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HINCRBYFLOAT".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+                Value::BulkString(increment.to_string()),
+            ])
+            .await?;
         match response {
             Value::BulkString(value) => Ok(value),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -508,14 +538,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hkeys(&self, key: String) -> Result<Vec<String>, Error> {
+    async fn hkeys(&self, key: String) -> Result<Vec<String>, Error> {
         // https://valkey.io/commands/hkeys/
         // HKEYS key
 
-        let response = self.send(vec![
-            Value::BulkString("HKEYS".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HKEYS".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             Value::Array(values) => {
                 let mut keys = vec![];
@@ -539,14 +571,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hlen(&self, key: String) -> Result<u64, Error> {
+    async fn hlen(&self, key: String) -> Result<u64, Error> {
         // https://valkey.io/commands/hlen/
         // HLEN key
 
-        let response = self.send(vec![
-            Value::BulkString("HLEN".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HLEN".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             Value::Integer(value) => Ok(value as u64),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -557,7 +591,7 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hmget(&self, key: String, fields: Vec<String>) -> Result<Vec<Option<String>>, Error> {
+    async fn hmget(&self, key: String, fields: Vec<String>) -> Result<Vec<Option<String>>, Error> {
         // https://valkey.io/commands/hmget/
         // HMGET key field [ field ... ]
 
@@ -568,7 +602,7 @@ impl GuestConnection for ValkeyConnection {
         for field in fields {
             cmd.push(Value::BulkString(field));
         }
-        let response = self.send(cmd)?;
+        let response = self.send(cmd).await?;
         match response {
             Value::Array(items) => {
                 let mut values = vec![];
@@ -592,7 +626,7 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hmset(&self, key: String, fields: Vec<(String, String)>) -> Result<(), Error> {
+    async fn hmset(&self, key: String, fields: Vec<(String, String)>) -> Result<(), Error> {
         // https://valkey.io/commands/hmset/
         // HMSET key field value [ field value ... ]
 
@@ -604,7 +638,7 @@ impl GuestConnection for ValkeyConnection {
             cmd.push(Value::BulkString(field));
             cmd.push(Value::BulkString(value));
         }
-        let response = self.send(cmd)?;
+        let response = self.send(cmd).await?;
         match response {
             Value::String(msg) => match msg.as_str() {
                 "OK" => Ok(()),
@@ -618,7 +652,7 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hrandfield(
+    async fn hrandfield(
         &self,
         key: String,
         opts: Option<HrandfieldOpts>,
@@ -645,7 +679,7 @@ impl GuestConnection for ValkeyConnection {
                 }
             }
         }
-        let response = self.send(cmd)?;
+        let response = self.send(cmd).await?;
         match response {
             Value::BulkString(value) => Ok(Some(vec![(value, None)])),
             Value::Array(items) => match items.len() {
@@ -700,7 +734,7 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hscan(
+    async fn hscan(
         &self,
         key: String,
         cursor: Option<String>,
@@ -729,7 +763,7 @@ impl GuestConnection for ValkeyConnection {
                 }
             }
         }
-        let response = self.send(cmd)?;
+        let response = self.send(cmd).await?;
         match response {
             Value::Array(items) => {
                 let cursor = match items[0].clone().into() {
@@ -798,16 +832,18 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hset(&self, key: String, field: String, value: String) -> Result<(), Error> {
+    async fn hset(&self, key: String, field: String, value: String) -> Result<(), Error> {
         // https://valkey.io/commands/hset/
         // HSET key field value [ field value ... ]
 
-        let response = self.send(vec![
-            Value::BulkString("HSET".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-            Value::BulkString(value),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HSET".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+                Value::BulkString(value),
+            ])
+            .await?;
         match response {
             Value::Integer(_) => Ok(()),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -818,16 +854,18 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hsetnx(&self, key: String, field: String, value: String) -> Result<bool, Error> {
+    async fn hsetnx(&self, key: String, field: String, value: String) -> Result<bool, Error> {
         // https://valkey.io/commands/hsetnx/
         // HSETNX key field value
 
-        let response = self.send(vec![
-            Value::BulkString("HSETNX".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-            Value::BulkString(value),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HSETNX".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+                Value::BulkString(value),
+            ])
+            .await?;
         match response {
             Value::Integer(0) => Ok(false),
             Value::Integer(1) => Ok(true),
@@ -839,15 +877,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hstrlen(&self, key: String, field: String) -> Result<u64, Error> {
+    async fn hstrlen(&self, key: String, field: String) -> Result<u64, Error> {
         // https://valkey.io/commands/hstrlen/
         // HSTRLEN key field
 
-        let response = self.send(vec![
-            Value::BulkString("HSTRLEN".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(field),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HSTRLEN".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(field),
+            ])
+            .await?;
         match response {
             Value::Integer(len) => Ok(len as u64),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -858,14 +898,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn hvals(&self, key: String) -> Result<Vec<String>, Error> {
+    async fn hvals(&self, key: String) -> Result<Vec<String>, Error> {
         // https://valkey.io/commands/hvals/
         // HVALS key
 
-        let response = self.send(vec![
-            Value::BulkString("HVALS".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("HVALS".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             Value::Array(items) => {
                 let mut fields = vec![];
@@ -885,14 +927,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn incr(&self, key: String) -> Result<i64, Error> {
+    async fn incr(&self, key: String) -> Result<i64, Error> {
         // https://valkey.io/commands/incr/
         // INCR key
 
-        let response = self.send(vec![
-            Value::BulkString("INCR".to_string()),
-            Value::BulkString(key),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("INCR".to_string()),
+                Value::BulkString(key),
+            ])
+            .await?;
         match response {
             Value::Integer(value) => Ok(value),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -903,15 +947,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn incrby(&self, key: String, increment: i64) -> Result<i64, Error> {
+    async fn incrby(&self, key: String, increment: i64) -> Result<i64, Error> {
         // https://valkey.io/commands/incrby/
         // INCRBY key increment
 
-        let response = self.send(vec![
-            Value::BulkString("INCRBY".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(increment.to_string()),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("INCRBY".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(increment.to_string()),
+            ])
+            .await?;
         match response {
             Value::Integer(value) => Ok(value),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -922,14 +968,16 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn keys(&self, pattern: String) -> Result<Vec<String>, Error> {
+    async fn keys(&self, pattern: String) -> Result<Vec<String>, Error> {
         // https://valkey.io/commands/keys/
         // KEYS pattern
 
-        let response = self.send(vec![
-            Value::BulkString("KEYS".to_string()),
-            Value::BulkString(pattern),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("KEYS".to_string()),
+                Value::BulkString(pattern),
+            ])
+            .await?;
         match response {
             Value::Array(values) => {
                 let mut keys = vec![];
@@ -953,12 +1001,14 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn ping(&self) -> Result<(), Error> {
+    async fn ping(&self) -> Result<(), Error> {
         // https://valkey.io/commands/ping/
         // PING [ message ]
 
         // TODO support command options
-        let response = self.send(vec![Value::BulkString("PING".to_string())])?;
+        let response = self
+            .send(vec![Value::BulkString("PING".to_string())])
+            .await?;
         match response {
             Value::String(msg) => match msg.as_str() {
                 "PONG" => Ok(()),
@@ -972,11 +1022,13 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn quit(&self) -> Result<(), Error> {
+    async fn quit(&self) -> Result<(), Error> {
         // https://valkey.io/commands/quit/
         // QUIT
 
-        let response = self.send(vec![Value::BulkString("QUIT".to_string())])?;
+        let response = self
+            .send(vec![Value::BulkString("QUIT".to_string())])
+            .await?;
         match response {
             Value::String(msg) => match msg.as_str() {
                 "OK" => Ok(()),
@@ -990,15 +1042,17 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn publish(&self, channel: String, message: String) -> Result<i64, Error> {
+    async fn publish(&self, channel: String, message: String) -> Result<i64, Error> {
         // https://valkey.io/commands/publish/
         // PUBLISH channel message
 
-        let response = self.send(vec![
-            Value::BulkString("PUBLISH".to_string()),
-            Value::BulkString(channel),
-            Value::BulkString(message),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("PUBLISH".to_string()),
+                Value::BulkString(channel),
+                Value::BulkString(message),
+            ])
+            .await?;
         match response {
             Value::Integer(value) => Ok(value),
             Value::Error(err) => Err(Error::Valkey(err))?,
@@ -1009,7 +1063,7 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
-    fn set(&self, key: String, value: String) -> Result<(), Error> {
+    async fn set(&self, key: String, value: String) -> Result<(), Error> {
         // https://valkey.io/commands/set/
         // SET key value
         //   [ NX | XX | IFEQ comparison-value ]
@@ -1017,11 +1071,13 @@ impl GuestConnection for ValkeyConnection {
         //   [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
 
         // TODO support command options
-        let response = self.send(vec![
-            Value::BulkString("SET".to_string()),
-            Value::BulkString(key),
-            Value::BulkString(value),
-        ])?;
+        let response = self
+            .send(vec![
+                Value::BulkString("SET".to_string()),
+                Value::BulkString(key),
+                Value::BulkString(value),
+            ])
+            .await?;
         match response {
             Value::String(msg) => match msg.as_str() {
                 "OK" => Ok(()),

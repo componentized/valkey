@@ -43,7 +43,7 @@ impl StoreGuest for KeyvalueToValkey {
             },
             client_name: None,
         };
-        let connection = valkey::connect(&hostname, port, Some(&opts))?;
+        let connection = wit_bindgen::block_on(valkey::connect(hostname, port, Some(opts)))?;
 
         let key_prefix = config::get(KEY_PREFIX_KEY)?.unwrap_or(KEY_PREFIX_DEFAULT.to_string());
         let hash_key = format!("{key_prefix}{identifier}");
@@ -62,7 +62,7 @@ struct KeyvalueToValkeyBucket {
 
 impl GuestBucket for KeyvalueToValkeyBucket {
     fn get(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
-        match self.connection.hget(&self.hash_key, &key)? {
+        match wit_bindgen::block_on(self.connection.hget(self.hash_key.clone(), key))? {
             Some(value) => Ok(Some(value.as_bytes().to_vec())),
             None => Ok(None),
         }
@@ -70,15 +70,23 @@ impl GuestBucket for KeyvalueToValkeyBucket {
 
     fn set(&self, key: String, value: Vec<u8>) -> Result<(), Error> {
         let value = String::from_utf8(value).map_err(|e| Error::Other(e.to_string()))?;
-        Ok(self.connection.hset(&self.hash_key, &key, &value)?)
+        Ok(wit_bindgen::block_on(self.connection.hset(
+            self.hash_key.clone(),
+            key,
+            value,
+        ))?)
     }
 
     fn delete(&self, key: String) -> Result<(), Error> {
-        Ok(self.connection.hdel(&self.hash_key, &key)?)
+        Ok(wit_bindgen::block_on(
+            self.connection.hdel(self.hash_key.clone(), key),
+        )?)
     }
 
     fn exists(&self, key: String) -> Result<bool, Error> {
-        Ok(self.connection.hexists(&self.hash_key, &key)?)
+        Ok(wit_bindgen::block_on(
+            self.connection.hexists(self.hash_key.clone(), key),
+        )?)
     }
 
     fn list_keys(&self, cursor: Option<String>) -> Result<KeyResponse, Error> {
@@ -88,7 +96,7 @@ impl GuestBucket for KeyvalueToValkeyBucket {
 
         Ok(KeyResponse {
             cursor: None,
-            keys: self.connection.hkeys(&self.hash_key)?,
+            keys: wit_bindgen::block_on(self.connection.hkeys(self.hash_key.clone()))?,
         })
     }
 }
@@ -99,7 +107,11 @@ impl AtomicsGuest for KeyvalueToValkey {
     fn increment(bucket: BucketBorrow<'_>, key: String, delta: i64) -> Result<i64, Error> {
         let bucket: &KeyvalueToValkeyBucket = bucket.get();
 
-        Ok(bucket.connection.hincrby(&bucket.hash_key, &key, delta)?)
+        Ok(wit_bindgen::block_on(bucket.connection.hincrby(
+            bucket.hash_key.clone(),
+            key,
+            delta,
+        ))?)
     }
 
     fn swap(_cas: Cas, _value: Vec<u8>) -> Result<(), CasError> {
