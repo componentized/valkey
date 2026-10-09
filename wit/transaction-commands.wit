@@ -1,0 +1,11 @@
+/// Commands for transactions, Valkey's @transaction ACL category.
+interface transaction-commands {
+    use connection.{connection, error};
+
+    // not yet implemented, from the @transaction category:
+    //   DISCARD
+    //   EXEC
+    //   MULTI
+    //   UNWATCH
+    //   WATCH
+}

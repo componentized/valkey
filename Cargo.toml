@@ -1,16 +1,35 @@
 [workspace]
 resolver = "2"
 members = [
+    "components/admin-commands",
     "components/as-keyvalue",
+    "components/commands",
+    "components/connection",
+    "components/connection-commands",
     "components/dep-cli",
-    "components/ops",
+    "components/hash-commands",
+    "components/keyspace-commands",
+    "components/pubsub-commands",
+    "components/resp",
     "components/sample-http-incrementor",
+    "components/string-commands",
+    "components/tcp",
+    "components/tcp-connector",
+    "crates/resp-codec",
+    "crates/test-harness",
 ]
 
 [workspace.package]
 version = "0.3.0-dev"
 
 [workspace.dependencies]
+futures-channel = "0.3"
+futures-core = "0.3"
+resp-codec = { path = "./crates/resp-codec" }
+test-harness = { path = "./crates/test-harness" }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+wasmtime = { version = "49", features = ["component-model-async"] }
+wasmtime-wasi = { version = "49", features = ["p3"] }
 wit-bindgen = "0.61.0"
 
 [profile.release]

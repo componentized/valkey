@@ -1,3 +1,3 @@
 # dep-cli
 
-The Valkey CLI before the ops client is composed in, see [`cli`](../cli/).
+The Valkey CLI before the client components are composed in, see [`cli`](../cli/).

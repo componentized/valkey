@@ -1,0 +1,25 @@
+/// Commands for set values, Valkey's @set ACL category.
+interface set-commands {
+    use connection.{connection, error};
+
+    // not yet implemented, from the @set category:
+    //   SADD
+    //   SCARD
+    //   SDIFF
+    //   SDIFFSTORE
+    //   SINTER
+    //   SINTERCARD
+    //   SINTERSTORE
+    //   SISMEMBER
+    //   SMEMBERS
+    //   SMISMEMBER
+    //   SMOVE
+    //   SORT
+    //   SORT_RO
+    //   SPOP
+    //   SRANDMEMBER
+    //   SREM
+    //   SSCAN
+    //   SUNION
+    //   SUNIONSTORE
+}

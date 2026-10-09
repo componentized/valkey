@@ -2,7 +2,9 @@
 
 A WASM component client for Valkey (and Redis).
 
+- [Components](#components)
 - [Build](#build)
+- [Test](#test)
 - [Run](#run)
   - [Samples](#samples)
 - [Community](#community)
@@ -12,6 +14,23 @@ A WASM component client for Valkey (and Redis).
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
 
+
+## Components
+
+The `componentized:valkey` WIT package, in [`wit`](./wit), separates the connection to a server from the transport carrying it, and from the commands sent over it. Connections always speak RESP3.
+
+| Component                                      |                                                                                                                                                                                          |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`resp`](./components/resp/)                   | encodes and decodes RESP values, the types every other component shares                                                                                                                  |
+| [`connection`](./components/connection/)       | the mechanics of a connection: pairs commands with replies, keeps push messages apart, establishes it with `HELLO 3`, optionally keeps it alive                                          |
+| [`tcp`](./components/tcp/)                     | connections over wasi:sockets TCP                                                                                                                                                        |
+| [`tcp-connector`](./components/tcp-connector/) | connections over TCP to the server configured with wasi:config, for components that need a connection without a say in how it is made                                                    |
+| [`commands`](./components/commands/)           | the commands, an interface for each of Valkey's ACL categories, e.g. `hash-commands`, each also available as a component of its own, e.g. [`hash-commands`](./components/hash-commands/) |
+| [`as-keyvalue`](./components/as-keyvalue/)     | wasmcloud:keyvalue, backed by Valkey hashes                                                                                                                                              |
+| [`client`](./components/client/)               | everything above, composed into one component                                                                                                                                            |
+| [`cli`](./components/cli/)                     | a command line client                                                                                                                                                                    |
+
+A composition picks the transport, e.g. `tcp` and `tcp-connector`, other transports can provide connections to the same commands. The [`*.wac`](./components/client/client.wac) files show how the components are composed.
 
 ## Build
 
@@ -29,6 +48,18 @@ The build creates each component in [`components`](./components) into `target/co
 
 The cli tools the build uses, [`wasm-tools`](https://github.com/bytecodealliance/wasm-tools), [`wac`](https://github.com/bytecodealliance/wac), [`wasmtime`](https://github.com/bytecodealliance/wasmtime) and [`wkg`](https://github.com/bytecodealliance/wasm-pkg-tools), are pinned in [`tools/Cargo.toml`](./tools/Cargo.toml) and installed into `target/tools/<platform>`, e.g. `target/tools/aarch64-apple-darwin`, as needed, or ahead of time with `make tools`. Dependabot bumps the pinned versions.
 
+## Test
+
+```sh
+make test
+```
+
+Tests the components without a Valkey server, playing the server themselves, then runs the cli against a Valkey server on `localhost:6379`. The tests against a Valkey server, ignored by `cargo test`, run with:
+
+```sh
+make test-valkey
+```
+
 ## Run
 
 Prereqs:
@@ -42,6 +73,9 @@ wasmtime run -Sinherit-network -Sallow-ip-name-lookup target/components/cli/cli.
 
 - use `--host` to specify a host other than `127.0.0.1`
 - use `--port` to specify a port other than `6379`
+- use `--password`, and `--username` for a user other than `default`, to authenticate
+- use `--client-name` to name the connection
+- use `--help` for the commands, and their options
 - `-Sallow-ip-name-lookup` is only required if a hostname is used for the connection instead of an IP address.
 
 To aid incremental development a make target is available to rebuild and run the CLI:

@@ -39,9 +39,11 @@ jobs:
           path: components.tar
           retention-days: 7
       - name: Start Valkey service
-        run: docker run --rm --name valkey -d -p 6379:6379 valkey/valkey:8
+        run: docker run --rm --name valkey -d -p 6379:6379 valkey/valkey:9
       - name: Test
         run: make test
+      - name: Test against Valkey
+        run: make test-valkey
       - name: Capture WIT
         working-directory: ./target/components
         run: |

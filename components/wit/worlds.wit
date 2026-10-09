@@ -2,18 +2,86 @@ package componentized:valkey-components;
 
 world cli {
     include wasi:cli/imports@0.3.0;
-    import componentized:valkey/store@0.3.0-dev;
+    import componentized:valkey/tcp@0.3.0-dev;
+    import componentized:valkey/admin-commands@0.3.0-dev;
+    import componentized:valkey/connection-commands@0.3.0-dev;
+    import componentized:valkey/hash-commands@0.3.0-dev;
+    import componentized:valkey/keyspace-commands@0.3.0-dev;
+    import componentized:valkey/pubsub-commands@0.3.0-dev;
+    import componentized:valkey/string-commands@0.3.0-dev;
     export wasi:cli/run@0.3.0;
 }
 
-world ops {
-    include wasi:sockets/imports@0.3.0;
+/// The RESP codec, for the components that import the resp types.
+world resp {
     export componentized:valkey/resp@0.3.0-dev;
-    export componentized:valkey/store@0.3.0-dev;
+}
+
+/// The mechanics of a connection, independent of the transport.
+world connection {
+    import wasi:clocks/monotonic-clock@0.3.0;
+    export componentized:valkey/connection@0.3.0-dev;
+}
+
+/// Connections over wasi:sockets TCP.
+world tcp {
+    import wasi:sockets/types@0.3.0;
+    import wasi:sockets/ip-name-lookup@0.3.0;
+    import componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/tcp@0.3.0-dev;
+}
+
+/// Commands, one world per ACL category.
+world admin-commands {
+    import componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/admin-commands@0.3.0-dev;
+}
+
+world connection-commands {
+    import componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/connection-commands@0.3.0-dev;
+}
+
+world hash-commands {
+    import componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/hash-commands@0.3.0-dev;
+}
+
+world keyspace-commands {
+    import componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/keyspace-commands@0.3.0-dev;
+}
+
+world pubsub-commands {
+    import componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/pubsub-commands@0.3.0-dev;
+}
+
+world string-commands {
+    import componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/string-commands@0.3.0-dev;
+}
+
+/// Every implemented command interface, in one component.
+world commands {
+    include admin-commands;
+    include connection-commands;
+    include hash-commands;
+    include keyspace-commands;
+    include pubsub-commands;
+    include string-commands;
+}
+
+/// A connector for connections over TCP, to the server configured with wasi:config.
+world tcp-connector {
+    import wasi:config/store@0.2.0-rc.1;
+    import componentized:valkey/tcp@0.3.0-dev;
+    export componentized:valkey/connector@0.3.0-dev;
 }
 
 world as-keyvalue {
-    import componentized:valkey/store@0.3.0-dev;
+    import componentized:valkey/connector@0.3.0-dev;
+    import componentized:valkey/hash-commands@0.3.0-dev;
     import wasi:config/store@0.2.0-rc.1;
     export wasmcloud:keyvalue/types@0.2.0;
     export wasmcloud:keyvalue/store@0.2.0;

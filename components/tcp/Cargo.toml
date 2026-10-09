@@ -1,0 +1,19 @@
+[package]
+name = "tcp"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+futures-channel = { workspace = true }
+futures-core = { workspace = true }
+resp-codec = { workspace = true }
+wit-bindgen = { workspace = true, features = ["async-spawn", "inter-task-wakeup"] }
+
+[dev-dependencies]
+test-harness = { workspace = true }
+tokio = { workspace = true }
+wasmtime = { workspace = true }

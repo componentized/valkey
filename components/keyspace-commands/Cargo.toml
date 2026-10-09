@@ -1,0 +1,23 @@
+[package]
+name = "keyspace-commands"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+# shared with the other command components
+path = "../../crates/commands/src/lib.rs"
+
+[features]
+default = ["keyspace"]
+admin = []
+connection = []
+hash = []
+keyspace = []
+pubsub = []
+string = []
+
+[dependencies]
+resp-codec = { workspace = true }
+wit-bindgen = { workspace = true }

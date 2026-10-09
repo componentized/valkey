@@ -1,5 +1,3 @@
-#![no_main]
-
 use exports::wasi::http::handler::Guest;
 use wasi::http::types::{ErrorCode, Fields, Request, Response};
 use wasmcloud::keyvalue::{atomics, store, types::Error};

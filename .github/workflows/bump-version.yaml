@@ -28,7 +28,7 @@ jobs:
                   make tools
                   make -s tools-path >> "${GITHUB_PATH}"
             - name: Start Valkey service
-              run: docker run --rm --name valkey -d -p 6379:6379 valkey/valkey:8
+              run: docker run --rm --name valkey -d -p 6379:6379 valkey/valkey:9
             - name: Bump version
               # also fetches the wit dependencies for the new version, and builds and tests the components
               run: scripts/bump-version.sh "${VERSION}"

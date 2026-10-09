@@ -1,0 +1,22 @@
+/// Publish/subscribe commands, Valkey's @pubsub ACL category.
+///
+/// Messages for subscriptions arrive as push messages, see `connection.pushes`.
+interface pubsub-commands {
+    use connection.{connection, error};
+
+    publish: async func(connection: borrow<connection>, channel: string, message: string) -> result<s64, error>;
+
+    // not yet implemented, from the @pubsub category:
+    //   PSUBSCRIBE
+    //   PUBSUB CHANNELS
+    //   PUBSUB NUMPAT
+    //   PUBSUB NUMSUB
+    //   PUBSUB SHARDCHANNELS
+    //   PUBSUB SHARDNUMSUB
+    //   PUNSUBSCRIBE
+    //   SPUBLISH
+    //   SSUBSCRIBE
+    //   SUBSCRIBE
+    //   SUNSUBSCRIBE
+    //   UNSUBSCRIBE
+}

@@ -2,5 +2,24 @@ package componentized:valkey@0.3.0-dev;
 
 world imports {
     import resp;
-    import store;
+    import connection;
+    import connector;
+    import tcp;
+
+    // commands, grouped by Valkey's ACL categories
+    import admin-commands;
+    import bitmap-commands;
+    import connection-commands;
+    import geo-commands;
+    import hash-commands;
+    import hyperloglog-commands;
+    import keyspace-commands;
+    import list-commands;
+    import pubsub-commands;
+    import scripting-commands;
+    import set-commands;
+    import sortedset-commands;
+    import stream-commands;
+    import string-commands;
+    import transaction-commands;
 }

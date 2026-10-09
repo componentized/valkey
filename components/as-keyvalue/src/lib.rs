@@ -1,6 +1,6 @@
-#![no_main]
-
-use componentized::valkey::store::{self as valkey, Connection, Duration, HelloOpts, HscanOpts};
+use componentized::valkey::connection::{Connection, Error as ValkeyError};
+use componentized::valkey::connector;
+use componentized::valkey::hash_commands::{self, Duration, HscanOpts};
 use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
 use exports::wasmcloud::keyvalue::batch::Guest as BatchGuest;
 use exports::wasmcloud::keyvalue::store::Guest as StoreGuest;
@@ -9,13 +9,6 @@ use exports::wasmcloud::keyvalue::types::{
 };
 use wasi::config::store::{self as config};
 
-const HOSTNAME_KEY: &str = "hostname";
-const HOSTNAME_DEFAULT: &str = "127.0.0.1";
-const PORT_KEY: &str = "port";
-const PORT_DEFAULT: &str = "6379";
-const USERNAME_KEY: &str = "username";
-const USERNAME_DEFAULT: &str = "default";
-const PASSWORD_KEY: &str = "password";
 const KEY_PREFIX_KEY: &str = "key-prefix";
 const KEY_PREFIX_DEFAULT: &str = "";
 
@@ -28,25 +21,8 @@ impl TypesGuest for AsKeyvalue {
 
 impl StoreGuest for AsKeyvalue {
     async fn open(identifier: String) -> Result<Bucket, Error> {
-        let hostname: String = config::get(HOSTNAME_KEY)?.unwrap_or(HOSTNAME_DEFAULT.to_string());
-        let port = config::get(PORT_KEY)?.unwrap_or(PORT_DEFAULT.to_string());
-        let port: u16 = port
-            .parse()
-            .map_err(|_| Error::Other(String::from("port must be an integer")))?;
-
-        let opts = HelloOpts {
-            proto_ver: Some("3".to_string()),
-            auth: match config::get(PASSWORD_KEY)? {
-                Some(password) => {
-                    let username: String =
-                        config::get(USERNAME_KEY)?.unwrap_or(USERNAME_DEFAULT.to_string());
-                    Some((username, password))
-                }
-                None => None,
-            },
-            client_name: None,
-        };
-        let connection = valkey::connect(hostname, port, Some(opts))
+        // the connector decides the transport and the server, e.g. from its own configuration
+        let connection = connector::connect()
             .await
             .map_err(|_| Error::StoreUnavailable)?;
 
@@ -67,7 +43,7 @@ struct KeyvalueToValkeyBucket {
 
 impl GuestBucket for KeyvalueToValkeyBucket {
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
-        match self.connection.hget(self.hash_key.clone(), key).await? {
+        match hash_commands::hget(&self.connection, self.hash_key.clone(), key).await? {
             Some(value) => Ok(Some(value.into_bytes())),
             None => Ok(None),
         }
@@ -86,34 +62,36 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         });
 
         if options.if_not_exists {
-            match self
-                .connection
-                .hsetnx(self.hash_key.clone(), key.clone(), value)
+            match hash_commands::hsetnx(&self.connection, self.hash_key.clone(), key.clone(), value)
                 .await?
             {
                 true => (),
                 false => Err(Error::PreconditionFailed)?,
             }
         } else {
-            self.connection
-                .hset(self.hash_key.clone(), key.clone(), value)
-                .await?
+            hash_commands::hset(&self.connection, self.hash_key.clone(), key.clone(), value).await?
         }
         if let Some(ttl_ms) = options.ttl_ms {
-            let ttl: Duration = ttl_ms / 1000;
-            self.connection
-                .hexpire(self.hash_key.clone(), ttl, None, vec![key])
-                .await?;
+            // HEXPIRE has whole second precision, rounded up so a short ttl does not expire at once
+            let ttl: Duration = ttl_ms.div_ceil(1000) * 1_000_000_000;
+            hash_commands::hexpire(
+                &self.connection,
+                self.hash_key.clone(),
+                ttl,
+                None,
+                vec![key],
+            )
+            .await?;
         }
         Ok(())
     }
 
     async fn delete(&self, key: String) -> Result<(), Error> {
-        Ok(self.connection.hdel(self.hash_key.clone(), key).await?)
+        Ok(hash_commands::hdel(&self.connection, self.hash_key.clone(), key).await?)
     }
 
     async fn exists(&self, key: String) -> Result<bool, Error> {
-        Ok(self.connection.hexists(self.hash_key.clone(), key).await?)
+        Ok(hash_commands::hexists(&self.connection, self.hash_key.clone(), key).await?)
     }
 
     async fn list_keys(
@@ -126,10 +104,9 @@ impl GuestBucket for KeyvalueToValkeyBucket {
             count: None,
             no_values: Some(true),
         };
-        let (cursor, fields) = self
-            .connection
-            .hscan(self.hash_key.clone(), cursor, Some(opts))
-            .await?;
+        let (cursor, fields) =
+            hash_commands::hscan(&self.connection, self.hash_key.clone(), cursor, Some(opts))
+                .await?;
 
         Ok(KeyResponse {
             keys: fields.into_iter().map(|(key, _)| key).collect(),
@@ -142,10 +119,7 @@ impl AtomicsGuest for AsKeyvalue {
     async fn increment(bucket: BucketBorrow<'_>, key: String, delta: i64) -> Result<i64, Error> {
         let bucket: &KeyvalueToValkeyBucket = bucket.get();
 
-        Ok(bucket
-            .connection
-            .hincrby(bucket.hash_key.clone(), key, delta)
-            .await?)
+        Ok(hash_commands::hincrby(&bucket.connection, bucket.hash_key.clone(), key, delta).await?)
     }
 }
 
@@ -214,10 +188,13 @@ impl From<config::Error> for Error {
     }
 }
 
-impl From<valkey::Error> for Error {
-    fn from(e: valkey::Error) -> Self {
-        // TODO distinguish between IO, auth and other types of errors
-        Self::Other(format!("Valkey: {e}"))
+impl From<ValkeyError> for Error {
+    fn from(e: ValkeyError) -> Self {
+        match e {
+            // the transport closed, retrying with a new bucket may succeed
+            ValkeyError::Closed(_) => Self::StoreUnavailable,
+            e => Self::Other(format!("Valkey: {e}")),
+        }
     }
 }
 

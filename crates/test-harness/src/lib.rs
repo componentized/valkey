@@ -1,0 +1,660 @@
+//! Test harness for the valkey components.
+//!
+//! A [`Harness`] instantiates a component (`target/components/*/*.wasm`) with wasmtime. No Valkey
+//! server is needed, the test plays the server:
+//!
+//! - over a stub [`Transport`], reading the commands a connection writes, and deciding when each
+//!   reply, push message or close arrives
+//! - over TCP with a [`Server`], for components that open sockets, e.g. `tcp`
+
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::process::Command;
+use std::sync::Mutex;
+use std::task::{Context, Poll};
+
+use tokio::sync::{mpsc, oneshot};
+use wasmtime::component::{
+    Accessor, Component, Destination, FutureConsumer, FutureReader, HasSelf, Lift, Linker,
+    ResourceAny, ResourceTable, Source, StreamConsumer, StreamProducer, StreamReader, StreamResult,
+};
+use wasmtime::error::Context as _;
+use wasmtime::{Config, Engine, Result, Store, StoreContextMut, bail, format_err};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+
+pub use bindings::componentized::valkey::resp::{NestedValue, Value};
+pub use bindings::exports::componentized::valkey::connection::{ConnectOpts, Error};
+
+mod server;
+
+pub use server::{Client, Server};
+
+pub mod bindings {
+    wasmtime::component::bindgen!({
+        path: "../../components/wit",
+        inline: "
+            package componentized:test-harness;
+
+            world harness {
+                import componentized:valkey/resp@0.3.0-dev;
+                import wasi:config/store@0.2.0-rc.1;
+                export componentized:valkey/connection@0.3.0-dev;
+                export componentized:valkey/tcp@0.3.0-dev;
+                export componentized:valkey/admin-commands@0.3.0-dev;
+                export componentized:valkey/connection-commands@0.3.0-dev;
+                export componentized:valkey/hash-commands@0.3.0-dev;
+                export componentized:valkey/keyspace-commands@0.3.0-dev;
+                export componentized:valkey/pubsub-commands@0.3.0-dev;
+                export componentized:valkey/string-commands@0.3.0-dev;
+                export wasmcloud:keyvalue/types@0.2.0;
+                export wasmcloud:keyvalue/store@0.2.0;
+                export wasmcloud:keyvalue/atomics@0.2.0;
+                export wasmcloud:keyvalue/batch@0.2.0;
+            }
+        ",
+        world: "componentized:test-harness/harness",
+        exports: { default: async | store },
+        additional_derives: [PartialEq],
+        with: {
+            "wasi:clocks": wasmtime_wasi::p3::bindings::clocks,
+        },
+    });
+}
+
+/// Bindings for the `resp` component, which exports the interface the other components import.
+pub mod resp_bindings {
+    wasmtime::component::bindgen!({
+        path: "../../components/wit",
+        inline: "
+            package componentized:test-harness-resp;
+
+            world resp {
+                export componentized:valkey/resp@0.3.0-dev;
+            }
+        ",
+        world: "componentized:test-harness-resp/resp",
+        exports: { default: async | store },
+        additional_derives: [PartialEq],
+    });
+}
+
+pub type Resp = resp_bindings::exports::componentized::valkey::resp::Guest;
+
+/// Encode a value as RESP, e.g. to nest it in an aggregate.
+pub fn encode(value: Value) -> NestedValue {
+    resp_codec::encode(to_codec(value))
+}
+
+/// Decode a nested value.
+pub fn decode(value: NestedValue) -> Result<Value, String> {
+    resp_codec::decode(value).map(from_codec)
+}
+
+// a value is not recursive, nested values are encoded RESP, so each conversion is one match
+fn to_codec(value: Value) -> resp_codec::Value {
+    use resp_codec::Value as V;
+    match value {
+        Value::String(value) => V::String(value),
+        Value::Error(value) => V::Error(value),
+        Value::Integer(value) => V::Integer(value),
+        Value::BulkString(value) => V::BulkString(value),
+        Value::Array(value) => V::Array(value),
+        Value::Null => V::Null,
+        Value::Boolean(value) => V::Boolean(value),
+        Value::Double(value) => V::Double(value),
+        Value::BigNumber(value) => V::BigNumber(value),
+        Value::BulkError(value) => V::BulkError(value),
+        Value::VerbatimString(value) => V::VerbatimString(value),
+        Value::Map(value) => V::Map(value),
+        Value::Set(value) => V::Set(value),
+        Value::Push(value) => V::Push(value),
+    }
+}
+
+fn from_codec(value: resp_codec::Value) -> Value {
+    use resp_codec::Value as V;
+    match value {
+        V::String(value) => Value::String(value),
+        V::Error(value) => Value::Error(value),
+        V::Integer(value) => Value::Integer(value),
+        V::BulkString(value) => Value::BulkString(value),
+        V::Array(value) => Value::Array(value),
+        V::Null => Value::Null,
+        V::Boolean(value) => Value::Boolean(value),
+        V::Double(value) => Value::Double(value),
+        V::BigNumber(value) => Value::BigNumber(value),
+        V::BulkError(value) => Value::BulkError(value),
+        V::VerbatimString(value) => Value::VerbatimString(value),
+        V::Map(value) => Value::Map(value),
+        V::Set(value) => Value::Set(value),
+        V::Push(value) => Value::Push(value),
+    }
+}
+
+pub type Connection<'a> = bindings::exports::componentized::valkey::connection::GuestConnection<'a>;
+pub type Tcp = bindings::exports::componentized::valkey::tcp::Guest;
+pub use bindings::exports::wasmcloud::keyvalue;
+pub use bindings::exports::componentized::valkey::{
+    admin_commands,
+    connection_commands,
+    hash_commands,
+    keyspace_commands,
+    pubsub_commands,
+    string_commands,
+};
+
+/// A bulk string, the type commands are sent as.
+pub fn bulk(value: &str) -> Value {
+    Value::BulkString(value.to_string())
+}
+
+/// A command, e.g. `command(&["GET", "key"])`.
+pub fn command(words: &[&str]) -> Vec<Value> {
+    words.iter().map(|word| bulk(word)).collect()
+}
+
+/// A map reply, e.g. to HELLO.
+pub fn map(entries: Vec<(Value, Value)>) -> Value {
+    Value::Map(
+        entries
+            .into_iter()
+            .map(|(key, value)| (encode(key), encode(value)))
+            .collect(),
+    )
+}
+
+/// A push message, e.g. a pub/sub message.
+pub fn push(items: Vec<Value>) -> Value {
+    Value::Push(items.into_iter().map(encode).collect())
+}
+
+/// The server's properties in the canned reply to HELLO.
+pub fn hello_reply() -> Value {
+    map(vec![
+        (bulk("server"), bulk("valkey")),
+        (bulk("version"), bulk("9.1.2")),
+        (bulk("proto"), Value::Integer(3)),
+    ])
+}
+
+/// The stub transport and server of a connection.
+pub struct Transport {
+    requests: mpsc::UnboundedReceiver<Value>,
+    replies: Option<mpsc::UnboundedSender<Value>>,
+    closed: Option<oneshot::Sender<Result<(), Error>>>,
+}
+
+impl Transport {
+    /// The next command the connection wrote, as its words, `None` once it closed the requests
+    /// stream.
+    pub async fn request(&mut self) -> Option<Vec<Value>> {
+        let request = self.requests.recv().await?;
+        let Value::Array(words) = request else {
+            panic!("a command is an array, got {request:?}");
+        };
+        Some(
+            words
+                .into_iter()
+                .map(|word| decode(word).expect("encoded word"))
+                .collect(),
+        )
+    }
+
+    /// Send a value to the connection, a reply or a push message.
+    pub fn reply(&self, value: Value) {
+        let replies = self.replies.as_ref().expect("transport is open");
+        replies.send(value).expect("connection reads replies");
+    }
+
+    /// Close the transport, gracefully with `Ok(())`, or with the error.
+    pub fn close(&mut self, result: Result<(), Error>) {
+        self.replies.take();
+        if let Some(closed) = self.closed.take() {
+            let _ = closed.send(result);
+        }
+    }
+}
+
+/// Start a connection over a stub transport, returning the transport and the connection the
+/// guest resolves once it is established.
+pub async fn connect(
+    accessor: &Accessor<Ctx>,
+    exports: &Exports,
+    opts: Option<ConnectOpts>,
+) -> Result<(Transport, FutureReader<Result<ResourceAny, Error>>)> {
+    let (replies_tx, replies_rx) = mpsc::unbounded_channel();
+    let (closed_tx, closed_rx) = oneshot::channel();
+    let replies = accessor.with(|store| StreamReader::new(store, ChannelProducer(replies_rx)))?;
+    let closed = accessor.with(|store| {
+        FutureReader::new(store, async move {
+            // a transport dropped without closing it closed gracefully
+            Ok::<_, wasmtime::Error>(closed_rx.await.unwrap_or(Ok(())))
+        })
+    })?;
+    let (requests, connection) = exports
+        .connection()
+        .call_new(accessor, replies, closed, opts)
+        .await?;
+    let (requests_tx, requests_rx) = mpsc::unbounded_channel();
+    accessor.with(|store| requests.pipe(store, ChannelConsumer(requests_tx)))?;
+    Ok((
+        Transport {
+            requests: requests_rx,
+            replies: Some(replies_tx),
+            closed: Some(closed_tx),
+        },
+        connection,
+    ))
+}
+
+/// Start a connection and answer its HELLO with [`hello_reply`], returning the transport and the
+/// established connection.
+pub async fn establish(
+    accessor: &Accessor<Ctx>,
+    exports: &Exports,
+) -> Result<(Transport, ResourceAny)> {
+    let (mut transport, connection) = connect(accessor, exports, None).await?;
+    let hello = transport.request().await.expect("HELLO");
+    assert_eq!(hello, command(&["HELLO", "3"]));
+    transport.reply(hello_reply());
+    let connection = resolve(accessor, connection)
+        .await?
+        .map_err(|error| format_err!("failed to establish the connection: {error:?}"))?;
+    Ok((transport, connection))
+}
+
+/// Wait for the value of a guest future.
+pub async fn resolve<T: Lift + Send + Sync + 'static>(
+    accessor: &Accessor<Ctx>,
+    future: FutureReader<T>,
+) -> Result<T> {
+    let (tx, rx) = oneshot::channel();
+    accessor.with(|store| future.pipe(store, OneshotConsumer(Some(tx))))?;
+    rx.await
+        .map_err(|_| format_err!("future closed without a value"))
+}
+
+/// Read every item of a guest stream into a channel, until it closes.
+pub fn receive<T: Lift + Send + Sync + 'static>(
+    accessor: &Accessor<Ctx>,
+    stream: StreamReader<T>,
+) -> Result<mpsc::UnboundedReceiver<T>> {
+    let (tx, rx) = mpsc::unbounded_channel();
+    accessor.with(|store| stream.pipe(store, ChannelConsumer(tx)))?;
+    Ok(rx)
+}
+
+/// Produces the items sent to the channel, until every sender is dropped.
+struct ChannelProducer<T>(mpsc::UnboundedReceiver<T>);
+
+impl<D, T: Send + Sync + 'static> StreamProducer<D> for ChannelProducer<T> {
+    type Item = T;
+    type Buffer = Option<T>;
+
+    fn poll_produce<'a>(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        _store: StoreContextMut<'a, D>,
+        mut destination: Destination<'a, T, Option<T>>,
+        finish: bool,
+    ) -> Poll<Result<StreamResult>> {
+        match self.get_mut().0.poll_recv(cx) {
+            Poll::Ready(Some(item)) => {
+                destination.set_buffer(Some(item));
+                Poll::Ready(Ok(StreamResult::Completed))
+            }
+            Poll::Ready(None) => Poll::Ready(Ok(StreamResult::Dropped)),
+            Poll::Pending if finish => Poll::Ready(Ok(StreamResult::Cancelled)),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+struct OneshotConsumer<T>(Option<oneshot::Sender<T>>);
+
+impl<D, T: Lift + Send + Sync + 'static> FutureConsumer<D> for OneshotConsumer<T> {
+    type Item = T;
+
+    fn poll_consume(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        store: StoreContextMut<D>,
+        mut source: Source<'_, T>,
+        _finish: bool,
+    ) -> Poll<Result<()>> {
+        let mut item = None;
+        source.read(store, &mut item)?;
+        if let (Some(item), Some(tx)) = (item, self.get_mut().0.take()) {
+            // the receiver is only dropped when the test stopped waiting
+            let _ = tx.send(item);
+        }
+        Poll::Ready(Ok(()))
+    }
+}
+
+struct ChannelConsumer<T>(mpsc::UnboundedSender<T>);
+
+impl<D, T: Lift + Send + Sync + 'static> StreamConsumer<D> for ChannelConsumer<T> {
+    type Item = T;
+
+    fn poll_consume(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        store: StoreContextMut<D>,
+        mut source: Source<'_, T>,
+        _finish: bool,
+    ) -> Poll<Result<StreamResult>> {
+        let mut item = None;
+        source.read(store, &mut item)?;
+        if let Some(item) = item {
+            if self.0.send(item).is_err() {
+                return Poll::Ready(Ok(StreamResult::Dropped));
+            }
+        }
+        Poll::Ready(Ok(StreamResult::Completed))
+    }
+}
+
+/// Root of the workspace, where the Makefile lives.
+fn workspace_dir() -> PathBuf {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    dir.canonicalize().unwrap_or(dir)
+}
+
+/// Path containing the built component.
+pub fn component_path(name: &str) -> PathBuf {
+    workspace_dir().join(format!("target/components/{name}/{name}.wasm"))
+}
+
+/// Rebuild the named component in `target/components/` with make, unless it was already built
+/// by this process.
+fn ensure_built(name: &str) -> Result<()> {
+    static BUILT: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+    // hold the lock while building so concurrent tests don't run make over each other
+    let mut built = BUILT.lock().unwrap_or_else(|err| err.into_inner());
+    let built = built.get_or_insert_with(HashSet::new);
+    if built.contains(name) {
+        return Ok(());
+    }
+
+    // the Makefile's targets are relative to the workspace, make matches them textually
+    let target = format!("target/components/{name}/{name}.wasm");
+    let output = Command::new("make")
+        .arg("-C")
+        .arg(workspace_dir())
+        .arg(&target)
+        .output()
+        .context("failed to run make")?;
+    if !output.status.success() {
+        bail!(
+            "failed to build {target}:\n{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    built.insert(name.to_string());
+    Ok(())
+}
+
+pub struct Ctx {
+    wasi: WasiCtx,
+    table: ResourceTable,
+    /// The values of `wasi:config/store`.
+    config: Vec<(String, String)>,
+}
+
+impl bindings::wasi::config::store::Host for Ctx {
+    fn get(
+        &mut self,
+        key: String,
+    ) -> Result<Option<String>, bindings::wasi::config::store::Error> {
+        Ok(self
+            .config
+            .iter()
+            .rev()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.clone()))
+    }
+
+    fn get_all(&mut self) -> Result<Vec<(String, String)>, bindings::wasi::config::store::Error> {
+        Ok(self.config.clone())
+    }
+}
+
+impl WasiView for Ctx {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
+    }
+}
+
+// the components only import the types of `resp`, the functions are here for completeness
+impl bindings::componentized::valkey::resp::Host for Ctx {
+    fn decode(&mut self, data: Vec<u8>) -> Result<Value, String> {
+        decode(data)
+    }
+
+    fn encode(&mut self, value: Value) -> Result<Vec<u8>, String> {
+        Ok(encode(value))
+    }
+}
+
+/// The interfaces a component exports.
+pub struct Exports {
+    connection: Option<bindings::exports::componentized::valkey::connection::Guest>,
+    tcp: Option<bindings::exports::componentized::valkey::tcp::Guest>,
+    keyvalue_store: Option<keyvalue::store::Guest>,
+    keyvalue_types: Option<keyvalue::types::Guest>,
+    keyvalue_atomics: Option<keyvalue::atomics::Guest>,
+    keyvalue_batch: Option<keyvalue::batch::Guest>,
+    admin_commands: Option<admin_commands::Guest>,
+    connection_commands: Option<connection_commands::Guest>,
+    hash_commands: Option<hash_commands::Guest>,
+    keyspace_commands: Option<keyspace_commands::Guest>,
+    pubsub_commands: Option<pubsub_commands::Guest>,
+    string_commands: Option<string_commands::Guest>,
+    resp: Option<resp_bindings::exports::componentized::valkey::resp::Guest>,
+}
+
+impl Exports {
+    pub fn keyvalue_store(&self) -> &keyvalue::store::Guest {
+        self.keyvalue_store
+            .as_ref()
+            .expect("component exports wasmcloud:keyvalue/store")
+    }
+
+    pub fn keyvalue_types(&self) -> &keyvalue::types::Guest {
+        self.keyvalue_types
+            .as_ref()
+            .expect("component exports wasmcloud:keyvalue/types")
+    }
+
+    pub fn keyvalue_atomics(&self) -> &keyvalue::atomics::Guest {
+        self.keyvalue_atomics
+            .as_ref()
+            .expect("component exports wasmcloud:keyvalue/atomics")
+    }
+
+    pub fn keyvalue_batch(&self) -> &keyvalue::batch::Guest {
+        self.keyvalue_batch
+            .as_ref()
+            .expect("component exports wasmcloud:keyvalue/batch")
+    }
+
+    pub fn admin_commands(&self) -> &admin_commands::Guest {
+        self.admin_commands
+            .as_ref()
+            .expect("component exports componentized:valkey/admin-commands")
+    }
+
+    pub fn connection_commands(&self) -> &connection_commands::Guest {
+        self.connection_commands
+            .as_ref()
+            .expect("component exports componentized:valkey/connection-commands")
+    }
+
+    pub fn hash_commands(&self) -> &hash_commands::Guest {
+        self.hash_commands
+            .as_ref()
+            .expect("component exports componentized:valkey/hash-commands")
+    }
+
+    pub fn keyspace_commands(&self) -> &keyspace_commands::Guest {
+        self.keyspace_commands
+            .as_ref()
+            .expect("component exports componentized:valkey/keyspace-commands")
+    }
+
+    pub fn pubsub_commands(&self) -> &pubsub_commands::Guest {
+        self.pubsub_commands
+            .as_ref()
+            .expect("component exports componentized:valkey/pubsub-commands")
+    }
+
+    pub fn string_commands(&self) -> &string_commands::Guest {
+        self.string_commands
+            .as_ref()
+            .expect("component exports componentized:valkey/string-commands")
+    }
+
+    pub fn tcp(&self) -> &Tcp {
+        self.tcp
+            .as_ref()
+            .expect("component exports componentized:valkey/tcp")
+    }
+    pub fn resp(&self) -> &Resp {
+        self.resp
+            .as_ref()
+            .expect("component exports componentized:valkey/resp")
+    }
+
+    pub fn connection(&self) -> Connection<'_> {
+        self.connection
+            .as_ref()
+            .expect("component exports componentized:valkey/connection")
+            .connection()
+    }
+}
+
+/// An instantiated component, see [`Harness::run`].
+pub struct Harness {
+    store: Store<Ctx>,
+    exports: Exports,
+}
+
+impl Harness {
+    /// Build and instantiate the named component, e.g. `connection`.
+    pub async fn new(name: &str) -> Result<Self> {
+        Self::with_config(name, &[]).await
+    }
+
+    /// Build and instantiate the named component, with the values of `wasi:config/store`.
+    pub async fn with_config(name: &str, config_values: &[(&str, &str)]) -> Result<Self> {
+        ensure_built(name)?;
+
+        let mut config = Config::new();
+        config.wasm_component_model_async(true);
+        let engine = Engine::new(&config)?;
+        let component = Component::from_file(&engine, component_path(name))
+            .with_context(|| format!("failed to load {name}"))?;
+
+        let mut linker = Linker::new(&engine);
+        wasmtime_wasi::p3::add_to_linker(&mut linker)?;
+        bindings::componentized::valkey::resp::add_to_linker::<_, HasSelf<Ctx>>(
+            &mut linker,
+            |ctx| ctx,
+        )?;
+        bindings::wasi::config::store::add_to_linker::<_, HasSelf<Ctx>>(&mut linker, |ctx| ctx)?;
+
+        let mut store = Store::new(
+            &engine,
+            Ctx {
+                wasi: WasiCtxBuilder::new()
+                    .inherit_stdio()
+                    // for components that open sockets, the tests' servers listen on localhost
+                    .inherit_network()
+                    .allow_tcp(true)
+                    .allow_ip_name_lookup(true)
+                    .build(),
+                table: ResourceTable::new(),
+                config: config_values
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string()))
+                    .collect(),
+            },
+        );
+        let instance_pre = linker.instantiate_pre(&component)?;
+        let instance = instance_pre
+            .instantiate_async(&mut store)
+            .await
+            .with_context(|| format!("failed to instantiate {name}"))?;
+        let exports = Exports {
+            connection: bindings::exports::componentized::valkey::connection::GuestIndices::new(
+                &instance_pre,
+            )
+            .ok()
+            .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            tcp: bindings::exports::componentized::valkey::tcp::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            keyvalue_store: keyvalue::store::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            keyvalue_types: keyvalue::types::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            keyvalue_atomics: keyvalue::atomics::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            keyvalue_batch: keyvalue::batch::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            admin_commands: admin_commands::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            connection_commands: connection_commands::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            hash_commands: hash_commands::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            keyspace_commands: keyspace_commands::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            pubsub_commands: pubsub_commands::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            string_commands: string_commands::GuestIndices::new(&instance_pre)
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            resp: resp_bindings::exports::componentized::valkey::resp::GuestIndices::new(
+                &instance_pre,
+            )
+            .ok()
+            .and_then(|indices| indices.load(&mut store, &instance).ok()),
+        };
+        Ok(Self { store, exports })
+    }
+
+    /// Drop a resource the component exports, running its destructor.
+    ///
+    /// Between runs, the store is only free to drop a resource while no run is in progress.
+    pub async fn drop_resource(&mut self, resource: ResourceAny) -> Result<()> {
+        resource.resource_drop_async(&mut self.store).await
+    }
+
+    /// Run a test body against the component's exports.
+    pub async fn run<R: Send + 'static>(
+        &mut self,
+        f: impl AsyncFnOnce(&Accessor<Ctx>, &Exports) -> Result<R> + Send,
+    ) -> Result<R> {
+        let exports = &self.exports;
+        self.store
+            .run_concurrent(async move |accessor| f(accessor, exports).await)
+            .await?
+    }
+}

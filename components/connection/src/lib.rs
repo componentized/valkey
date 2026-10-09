@@ -1,0 +1,413 @@
+//! The mechanics of a connection to a Valkey server, independent of the transport carrying it.
+//!
+//! A connection runs background tasks for as long as it is open, in the task of the call to
+//! `connection.new` that created it:
+//!
+//! - the writer writes queued commands to the requests stream, in order
+//! - the reader reads the replies stream, handing each reply to the oldest command waiting for one,
+//!   and each push message to every reader of push messages
+//! - the supervisor starts the work methods ask for that outlives them, e.g. keep-alive, since sync
+//!   methods have no task of their own to spawn it into
+//!
+//! Dropping the connection drops its queue of commands, the writer then closes the requests stream
+//! and the transport closes, which ends the reader.
+
+// the test harness provides a main
+#![cfg_attr(not(test), no_main)]
+
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::future::poll_fn;
+use std::pin::Pin;
+use std::rc::{Rc, Weak};
+
+use exports::componentized::valkey::connection::{
+    ConnectOpts, Connection, Error, Guest, GuestConnection,
+};
+use futures_channel::{mpsc, oneshot};
+use futures_core::Stream;
+use resp_codec::{NestedValue, Value};
+use wasi::clocks::monotonic_clock::wait_for;
+use wasi::clocks::types::Duration;
+use wit_bindgen::{FutureReader, FutureWriter, StreamReader, StreamWriter, spawn_local};
+
+/// How many push messages a reader may fall behind before its stream is closed.
+const PUSH_BUFFER: usize = 256;
+
+struct Component;
+
+impl Guest for Component {
+    type Connection = ConnectionImpl;
+}
+
+/// Where the reply to a command goes.
+enum Reply {
+    /// To the caller waiting for it.
+    Call(oneshot::Sender<Result<Value, Error>>),
+    /// Nowhere, the command was sent without waiting for its reply.
+    Discard,
+}
+
+/// A command for the writer, with a signal for once it is written.
+struct Request {
+    command: Value,
+    written: Option<oneshot::Sender<()>>,
+}
+
+/// Work for the supervisor to start.
+enum Task {
+    /// Forward push messages from the channel to a reader's stream.
+    Pushes(mpsc::Receiver<Value>, StreamWriter<Value>),
+    /// Keep the connection alive, until the keep-alive is set again.
+    KeepAlive { generation: u64, interval: Duration },
+}
+
+/// State shared by a connection and its background tasks.
+#[derive(Default)]
+struct State {
+    /// Where each reply goes, in the order the commands were sent.
+    pending: VecDeque<Reply>,
+    /// Why the connection closed, once it has.
+    closed: Option<Error>,
+    /// Counts the commands written and the values read, it stays the same while the connection is
+    /// idle.
+    activity: u64,
+    /// The readers of push messages.
+    pushes: Vec<mpsc::Sender<Value>>,
+    /// The server's properties from the reply to HELLO.
+    server_properties: Vec<(String, Value)>,
+    /// Bumped each time the keep-alive is set, a keep-alive task stops once it is outdated.
+    keep_alive_generation: u64,
+}
+
+/// A connection's queues to its background tasks.
+///
+/// Only the connection holds it, the background tasks hold the state alone or a weak reference,
+/// so dropping the connection drops the queues and ends the tasks.
+struct Inner {
+    state: Rc<RefCell<State>>,
+    requests: mpsc::UnboundedSender<Request>,
+    tasks: mpsc::UnboundedSender<Task>,
+}
+
+pub struct ConnectionImpl(Rc<Inner>);
+
+impl GuestConnection for ConnectionImpl {
+    async fn new(
+        replies: StreamReader<Value>,
+        closed: FutureReader<Result<(), Error>>,
+        opts: Option<ConnectOpts>,
+    ) -> (StreamReader<Value>, FutureReader<Result<Connection, Error>>) {
+        let (output, requests) = wit_stream::new();
+        // the default is only written if the connection is dropped before it is established
+        let (connection_writer, connection) = wit_future::new(|| Err(Error::Closed(None)));
+
+        let state = Rc::new(RefCell::new(State::default()));
+        let (requests_tx, requests_rx) = mpsc::unbounded();
+        let (tasks_tx, tasks_rx) = mpsc::unbounded();
+        let inner = Rc::new(Inner {
+            state: state.clone(),
+            requests: requests_tx,
+            tasks: tasks_tx,
+        });
+
+        spawn_local(write_requests(state.clone(), requests_rx, output));
+        spawn_local(read_replies(state, replies, closed));
+        spawn_local(supervise(tasks_rx, Rc::downgrade(&inner)));
+        spawn_local(establish(inner, opts, connection_writer));
+
+        (requests, connection)
+    }
+
+    fn server_properties(&self) -> Vec<(String, Value)> {
+        self.0.state.borrow().server_properties.clone()
+    }
+
+    async fn call(&self, command: Vec<Value>) -> Result<Value, Error> {
+        call(&self.0, command).await
+    }
+
+    async fn send(&self, command: Vec<Value>) -> Result<(), Error> {
+        let (written_tx, written_rx) = oneshot::channel();
+        enqueue(&self.0, command, Reply::Discard, Some(written_tx))?;
+        // the signal is dropped unsent when the transport closed first
+        written_rx.await.map_err(|_| closed_error(&self.0.state))
+    }
+
+    fn pushes(&self) -> StreamReader<Value> {
+        let (writer, reader) = wit_stream::new();
+        let (tx, rx) = mpsc::channel(PUSH_BUFFER);
+        let mut state = self.0.state.borrow_mut();
+        // a closed connection drops the writer, closing the stream at once
+        if state.closed.is_none() && self.0.tasks.unbounded_send(Task::Pushes(rx, writer)).is_ok()
+        {
+            state.pushes.push(tx);
+        }
+        reader
+    }
+
+    fn set_keep_alive(&self, interval: Option<Duration>) {
+        let generation = {
+            let mut state = self.0.state.borrow_mut();
+            state.keep_alive_generation += 1;
+            state.keep_alive_generation
+        };
+        // a zero interval would ping whenever the connection is idle, treated as disabled
+        if let Some(interval) = interval.filter(|interval| *interval > 0) {
+            let _ = self
+                .0
+                .tasks
+                .unbounded_send(Task::KeepAlive { generation, interval });
+        }
+    }
+}
+
+/// Queue a command, and where its reply goes, as one step so replies pair with commands in order.
+fn enqueue(
+    inner: &Inner,
+    command: Vec<Value>,
+    reply: Reply,
+    written: Option<oneshot::Sender<()>>,
+) -> Result<(), Error> {
+    let mut state = inner.state.borrow_mut();
+    if let Some(error) = &state.closed {
+        return Err(error.clone());
+    }
+    let command = Value::Array(command.into_iter().map(resp_codec::encode).collect());
+    inner
+        .requests
+        .unbounded_send(Request { command, written })
+        .map_err(|_| Error::Closed(None))?;
+    state.pending.push_back(reply);
+    Ok(())
+}
+
+async fn call(inner: &Inner, command: Vec<Value>) -> Result<Value, Error> {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    enqueue(inner, command, Reply::Call(reply_tx), None)?;
+    // the reply is dropped unsent when the connection closes, the reader fails it first
+    reply_rx
+        .await
+        .unwrap_or_else(|_| Err(closed_error(&inner.state)))
+}
+
+/// The error a command fails with once the connection closed.
+fn closed_error(state: &RefCell<State>) -> Error {
+    state.borrow().closed.clone().unwrap_or(Error::Closed(None))
+}
+
+/// Close the connection, failing every command waiting for a reply and closing the readers of push
+/// messages.
+fn close(state: &RefCell<State>, error: Error) {
+    let mut state = state.borrow_mut();
+    let error = state.closed.get_or_insert(error).clone();
+    for reply in state.pending.drain(..) {
+        if let Reply::Call(reply) = reply {
+            let _ = reply.send(Err(error.clone()));
+        }
+    }
+    state.pushes.clear();
+}
+
+/// The next item of a channel.
+async fn next<S: Stream + Unpin>(stream: &mut S) -> Option<S::Item> {
+    poll_fn(|cx| Pin::new(&mut *stream).poll_next(cx)).await
+}
+
+fn bulk(value: &str) -> Value {
+    Value::BulkString(value.to_string())
+}
+
+/// Write each queued command to the requests stream, closing it once the connection is dropped.
+async fn write_requests(
+    state: Rc<RefCell<State>>,
+    mut requests: mpsc::UnboundedReceiver<Request>,
+    mut output: StreamWriter<Value>,
+) {
+    while let Some(Request { command, written }) = next(&mut requests).await {
+        state.borrow_mut().activity += 1;
+        if output.write_one(command).await.is_some() {
+            // the transport stopped reading, the reader closes the connection once it ends
+            break;
+        }
+        if let Some(written) = written {
+            let _ = written.send(());
+        }
+    }
+}
+
+/// Hand each reply to the oldest command waiting for one, and each push message to the readers of
+/// push messages, until the transport closes.
+async fn read_replies(
+    state: Rc<RefCell<State>>,
+    mut replies: StreamReader<Value>,
+    closed: FutureReader<Result<(), Error>>,
+) {
+    while let Some(value) = replies.next().await {
+        let mut state = state.borrow_mut();
+        state.activity += 1;
+        match value {
+            Value::Push(_) => {
+                // a reader that is full or gone is dropped, rather than holding up replies
+                state
+                    .pushes
+                    .retain_mut(|pushes| pushes.try_send(value.clone()).is_ok());
+            }
+            value => match state.pending.pop_front() {
+                Some(Reply::Call(reply)) => {
+                    let _ = reply.send(reply_result(value));
+                }
+                // a discarded reply, or one the server sent unprompted
+                Some(Reply::Discard) | None => {}
+            },
+        }
+    }
+    let reason = match closed.await {
+        Ok(()) => None,
+        Err(error) => describe(error),
+    };
+    close(&state, Error::Closed(reason));
+}
+
+/// Start the work methods ask for that outlives them.
+async fn supervise(mut tasks: mpsc::UnboundedReceiver<Task>, inner: Weak<Inner>) {
+    while let Some(task) = next(&mut tasks).await {
+        match task {
+            Task::Pushes(pushes, writer) => spawn_local(forward_pushes(pushes, writer)),
+            Task::KeepAlive {
+                generation,
+                interval,
+            } => spawn_local(keep_alive(inner.clone(), generation, interval)),
+        }
+    }
+}
+
+/// Forward push messages to a reader's stream, until the reader or the connection is gone.
+async fn forward_pushes(mut pushes: mpsc::Receiver<Value>, mut writer: StreamWriter<Value>) {
+    while let Some(value) = next(&mut pushes).await {
+        if writer.write_one(value).await.is_some() {
+            break;
+        }
+    }
+}
+
+/// Send PING whenever the connection was idle for `interval`, closing it if PING fails.
+async fn keep_alive(inner: Weak<Inner>, generation: u64, interval: Duration) {
+    loop {
+        let Some(seen) = keep_alive_activity(&inner, generation) else {
+            return;
+        };
+        wait_for(interval).await;
+        let Some(inner) = inner.upgrade() else {
+            return;
+        };
+        let idle = {
+            let state = inner.state.borrow();
+            if state.keep_alive_generation != generation || state.closed.is_some() {
+                return;
+            }
+            state.activity == seen && state.pending.is_empty()
+        };
+        if idle {
+            if let Err(error) = call(&inner, vec![bulk("PING")]).await {
+                close(&inner.state, error);
+                inner.requests.close_channel();
+                return;
+            }
+        }
+    }
+}
+
+/// The connection's activity, `None` once the keep-alive should stop.
+fn keep_alive_activity(inner: &Weak<Inner>, generation: u64) -> Option<u64> {
+    let inner = inner.upgrade()?;
+    let state = inner.state.borrow();
+    (state.keep_alive_generation == generation && state.closed.is_none()).then_some(state.activity)
+}
+
+/// Send HELLO, then hand over the connection, or the error that stopped it.
+async fn establish(
+    inner: Rc<Inner>,
+    opts: Option<ConnectOpts>,
+    connection: FutureWriter<Result<Connection, Error>>,
+) {
+    let (auth, client_name, keep_alive_interval) = match opts {
+        Some(opts) => (opts.auth, opts.client_name, opts.keep_alive_interval),
+        None => (None, None, None),
+    };
+
+    let mut hello = vec![bulk("HELLO"), bulk("3")];
+    if let Some((username, password)) = auth {
+        hello.extend([bulk("AUTH"), bulk(&username), bulk(&password)]);
+    }
+    if let Some(client_name) = client_name {
+        hello.extend([bulk("SETNAME"), bulk(&client_name)]);
+    }
+
+    let result = match call(&inner, hello).await.and_then(server_properties) {
+        Ok(properties) => {
+            inner.state.borrow_mut().server_properties = properties;
+            let established = ConnectionImpl(inner);
+            established.set_keep_alive(keep_alive_interval);
+            Ok(Connection::new(established))
+        }
+        // dropping `inner` closes the connection
+        Err(error) => Err(error),
+    };
+    // the connection is dropped, and closed, when nobody waits for it anymore
+    let _ = connection.write(result).await;
+}
+
+/// The server's properties from the reply to HELLO, a map of property names to values.
+fn server_properties(reply: Value) -> Result<Vec<(String, Value)>, Error> {
+    let Value::Map(entries) = reply else {
+        return Err(Error::Client(format!("unexpected reply to HELLO: {reply:?}")));
+    };
+    entries
+        .into_iter()
+        .map(|(name, value)| {
+            let name = match decode(name)? {
+                Value::String(name) | Value::BulkString(name) => name,
+                name => {
+                    return Err(Error::Client(format!(
+                        "unexpected property name in reply to HELLO: {name:?}"
+                    )));
+                }
+            };
+            Ok((name, decode(value)?))
+        })
+        .collect()
+}
+
+fn decode(value: NestedValue) -> Result<Value, Error> {
+    resp_codec::decode(value).map_err(Error::Resp)
+}
+
+/// An error value from the server fails the command.
+fn reply_result(value: Value) -> Result<Value, Error> {
+    match value {
+        Value::Error(message) | Value::BulkError(message) => Err(Error::Valkey(message)),
+        value => Ok(value),
+    }
+}
+
+/// A transport's error as the reason a connection closed.
+fn describe(error: Error) -> Option<String> {
+    match error {
+        Error::Closed(reason) => reason,
+        Error::Client(message) | Error::Resp(message) | Error::Valkey(message) => Some(message),
+    }
+}
+
+wit_bindgen::generate!({
+    // `path` is relative to the manifest, `components/connection/`
+    path: "../wit",
+    world: "connection",
+    // the resp types shared by every component
+    with: {
+        "componentized:valkey/resp@0.3.0-dev": resp_codec::bindings::componentized::valkey::resp,
+    },
+    generate_all,
+});
+
+export!(Component);

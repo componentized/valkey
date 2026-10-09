@@ -26,12 +26,20 @@ clean: clean-components clean-wit
 clean-all: clean-components clean-tools clean-wit
 	cargo clean
 
+# runs the cli with the given arguments, e.g. `$(call run_cli,hello)`
+run_cli = $(WASMTIME) run $(WASMTIME_RUN_FLAGS) ${COMPONENTS_DIR}/cli/cli.debug.wasm $(1)
 
 .PHONY: run ## Run the cli against a Valkey server, e.g. `make run cmd="keys '*'"`
 run: ${COMPONENTS_DIR}/cli/cli.debug.wasm | $(call tool,wasmtime-cli)
-	@$(WASMTIME) run $(WASMTIME_RUN_FLAGS) ${COMPONENTS_DIR}/cli/cli.debug.wasm $(cmd)
+	@$(call run_cli,$(cmd))
 
-# requires a running Valkey server
+# the tests that need a Valkey server on localhost:6379, ignored tests in `with_valkey` modules,
+# other ignored tests stay ignored
+.PHONY: test-valkey
+test-valkey: components
+	cargo test --workspace -- --ignored with_valkey::
+	@$(call run_cli,hello)
+
 .PHONY: test
 test: components
-	@$(MAKE) run cmd="hello"
+	cargo test --workspace

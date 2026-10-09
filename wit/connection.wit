@@ -1,0 +1,86 @@
+/// RESP request/reply over a pair of value streams, independent of the transport carrying them.
+///
+/// A transport and a connection are wired together with their streams: take the replies the
+/// transport receives, establish the connection with them, hand the requests the connection
+/// returns to the transport to send, then await the connection. See `tcp.connect` for a transport
+/// that does this for its caller.
+///
+/// The connection is only the mechanics of talking to a server. Commands are functions in the
+/// command interfaces, e.g. `string-commands`, that borrow the connection, so command groups can be
+/// implemented independently of each other. The groups follow Valkey's ACL categories.
+interface connection {
+    use wasi:clocks/types@0.3.0.{duration};
+    use resp.{error as resp-error, value};
+
+    /// The errors of a connection and of every command interface.
+    variant error {
+        /// The transport closed while a reply was outstanding, or before the command was sent. Holds
+        /// the transport's error when it did not close gracefully.
+        closed(option<string>),
+        /// Client errors are semantic issues with input/output values, e.g. a reply that does not
+        /// have the shape the command expects.
+        client(string),
+        /// RESP errors are encoding issues converting values to/from bytes.
+        resp(resp-error),
+        /// Valkey errors are Error or BulkError values returned directly from the server.
+        valkey(string),
+    }
+
+    /// Options for establishing a connection.
+    record connect-opts {
+        /// The username and password to authenticate with.
+        auth: option<tuple<string, string>>,
+        /// The name of the connection, see `CLIENT SETNAME`.
+        client-name: option<string>,
+        /// Enables keep-alive pings at this interval, see `connection.set-keep-alive`.
+        keep-alive-interval: option<duration>,
+    }
+
+    resource connection {
+        /// Establishes a connection over a transport.
+        ///
+        /// `replies` are the values the transport receives from the server, and `closed` resolves
+        /// when the transport closes, to `ok` for a graceful close or to the error otherwise, see
+        /// `tcp.transport.receive`. Returns the requests for the transport to write to the server,
+        /// in order, and the connection once it is established.
+        ///
+        /// The connection sends `HELLO 3`, with the `auth` and `client-name` of `opts`, as its first
+        /// command. This pins the connection to RESP3 and confirms the server can be reached. The
+        /// future resolves to the connection once HELLO succeeds, or to the error that stopped it.
+        /// The rest of `opts` is applied before the connection is returned.
+        ///
+        /// Async so the connection keeps working between commands after it returns, e.g. to read
+        /// push messages and to send keep-alive pings.
+        new: static async func(replies: stream<value>, closed: future<result<_, error>>, opts: option<connect-opts>) -> tuple<stream<value>, future<result<connection, error>>>;
+
+        /// The server's properties from the reply to HELLO, e.g. `server`, `version` and `mode`.
+        server-properties: func() -> list<tuple<string, value>>;
+
+        /// Sends a command and waits for its reply.
+        ///
+        /// Several commands may be in flight at once, replies are paired with commands in the order
+        /// the commands were sent.
+        call: async func(command: list<value>) -> result<value, error>;
+
+        /// Sends a command without waiting for its reply, resolving once the command is written.
+        ///
+        /// The server still replies, the reply is discarded when it arrives and an error it reports
+        /// is not returned. An implementation may instead ask the server not to reply, e.g. with
+        /// `CLIENT REPLY SKIP`.
+        send: async func(command: list<value>) -> result<_, error>;
+
+        /// Push messages, e.g. from SUBSCRIBE or client tracking, kept apart from replies.
+        ///
+        /// Each call returns a new stream that receives every push message arriving after the call,
+        /// push messages arriving while no stream is open are dropped. A stream that falls too far
+        /// behind is closed rather than holding up replies, the push messages it missed are lost.
+        pushes: func() -> stream<value>;
+
+        /// Sends PING when no command has been sent and no reply is outstanding for `interval`,
+        /// `none` disables it. A PING that fails closes the connection. Disabled by default.
+        ///
+        /// Unlike TCP keep-alive, a PING counts as activity for the server's idle client timeout,
+        /// and works over any transport.
+        set-keep-alive: func(interval: option<duration>);
+    }
+}

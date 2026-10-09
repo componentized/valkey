@@ -1,0 +1,16 @@
+/// Commands for geospatial indexes, Valkey's @geo ACL category.
+interface geo-commands {
+    use connection.{connection, error};
+
+    // not yet implemented, from the @geo category:
+    //   GEOADD
+    //   GEODIST
+    //   GEOHASH
+    //   GEOPOS
+    //   GEORADIUS
+    //   GEORADIUS_RO
+    //   GEORADIUSBYMEMBER
+    //   GEORADIUSBYMEMBER_RO
+    //   GEOSEARCH
+    //   GEOSEARCHSTORE
+}

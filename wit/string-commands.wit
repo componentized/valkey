@@ -1,0 +1,31 @@
+/// Commands for string values, Valkey's @string ACL category.
+interface string-commands {
+    use connection.{connection, error};
+
+    get: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+    incr: async func(connection: borrow<connection>, key: string) -> result<s64, error>;
+    incrby: async func(connection: borrow<connection>, key: string, increment: s64) -> result<s64, error>;
+    set: async func(connection: borrow<connection>, key: string, value: string) -> result<_, error>;
+
+    // not yet implemented, from the @string category:
+    //   APPEND
+    //   DECR
+    //   DECRBY
+    //   DELIFEQ
+    //   GETDEL
+    //   GETEX
+    //   GETRANGE
+    //   GETSET
+    //   INCRBYFLOAT
+    //   LCS
+    //   MGET
+    //   MSET
+    //   MSETEX
+    //   MSETNX
+    //   PSETEX
+    //   SETEX
+    //   SETNX
+    //   SETRANGE
+    //   STRLEN
+    //   SUBSTR
+}

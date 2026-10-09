@@ -1,7 +1,12 @@
 use clap::{ArgAction, Args, Parser, Subcommand};
 use componentized::valkey::{
+    admin_commands,
+    connection::{ConnectOpts, Error},
+    connection_commands, hash_commands,
+    hash_commands::{HrandfieldOpts, HscanOpts},
+    keyspace_commands, pubsub_commands,
     resp::{self, Value},
-    store::{connect, Error, HelloOpts, HrandfieldOpts, HscanOpts},
+    string_commands, tcp,
 };
 use exports::wasi::cli::run::Guest;
 use std::fmt;
@@ -47,7 +52,26 @@ async fn write_to(
 
 impl Guest for Cli {
     async fn run() -> Result<(), ()> {
-        match exec().await {
+        // clap prints help and errors itself and exits the process, neither works on this target,
+        // they are printed here instead
+        let cli = match Cli::try_parse_from(get_arguments()) {
+            Ok(cli) => cli,
+            Err(error) => {
+                let message = error.render().to_string();
+                if error.use_stderr() {
+                    eprintln!("{}", message.trim_end());
+                } else {
+                    println!("{}", message.trim_end());
+                }
+                // help and version succeed, invalid arguments fail
+                return if error.exit_code() == 0 {
+                    Ok(())
+                } else {
+                    Err(())
+                };
+            }
+        };
+        match exec(cli).await {
             Err(e) => {
                 eprintln!("Error: {e}");
                 Err(())
@@ -67,15 +91,6 @@ struct Cli {
     /// Port hosting the Valkey service
     #[arg(long, default_value = "6379")]
     port: u16,
-
-    /// RESP Protocol version
-    #[arg(
-        long,
-        // TODO change default to 3
-        default_value = "2",
-        value_parser = clap::builder::PossibleValuesParser::new(["2", "3"]),
-    )]
-    proto_ver: String,
 
     /// Authentication username
     #[arg(short, long, default_value = "default")]
@@ -371,18 +386,13 @@ enum ACLCommands {
     },
 }
 
-async fn exec() -> Result<(), Error> {
-    let cli = Cli::parse_from(get_arguments().iter());
-
-    let opts = HelloOpts {
-        proto_ver: Some(cli.proto_ver.to_string()),
-        auth: match cli.password {
-            Some(password) => Some((cli.username, password)),
-            None => None,
-        },
+async fn exec(cli: Cli) -> Result<(), Error> {
+    let opts = ConnectOpts {
+        auth: cli.password.map(|password| (cli.username, password)),
         client_name: cli.client_name,
+        keep_alive_interval: None,
     };
-    let connection = connect(cli.host, cli.port, Some(opts)).await?;
+    let connection = tcp::connect(cli.host, cli.port, Some(opts)).await?;
 
     match &cli.command {
         Commands::SEND { cmd } => {
@@ -390,43 +400,44 @@ async fn exec() -> Result<(), Error> {
                 .iter()
                 .map(|c| Value::BulkString(c.to_string()))
                 .collect();
-            let response = connection.send(cmd).await?;
+            let response = connection.call(cmd).await?;
             println!("{response}");
         }
         Commands::ACL(aclargs) => match &aclargs.command {
             ACLCommands::DELUSER { username } => {
-                connection.acl_deluser(username.to_string()).await?;
+                admin_commands::acl_deluser(&connection, username.to_string()).await?;
                 println!("Deleted user {username}");
             }
             ACLCommands::GENPASS => {
-                let pass = connection.acl_genpass().await?;
+                let pass = admin_commands::acl_genpass(&connection).await?;
                 println!("{pass}");
             }
             ACLCommands::SETUSER { username, rules } => {
-                connection
-                    .acl_setuser(username.to_string(), rules.to_vec())
+                admin_commands::acl_setuser(&connection, username.to_string(), rules.to_vec())
                     .await?;
                 println!("Set user {username}");
             }
         },
         Commands::DEL { key } => {
-            connection.del(key.to_string()).await?;
+            keyspace_commands::del(&connection, key.to_string()).await?;
             println!("Deleted {key}");
         }
-        Commands::EXISTS { key } => match connection.exists(key.to_string()).await? {
-            true => println!("true"),
-            false => println!("false"),
-        },
-        Commands::GET { key } => match connection.get(key.to_string()).await? {
+        Commands::EXISTS { key } => {
+            match keyspace_commands::exists(&connection, key.to_string()).await? {
+                true => println!("true"),
+                false => println!("false"),
+            }
+        }
+        Commands::GET { key } => match string_commands::get(&connection, key.to_string()).await? {
             Some(value) => println!("{}", value),
             None => println!("<empty>"),
         },
         Commands::HDEL { key, field } => {
-            connection.hdel(key.to_string(), field.to_string()).await?;
+            hash_commands::hdel(&connection, key.to_string(), field.to_string()).await?;
             println!("Deleted {field}");
         }
         Commands::HELLO => {
-            for (key, value) in connection.hello(None).await? {
+            for (key, value) in connection_commands::hello(&connection, None).await? {
                 match value {
                     Value::Null => println!("{key}: <null>"),
                     Value::String(value) => println!("{key}: {value}"),
@@ -454,21 +465,20 @@ async fn exec() -> Result<(), Error> {
                 }
             }
         }
-        Commands::HEXISTS { key, field } => match connection
-            .hexists(key.to_string(), field.to_string())
-            .await?
-        {
-            true => println!("true"),
-            false => println!("false"),
-        },
+        Commands::HEXISTS { key, field } => {
+            match hash_commands::hexists(&connection, key.to_string(), field.to_string()).await? {
+                true => println!("true"),
+                false => println!("false"),
+            }
+        }
         Commands::HGET { key, field } => {
-            match connection.hget(key.to_string(), field.to_string()).await? {
+            match hash_commands::hget(&connection, key.to_string(), field.to_string()).await? {
                 Some(value) => println!("{}", value),
                 None => println!("<empty>"),
             }
         }
         Commands::HGETALL { key } => {
-            let fields = connection.hgetall(key.to_string()).await?;
+            let fields = hash_commands::hgetall(&connection, key.to_string()).await?;
             if fields.len() == 0 {
                 println!("<empty>");
             }
@@ -481,9 +491,9 @@ async fn exec() -> Result<(), Error> {
             field,
             increment,
         } => {
-            let value = connection
-                .hincrby(key.to_string(), field.to_string(), *increment)
-                .await?;
+            let value =
+                hash_commands::hincrby(&connection, key.to_string(), field.to_string(), *increment)
+                    .await?;
             println!("{}", value);
         }
         Commands::HINCRBYFLOAT {
@@ -491,24 +501,28 @@ async fn exec() -> Result<(), Error> {
             field,
             increment,
         } => {
-            let value = connection
-                .hincrbyfloat(key.to_string(), field.to_string(), *increment)
-                .await?;
+            let value = hash_commands::hincrbyfloat(
+                &connection,
+                key.to_string(),
+                field.to_string(),
+                *increment,
+            )
+            .await?;
             println!("{}", value);
         }
         Commands::HKEYS { key } => {
-            for key in connection.hkeys(key.to_string()).await? {
+            for key in hash_commands::hkeys(&connection, key.to_string()).await? {
                 println!("- {key}");
             }
         }
         Commands::HLEN { key } => {
-            let len = connection.hlen(key.to_string()).await?;
+            let len = hash_commands::hlen(&connection, key.to_string()).await?;
             println!("{len}");
         }
         Commands::HMGET { key, fields } => {
-            let fields = connection
-                .hmget(key.to_string().to_string(), fields.to_vec())
-                .await?;
+            let fields =
+                hash_commands::hmget(&connection, key.to_string().to_string(), fields.to_vec())
+                    .await?;
             for field in fields {
                 match field {
                     None => println!("- <empty>"),
@@ -526,7 +540,7 @@ async fn exec() -> Result<(), Error> {
                 .chunks(2)
                 .map(|c| (c[0].clone(), c[1].clone()))
                 .collect();
-            connection.hmset(key.to_string(), fields.clone()).await?;
+            hash_commands::hmset(&connection, key.to_string(), fields.clone()).await?;
             println!("Set {} field(s)", fields.len());
         }
         Commands::HRANDFIELD {
@@ -538,7 +552,8 @@ async fn exec() -> Result<(), Error> {
                 count: *count,
                 with_values: *with_values,
             };
-            let fields = connection.hrandfield(key.to_string(), Some(opts)).await?;
+            let fields =
+                hash_commands::hrandfield(&connection, key.to_string(), Some(opts)).await?;
             match fields {
                 None => println!("<empty>"),
                 Some(fields) => {
@@ -563,9 +578,13 @@ async fn exec() -> Result<(), Error> {
                 count: *count,
                 no_values: *no_values,
             };
-            let (cursor, fields) = connection
-                .hscan(key.to_string(), cursor.clone(), Some(opts.clone()))
-                .await?;
+            let (cursor, fields) = hash_commands::hscan(
+                &connection,
+                key.to_string(),
+                cursor.clone(),
+                Some(opts.clone()),
+            )
+            .await?;
             if let Some(cursor) = cursor {
                 println!("(cursor) {cursor}");
             }
@@ -580,28 +599,35 @@ async fn exec() -> Result<(), Error> {
             }
         }
         Commands::HSET { key, field, value } => {
-            connection
-                .hset(key.to_string(), field.to_string(), value.to_string())
-                .await?;
+            hash_commands::hset(
+                &connection,
+                key.to_string(),
+                field.to_string(),
+                value.to_string(),
+            )
+            .await?;
             println!("Set {field}");
         }
         Commands::HSETNX { key, field, value } => {
-            match connection
-                .hsetnx(key.to_string(), field.to_string(), value.to_string())
-                .await?
+            match hash_commands::hsetnx(
+                &connection,
+                key.to_string(),
+                field.to_string(),
+                value.to_string(),
+            )
+            .await?
             {
                 false => println!("Field already set"),
                 true => println!("Set {field}"),
             };
         }
         Commands::HSTRLEN { key, field } => {
-            let len = connection
-                .hstrlen(key.to_string(), field.to_string())
-                .await?;
+            let len =
+                hash_commands::hstrlen(&connection, key.to_string(), field.to_string()).await?;
             println!("{len}");
         }
         Commands::HVALS { key } => {
-            let values = connection.hvals(key.to_string()).await?;
+            let values = hash_commands::hvals(&connection, key.to_string()).await?;
             if values.len() == 0 {
                 println!("<empty>");
             }
@@ -610,28 +636,27 @@ async fn exec() -> Result<(), Error> {
             }
         }
         Commands::INCR { key } => {
-            let value = connection.incr(key.to_string()).await?;
+            let value = string_commands::incr(&connection, key.to_string()).await?;
             println!("{}", value);
         }
         Commands::INCRBY { key, increment } => {
-            let value = connection
-                .incrby(key.to_string(), increment.clone())
-                .await?;
+            let value =
+                string_commands::incrby(&connection, key.to_string(), increment.clone()).await?;
             println!("{}", value);
         }
         Commands::KEYS { pattern } => {
-            for key in connection.keys(pattern.to_string()).await? {
+            for key in keyspace_commands::keys(&connection, pattern.to_string()).await? {
                 println!("{key}");
             }
         }
         Commands::PUBLISH { channel, message } => {
-            let value = connection
-                .publish(channel.to_string(), message.to_string())
-                .await?;
+            let value =
+                pubsub_commands::publish(&connection, channel.to_string(), message.to_string())
+                    .await?;
             println!("{}", value);
         }
         Commands::SET { key, value } => {
-            connection.set(key.to_string(), value.to_string()).await?;
+            string_commands::set(&connection, key.to_string(), value.to_string()).await?;
             println!("Set {key}");
         }
     }
@@ -683,10 +708,8 @@ impl fmt::Display for Value {
             Value::Double(val) => write!(f, "(double) {val}"),
             Value::BigNumber(val) => write!(f, "(number) {val}"),
             Value::BulkError(val) => write!(f, "(error) {val}"),
-            Value::VerbatimString((_encoding, _val)) => {
-                // TODO
-                write!(f, "{self:?}")
-            }
+            // text to show as is, e.g. from INFO, the encoding is `txt` or `mkd`
+            Value::VerbatimString((_encoding, val)) => write!(f, "{val}"),
             Value::Map(val) => {
                 if val.len() == 0 {
                     write!(f, "(empty map)")?;
@@ -695,16 +718,30 @@ impl fmt::Display for Value {
                 for (i, (key, val)) in val.iter().enumerate() {
                     let key = resp::decode(key).map_err(|_| fmt::Error)?.to_string();
                     let val = resp::decode(val).map_err(|_| fmt::Error)?.to_string();
-                    // TODO handle multi-line keys
-                    let prefix = format!("{:i_max_width$}# {key} => ", i + 1);
-                    let mut padding = String::new();
-                    for _ in 0..prefix.len() {
-                        padding.push(' ')
-                    }
                     if i != 0 {
                         write!(f, "\n")?;
                     }
-                    for (j, line) in val.lines().enumerate() {
+                    // a key over several lines is indented under its number, the value follows its
+                    // last line
+                    let number = format!("{:i_max_width$}# ", i + 1);
+                    let key_lines = lines(&key);
+                    let (last, first) = key_lines.split_last().expect("at least one line");
+                    for (j, line) in first.iter().enumerate() {
+                        let indent = if j == 0 {
+                            number.clone()
+                        } else {
+                            " ".repeat(number.len())
+                        };
+                        write!(f, "{indent}{line}\n")?;
+                    }
+                    let indent = if first.is_empty() {
+                        number.clone()
+                    } else {
+                        " ".repeat(number.len())
+                    };
+                    let prefix = format!("{indent}{last} => ");
+                    let padding = " ".repeat(prefix.len());
+                    for (j, line) in lines(&val).into_iter().enumerate() {
                         match j {
                             0 => write!(f, "{prefix}{line}")?,
                             _ => write!(f, "\n{padding}{line}")?,
@@ -763,6 +800,12 @@ impl fmt::Display for Value {
             }
         }
     }
+}
+
+/// The lines of a value, an empty value is one empty line.
+fn lines(value: &str) -> Vec<&str> {
+    let lines: Vec<&str> = value.lines().collect();
+    if lines.is_empty() { vec![""] } else { lines }
 }
 
 wit_bindgen::generate!({

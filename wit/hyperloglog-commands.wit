@@ -1,0 +1,11 @@
+/// Commands for HyperLogLogs, Valkey's @hyperloglog ACL category.
+interface hyperloglog-commands {
+    use connection.{connection, error};
+
+    // not yet implemented, from the @hyperloglog category:
+    //   PFADD
+    //   PFCOUNT
+    //   PFDEBUG
+    //   PFMERGE
+    //   PFSELFTEST
+}

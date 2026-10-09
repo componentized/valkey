@@ -1,0 +1,27 @@
+/// Commands for stream values, Valkey's @stream ACL category.
+interface stream-commands {
+    use connection.{connection, error};
+
+    // not yet implemented, from the @stream category:
+    //   XACK
+    //   XADD
+    //   XAUTOCLAIM
+    //   XCLAIM
+    //   XDEL
+    //   XGROUP CREATE
+    //   XGROUP CREATECONSUMER
+    //   XGROUP DELCONSUMER
+    //   XGROUP DESTROY
+    //   XGROUP SETID
+    //   XINFO CONSUMERS
+    //   XINFO GROUPS
+    //   XINFO STREAM
+    //   XLEN
+    //   XPENDING
+    //   XRANGE
+    //   XREAD
+    //   XREADGROUP
+    //   XREVRANGE
+    //   XSETID
+    //   XTRIM
+}
