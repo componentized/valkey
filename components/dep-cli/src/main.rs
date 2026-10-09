@@ -400,11 +400,13 @@ fn exec() -> Result<(), Error> {
                                 Value::String(item) => println!("- {item}"),
                                 Value::Integer(item) => println!("- {item}"),
                                 Value::BulkString(item) => println!("- {item}"),
-                                _ => todo!(),
+                                item => {
+                                    println!("- {}", indent(&item.to_string(), "  "))
+                                }
                             }
                         }
                     }
-                    _ => todo!(),
+                    value => println!("{key}:\n  {}", indent(&value.to_string(), "  ")),
                 }
             }
         }
@@ -567,6 +569,11 @@ fn exec() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+/// Indents each line after the first, for multi-line values printed after a prefix.
+fn indent(value: &str, padding: &str) -> String {
+    value.replace('\n', &format!("\n{padding}"))
 }
 
 impl fmt::Display for Value {
