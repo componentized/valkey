@@ -97,6 +97,7 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
         Value::Map(val) => {
             buf.push(b'%');
             buf.extend_from_slice(val.len().to_string().as_bytes());
+            buf.extend_from_slice(CRLF_BYTES);
             for (key, value) in val {
                 buf_encode(key.into(), buf);
                 buf_encode(value.into(), buf);
@@ -105,6 +106,7 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
         Value::Set(val) => {
             buf.push(b'~');
             buf.extend_from_slice(val.len().to_string().as_bytes());
+            buf.extend_from_slice(CRLF_BYTES);
             for item in val {
                 buf_encode(item.into(), buf);
             }
@@ -112,6 +114,7 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
         Value::Push(val) => {
             buf.push(b'>');
             buf.extend_from_slice(val.len().to_string().as_bytes());
+            buf.extend_from_slice(CRLF_BYTES);
             for item in val {
                 buf_encode(item.into(), buf);
             }

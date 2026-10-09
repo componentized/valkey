@@ -1,11 +1,20 @@
 [workspace]
 resolver = "2"
 members = [
-    "components/*",
+    "components/as-keyvalue",
+    "components/dep-cli",
+    "components/ops",
+    "components/sample-http-incrementor",
 ]
-exclude = [
-    "components/wit",
-]
+
+[workspace.package]
+version = "0.3.0-dev"
 
 [workspace.dependencies]
 wit-bindgen = "0.61.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = "debuginfo"

@@ -1,0 +1,10 @@
+package componentized:valkey;
+
+let ops = new local:ops { ... };
+let cli = new local:dep-cli {
+    "componentized:valkey/store@0.3.0-dev": ops.store,
+    "componentized:valkey/resp@0.3.0-dev": ops.resp,
+    ...
+};
+
+export cli...;
