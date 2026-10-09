@@ -1,8 +1,9 @@
 package componentized:valkey-components;
 
 world cli {
-    include wasi:cli/imports@0.2.6;
+    include wasi:cli/imports@0.3.0;
     import componentized:valkey/store@0.3.0-dev;
+    export wasi:cli/run@0.3.0;
 }
 
 world ops {

@@ -3,7 +3,59 @@ use componentized::valkey::{
     resp::{self, Value},
     store::{connect, Error, HelloOpts, HrandfieldOpts, HscanOpts},
 };
-use std::{fmt, process};
+use exports::wasi::cli0_3_0::run::Guest;
+use std::fmt;
+use wasi::cli0_3_0::{environment::get_arguments, stderr, stdout, types::ErrorCode};
+use wit_bindgen::{FutureReader, StreamReader};
+
+/// Prints a line to stdout, like `std::println!`, which has no stdout on wasm32-unknown-unknown.
+/// The write is awaited, so it is only usable in an async function.
+macro_rules! println {
+    () => {
+        $crate::write_to(stdout::write_via_stream, String::from("\n")).await
+    };
+    ($($arg:tt)*) => {
+        $crate::write_to(stdout::write_via_stream, format!("{}\n", format_args!($($arg)*))).await
+    };
+}
+
+/// Prints a line to stderr, like `std::eprintln!`, which has no stderr on wasm32-unknown-unknown.
+/// The write is awaited, so it is only usable in an async function.
+macro_rules! eprintln {
+    () => {
+        $crate::write_to(stderr::write_via_stream, String::from("\n")).await
+    };
+    ($($arg:tt)*) => {
+        $crate::write_to(stderr::write_via_stream, format!("{}\n", format_args!($($arg)*))).await
+    };
+}
+
+/// Writes the value to the target, panics when it can't be written, like `std::println!`.
+async fn write_to(
+    write_via_stream: fn(StreamReader<u8>) -> FutureReader<Result<(), ErrorCode>>,
+    value: String,
+) {
+    let (mut writer, reader) = wit_stream::new();
+    let result = write_via_stream(reader);
+    writer.write_all(value.into_bytes()).await;
+    // the host finishes writing once the writable end is dropped
+    drop(writer);
+    if let Err(e) = result.await {
+        panic!("failed printing: {e:?}");
+    }
+}
+
+impl Guest for Cli {
+    async fn run() -> Result<(), ()> {
+        match exec().await {
+            Err(e) => {
+                eprintln!("Error: {e}");
+                Err(())
+            }
+            _ => Ok(()),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "cli", version, about, long_about = None)]
@@ -319,18 +371,8 @@ enum ACLCommands {
     },
 }
 
-fn main() {
-    match wit_bindgen::block_on(exec()) {
-        Err(e) => {
-            println!("Error: {e}");
-            process::exit(1);
-        }
-        _ => {}
-    }
-}
-
 async fn exec() -> Result<(), Error> {
-    let cli = Cli::parse();
+    let cli = Cli::parse_from(get_arguments().iter());
 
     let opts = HelloOpts {
         proto_ver: Some(cli.proto_ver.to_string()),
@@ -728,3 +770,5 @@ wit_bindgen::generate!({
     path: "../wit",
     generate_all
 });
+
+export!(Cli);

@@ -52,19 +52,6 @@ ${COMPONENTS_DIR}/$1/$1.debug.wasm: components/$1/$1.wkg ${COMPONENTS_DIR}/$1/RE
 # cargo is checked last, other strategies may have a Cargo.toml for tests of non-rust sources
 else ifneq ($(wildcard components/$1/Cargo.toml),)
 
-# a binary is a wasi:cli/command, the wasm32-wasip2 target builds it into a component
-ifneq ($(wildcard components/$1/src/main.rs),)
-
-${COMPONENTS_DIR}/$1/$1.wasm: Cargo.toml Cargo.lock components/wit/deps $(shell find components/$1 -type f) $(shell find crates -type f 2> /dev/null) ${COMPONENTS_DIR}/$1/README.md
-	cargo build -p $1 --target wasm32-wasip2 --release
-	cp target/wasm32-wasip2/release/$1.wasm ${COMPONENTS_DIR}/$1/$1.wasm
-
-${COMPONENTS_DIR}/$1/$1.debug.wasm: Cargo.toml Cargo.lock components/wit/deps $(shell find components/$1 -type f) $(shell find crates -type f 2> /dev/null) ${COMPONENTS_DIR}/$1/README.md
-	cargo build -p $1 --target wasm32-wasip2
-	cp target/wasm32-wasip2/debug/$1.wasm ${COMPONENTS_DIR}/$1/$1.debug.wasm
-
-else
-
 ${COMPONENTS_DIR}/$1/$1.wasm: Cargo.toml Cargo.lock components/wit/deps $(shell find components/$1 -type f) $(shell find crates -type f 2> /dev/null) ${COMPONENTS_DIR}/$1/README.md | $(call tool,wasm-tools)
 	cargo build -p $1 --target wasm32-unknown-unknown --release
 	$(WASM_TOOLS) component new target/wasm32-unknown-unknown/release/$(subst -,_,$1).wasm -o ${COMPONENTS_DIR}/$1/$1.wasm
@@ -72,8 +59,6 @@ ${COMPONENTS_DIR}/$1/$1.wasm: Cargo.toml Cargo.lock components/wit/deps $(shell 
 ${COMPONENTS_DIR}/$1/$1.debug.wasm: Cargo.toml Cargo.lock components/wit/deps $(shell find components/$1 -type f) $(shell find crates -type f 2> /dev/null) ${COMPONENTS_DIR}/$1/README.md | $(call tool,wasm-tools)
 	cargo build --target wasm32-unknown-unknown -p $1
 	$(WASM_TOOLS) component new target/wasm32-unknown-unknown/debug/$(subst -,_,$1).wasm -o ${COMPONENTS_DIR}/$1/$1.debug.wasm
-
-endif
 
 endif
 

@@ -10,13 +10,13 @@ use resp::{decode, encode};
 use std::net::IpAddr;
 use std::vec;
 use wasi::io::streams::{InputStream, OutputStream, StreamError};
-use wasi::sockets::instance_network::instance_network;
-use wasi::sockets::ip_name_lookup::resolve_addresses;
-use wasi::sockets::network::{
+use wasi::sockets0_2_6::instance_network::instance_network;
+use wasi::sockets0_2_6::ip_name_lookup::resolve_addresses;
+use wasi::sockets0_2_6::network::{
     ErrorCode, IpAddress, IpSocketAddress, Ipv4SocketAddress, Ipv6SocketAddress,
 };
-use wasi::sockets::tcp::TcpSocket;
-use wasi::sockets::tcp_create_socket::{create_tcp_socket, IpAddressFamily};
+use wasi::sockets0_2_6::tcp::TcpSocket;
+use wasi::sockets0_2_6::tcp_create_socket::{create_tcp_socket, IpAddressFamily};
 
 pub mod resp;
 
