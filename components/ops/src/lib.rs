@@ -7,16 +7,15 @@ use exports::componentized::valkey::store::{
     Connection, Error, Guest as StoreGuest, GuestConnection, HelloOpts, HrandfieldOpts, HscanOpts,
 };
 use resp::{decode, encode};
+use std::cell::RefCell;
 use std::net::IpAddr;
 use std::vec;
-use wasi::io::streams::{InputStream, OutputStream, StreamError};
-use wasi::sockets0_2_6::instance_network::instance_network;
-use wasi::sockets0_2_6::ip_name_lookup::resolve_addresses;
-use wasi::sockets0_2_6::network::{
-    ErrorCode, IpAddress, IpSocketAddress, Ipv4SocketAddress, Ipv6SocketAddress,
+use wasi::sockets::ip_name_lookup::{resolve_addresses, ErrorCode as LookupErrorCode};
+use wasi::sockets::types::{
+    ErrorCode, IpAddress, IpAddressFamily, IpSocketAddress, Ipv4SocketAddress, Ipv6SocketAddress,
+    TcpSocket,
 };
-use wasi::sockets0_2_6::tcp::TcpSocket;
-use wasi::sockets0_2_6::tcp_create_socket::{create_tcp_socket, IpAddressFamily};
+use wit_bindgen::{FutureReader, StreamReader, StreamResult, StreamWriter};
 
 pub mod resp;
 
@@ -26,17 +25,22 @@ struct ValkeyOps;
 impl ValkeyOps {
     async fn open(address: IpSocketAddress) -> Result<ValkeyConnection, Error> {
         let socket = match address {
-            IpSocketAddress::Ipv4(_) => create_tcp_socket(IpAddressFamily::Ipv4)?,
-            IpSocketAddress::Ipv6(_) => create_tcp_socket(IpAddressFamily::Ipv6)?,
+            IpSocketAddress::Ipv4(_) => TcpSocket::create(IpAddressFamily::Ipv4)?,
+            IpSocketAddress::Ipv6(_) => TcpSocket::create(IpAddressFamily::Ipv6)?,
         };
-        socket.start_connect(&instance_network(), address)?;
-        socket.subscribe().block();
-        let (input, output) = socket.finish_connect()?;
+        socket.connect(address).await?;
+
+        // send and receive may each be called once per socket, the streams are kept for the life
+        // of the connection
+        let (output, send_stream) = wit_stream::new();
+        let sent = socket.send(send_stream);
+        let (input, received) = socket.receive();
 
         Ok(ValkeyConnection {
-            input,
-            output,
-            socket,
+            streams: RefCell::new(Some((output, input))),
+            _sent: sent,
+            _received: received,
+            _socket: socket,
         })
     }
 
@@ -68,7 +72,7 @@ impl ValkeyOps {
             }
             Err(_) => {
                 // resolve as a hostname
-                Self::resolve_ip_addresses(host).await?
+                resolve_addresses(host.to_string()).await?
             }
         };
 
@@ -92,20 +96,6 @@ impl ValkeyOps {
             })
             .collect();
         Ok(socket_addresses)
-    }
-
-    async fn resolve_ip_addresses(host: &str) -> Result<Vec<IpAddress>, Error> {
-        let network = instance_network();
-        let address_stream = resolve_addresses(&network, host)?;
-        let mut addresses = vec![];
-        loop {
-            address_stream.subscribe().block();
-            match address_stream.resolve_next_address()? {
-                None => break,
-                Some(address) => addresses.push(address),
-            }
-        }
-        Ok(addresses)
     }
 }
 
@@ -131,9 +121,31 @@ impl StoreGuest for ValkeyOps {
 }
 
 struct ValkeyConnection {
-    input: InputStream,
-    output: OutputStream,
-    socket: TcpSocket,
+    /// The streams writing to and reading from the socket, taken while a command is in flight,
+    /// a connection handles one command at a time.
+    streams: RefCell<Option<(StreamWriter<u8>, StreamReader<u8>)>>,
+    _sent: FutureReader<Result<(), ErrorCode>>,
+    _received: FutureReader<Result<(), ErrorCode>>,
+    _socket: TcpSocket,
+}
+
+impl ValkeyConnection {
+    async fn exchange(
+        output: &mut StreamWriter<u8>,
+        input: &mut StreamReader<u8>,
+        request: Vec<u8>,
+    ) -> Result<Vec<u8>, Error> {
+        if !output.write_all(request).await.is_empty() {
+            Err(Error::Client("Stream Closed".to_string()))?
+        }
+
+        // TODO handle responses spanning multiple windows
+        match input.read(Vec::with_capacity(1024)).await {
+            (StreamResult::Complete(_), response) => Ok(response),
+            (StreamResult::Dropped, _) => Err(Error::Client("Stream Closed".to_string())),
+            (StreamResult::Cancelled, _) => Err(Error::Client("Stream Cancelled".to_string())),
+        }
+    }
 }
 
 impl GuestConnection for ValkeyConnection {
@@ -141,15 +153,16 @@ impl GuestConnection for ValkeyConnection {
         let request = encode(Value::Array(
             command.into_iter().map(|c| c.into()).collect(),
         ));
-        self.socket.subscribe().block();
-        self.output.blocking_write_and_flush(&request)?;
-        self.socket.subscribe().block();
 
-        // TODO handle responses spanning multiple windows
-        let response = self.input.blocking_read(1024)?;
-        self.socket.subscribe().block();
+        let (mut output, mut input) = self
+            .streams
+            .borrow_mut()
+            .take()
+            .ok_or_else(|| Error::Client("Connection busy with another command".to_string()))?;
+        let response = Self::exchange(&mut output, &mut input, request).await;
+        *self.streams.borrow_mut() = Some((output, input));
 
-        decode(response).map(|r| r.into())
+        decode(response?).map(|r| r.into())
     }
 
     async fn acl_deluser(&self, username: String) -> Result<(), Error> {
@@ -1096,32 +1109,43 @@ impl GuestConnection for ValkeyConnection {
 impl From<ErrorCode> for Error {
     fn from(e: ErrorCode) -> Self {
         match e {
-            ErrorCode::Unknown => Self::Client("Network Unknown".to_string()),
             ErrorCode::AccessDenied => Self::Client("Network AccessDenied".to_string()),
             ErrorCode::NotSupported => Self::Client("Network NotSupported".to_string()),
             ErrorCode::InvalidArgument => Self::Client("Network InvalidArgument".to_string()),
             ErrorCode::OutOfMemory => Self::Client("Network OutOfMemory".to_string()),
             ErrorCode::Timeout => Self::Client("Network Timeout".to_string()),
-            ErrorCode::ConcurrencyConflict => {
-                Self::Client("Network ConcurrencyConflict".to_string())
-            }
-            ErrorCode::NotInProgress => Self::Client("Network NotInProgress".to_string()),
-            ErrorCode::WouldBlock => Self::Client("Network WouldBlock".to_string()),
             ErrorCode::InvalidState => Self::Client("Network InvalidState".to_string()),
-            ErrorCode::NewSocketLimit => Self::Client("Network NewSocketLimit".to_string()),
             ErrorCode::AddressNotBindable => Self::Client("Network AddressNotBindable".to_string()),
             ErrorCode::AddressInUse => Self::Client("Network AddressInUse".to_string()),
             ErrorCode::RemoteUnreachable => Self::Client("Network RemoteUnreachable".to_string()),
             ErrorCode::ConnectionRefused => Self::Client("Network ConnectionRefused".to_string()),
+            ErrorCode::ConnectionBroken => Self::Client("Network ConnectionBroken".to_string()),
             ErrorCode::ConnectionReset => Self::Client("Network ConnectionReset".to_string()),
             ErrorCode::ConnectionAborted => Self::Client("Network ConnectionAborted".to_string()),
             ErrorCode::DatagramTooLarge => Self::Client("Network DatagramTooLarge".to_string()),
-            ErrorCode::NameUnresolvable => Self::Client("Network NameUnresolvable".to_string()),
-            ErrorCode::TemporaryResolverFailure => {
+            ErrorCode::Other(None) => Self::Client("Network Other".to_string()),
+            ErrorCode::Other(Some(message)) => Self::Client(format!("Network Other: {message}")),
+        }
+    }
+}
+
+impl From<LookupErrorCode> for Error {
+    fn from(e: LookupErrorCode) -> Self {
+        match e {
+            LookupErrorCode::AccessDenied => Self::Client("Network AccessDenied".to_string()),
+            LookupErrorCode::InvalidArgument => Self::Client("Network InvalidArgument".to_string()),
+            LookupErrorCode::NameUnresolvable => {
+                Self::Client("Network NameUnresolvable".to_string())
+            }
+            LookupErrorCode::TemporaryResolverFailure => {
                 Self::Client("Network TemporaryResolverFailure".to_string())
             }
-            ErrorCode::PermanentResolverFailure => {
+            LookupErrorCode::PermanentResolverFailure => {
                 Self::Client("Network PermanentResolverFailure".to_string())
+            }
+            LookupErrorCode::Other(None) => Self::Client("Network Other".to_string()),
+            LookupErrorCode::Other(Some(message)) => {
+                Self::Client(format!("Network Other: {message}"))
             }
         }
     }
@@ -1134,18 +1158,6 @@ impl RespGuest for ValkeyOps {
 
     fn encode(value: Value) -> Result<Vec<u8>, RespError> {
         Ok(encode(value.into()))
-    }
-}
-
-impl From<StreamError> for Error {
-    fn from(e: StreamError) -> Self {
-        match e {
-            StreamError::LastOperationFailed(error) => Error::Client(format!(
-                "Stream LastOperationFailed: {}",
-                error.to_debug_string()
-            )),
-            StreamError::Closed => Error::Client("Stream Closed".to_string()),
-        }
     }
 }
 
