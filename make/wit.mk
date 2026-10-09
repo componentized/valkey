@@ -20,7 +20,7 @@ wit: $(WIT_DEPS)
 define FETCH_WIT
 
 # a package overridden with a local path, e.g. `{ path = "../wit" }`, has its dependencies fetched first,
-# an override without dependencies of its own is skipped, e.g. `{ path = "./wit/overrides/wasi-keyvalue" }`
+# an override without dependencies of its own is skipped, e.g. `{ path = "./wit/overrides/wasi-muppets" }`
 $(call wit_deps,$1): $1/wkg.toml $1/wkg.lock $(shell find $1/wit -type f -name "*.wit" -not -path "*/deps/*") $(filter $(WIT_DEPS),$(foreach path,$(shell sed -n 's/.*path *= *"\(.*\)".*/\1/p' $1/wkg.toml),$(call relpath,$1/$(path))/deps)) | $(call tool,wkg)
 	$(if $(filter .,$1),,cd $1 && )$(WKG) fetch
 

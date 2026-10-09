@@ -1,10 +1,11 @@
 #![no_main]
 
-use componentized::valkey::store::{self as valkey, Connection, HelloOpts};
-use exports::wasi::keyvalue::atomics::{Cas, CasError, Guest as AtomicsGuest, GuestCas};
-use exports::wasi::keyvalue::batch::Guest as BatchGuest;
-use exports::wasi::keyvalue::store::{
-    Bucket, BucketBorrow, Error, Guest as StoreGuest, GuestBucket, KeyResponse,
+use componentized::valkey::store::{self as valkey, Connection, Duration, HelloOpts, HscanOpts};
+use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
+use exports::wasmcloud::keyvalue::batch::Guest as BatchGuest;
+use exports::wasmcloud::keyvalue::store::Guest as StoreGuest;
+use exports::wasmcloud::keyvalue::types::{
+    Bucket, BucketBorrow, Error, Guest as TypesGuest, GuestBucket, KeyResponse, SetOptions,
 };
 use wasi::config::store::{self as config};
 
@@ -19,12 +20,14 @@ const KEY_PREFIX_KEY: &str = "key-prefix";
 const KEY_PREFIX_DEFAULT: &str = "";
 
 #[derive(Debug, Clone)]
-struct KeyvalueToValkey;
+struct AsKeyvalue;
 
-impl StoreGuest for KeyvalueToValkey {
+impl TypesGuest for AsKeyvalue {
     type Bucket = KeyvalueToValkeyBucket;
+}
 
-    fn open(identifier: String) -> Result<Bucket, Error> {
+impl StoreGuest for AsKeyvalue {
+    async fn open(identifier: String) -> Result<Bucket, Error> {
         let hostname: String = config::get(HOSTNAME_KEY)?.unwrap_or(HOSTNAME_DEFAULT.to_string());
         let port = config::get(PORT_KEY)?.unwrap_or(PORT_DEFAULT.to_string());
         let port: u16 = port
@@ -43,7 +46,9 @@ impl StoreGuest for KeyvalueToValkey {
             },
             client_name: None,
         };
-        let connection = wit_bindgen::block_on(valkey::connect(hostname, port, Some(opts)))?;
+        let connection = valkey::connect(hostname, port, Some(opts))
+            .await
+            .map_err(|_| Error::StoreUnavailable)?;
 
         let key_prefix = config::get(KEY_PREFIX_KEY)?.unwrap_or(KEY_PREFIX_DEFAULT.to_string());
         let hash_key = format!("{key_prefix}{identifier}");
@@ -61,78 +66,91 @@ struct KeyvalueToValkeyBucket {
 }
 
 impl GuestBucket for KeyvalueToValkeyBucket {
-    fn get(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
-        match wit_bindgen::block_on(self.connection.hget(self.hash_key.clone(), key))? {
-            Some(value) => Ok(Some(value.as_bytes().to_vec())),
+    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
+        match self.connection.hget(self.hash_key.clone(), key).await? {
+            Some(value) => Ok(Some(value.into_bytes())),
             None => Ok(None),
         }
     }
 
-    fn set(&self, key: String, value: Vec<u8>) -> Result<(), Error> {
+    async fn set(
+        &self,
+        key: String,
+        value: Vec<u8>,
+        options: Option<SetOptions>,
+    ) -> Result<(), Error> {
         let value = String::from_utf8(value).map_err(|e| Error::Other(e.to_string()))?;
-        Ok(wit_bindgen::block_on(self.connection.hset(
-            self.hash_key.clone(),
-            key,
-            value,
-        ))?)
-    }
+        let options = options.unwrap_or(SetOptions {
+            ttl_ms: None,
+            if_not_exists: false,
+        });
 
-    fn delete(&self, key: String) -> Result<(), Error> {
-        Ok(wit_bindgen::block_on(
-            self.connection.hdel(self.hash_key.clone(), key),
-        )?)
-    }
-
-    fn exists(&self, key: String) -> Result<bool, Error> {
-        Ok(wit_bindgen::block_on(
-            self.connection.hexists(self.hash_key.clone(), key),
-        )?)
-    }
-
-    fn list_keys(&self, cursor: Option<String>) -> Result<KeyResponse, Error> {
-        if cursor.is_some() {
-            Err(Error::Other("cursor is not supported".to_string()))?;
+        if options.if_not_exists {
+            match self
+                .connection
+                .hsetnx(self.hash_key.clone(), key.clone(), value)
+                .await?
+            {
+                true => (),
+                false => Err(Error::PreconditionFailed)?,
+            }
+        } else {
+            self.connection
+                .hset(self.hash_key.clone(), key.clone(), value)
+                .await?
         }
+        if let Some(ttl_ms) = options.ttl_ms {
+            let ttl: Duration = ttl_ms / 1000;
+            self.connection
+                .hexpire(self.hash_key.clone(), ttl, None, vec![key])
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn delete(&self, key: String) -> Result<(), Error> {
+        Ok(self.connection.hdel(self.hash_key.clone(), key).await?)
+    }
+
+    async fn exists(&self, key: String) -> Result<bool, Error> {
+        Ok(self.connection.hexists(self.hash_key.clone(), key).await?)
+    }
+
+    async fn list_keys(
+        &self,
+        prefix: Option<String>,
+        cursor: Option<String>,
+    ) -> Result<KeyResponse, Error> {
+        let opts = HscanOpts {
+            match_: prefix.map(|prefix| format!("{}*", escape_glob(&prefix))),
+            count: None,
+            no_values: Some(true),
+        };
+        let (cursor, fields) = self
+            .connection
+            .hscan(self.hash_key.clone(), cursor, Some(opts))
+            .await?;
 
         Ok(KeyResponse {
-            cursor: None,
-            keys: wit_bindgen::block_on(self.connection.hkeys(self.hash_key.clone()))?,
+            keys: fields.into_iter().map(|(key, _)| key).collect(),
+            cursor,
         })
     }
 }
 
-impl AtomicsGuest for KeyvalueToValkey {
-    type Cas = KeyvalueToValkeyCas;
-
-    fn increment(bucket: BucketBorrow<'_>, key: String, delta: i64) -> Result<i64, Error> {
+impl AtomicsGuest for AsKeyvalue {
+    async fn increment(bucket: BucketBorrow<'_>, key: String, delta: i64) -> Result<i64, Error> {
         let bucket: &KeyvalueToValkeyBucket = bucket.get();
 
-        Ok(wit_bindgen::block_on(bucket.connection.hincrby(
-            bucket.hash_key.clone(),
-            key,
-            delta,
-        ))?)
-    }
-
-    fn swap(_cas: Cas, _value: Vec<u8>) -> Result<(), CasError> {
-        todo!()
+        Ok(bucket
+            .connection
+            .hincrby(bucket.hash_key.clone(), key, delta)
+            .await?)
     }
 }
 
-struct KeyvalueToValkeyCas;
-
-impl GuestCas for KeyvalueToValkeyCas {
-    fn new(_bucket: BucketBorrow<'_>, _key: String) -> Result<Cas, Error> {
-        todo!()
-    }
-
-    fn current(&self) -> Result<Option<Vec<u8>>, Error> {
-        todo!()
-    }
-}
-
-impl BatchGuest for KeyvalueToValkey {
-    fn get_many(
+impl BatchGuest for AsKeyvalue {
+    async fn get_many(
         bucket: BucketBorrow<'_>,
         keys: Vec<String>,
     ) -> Result<Vec<Option<(String, Vec<u8>)>>, Error> {
@@ -140,7 +158,7 @@ impl BatchGuest for KeyvalueToValkey {
 
         let mut values: Vec<Option<(String, Vec<u8>)>> = vec![];
         for key in keys {
-            let value = match bucket.get(key.clone())? {
+            let value = match bucket.get(key.clone()).await? {
                 Some(value) => Some((key, value)),
                 None => None,
             };
@@ -150,25 +168,41 @@ impl BatchGuest for KeyvalueToValkey {
         Ok(values)
     }
 
-    fn set_many(bucket: BucketBorrow<'_>, key_values: Vec<(String, Vec<u8>)>) -> Result<(), Error> {
+    async fn set_many(
+        bucket: BucketBorrow<'_>,
+        key_values: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), Error> {
         let bucket: &KeyvalueToValkeyBucket = bucket.get();
 
         for (key, value) in key_values {
-            bucket.set(key, value)?;
+            bucket.set(key, value, None).await?;
         }
 
         Ok(())
     }
 
-    fn delete_many(bucket: BucketBorrow<'_>, keys: Vec<String>) -> Result<(), Error> {
+    async fn delete_many(bucket: BucketBorrow<'_>, keys: Vec<String>) -> Result<(), Error> {
         let bucket: &KeyvalueToValkeyBucket = bucket.get();
 
         for key in keys {
-            bucket.delete(key)?;
+            bucket.delete(key).await?;
         }
 
         Ok(())
     }
+}
+
+/// Escapes the glob-style pattern characters Valkey's MATCH interprets, so a prefix matches
+/// literally.
+fn escape_glob(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for c in value.chars() {
+        if matches!(c, '*' | '?' | '[' | ']' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
 }
 
 impl From<config::Error> for Error {
@@ -193,4 +227,4 @@ wit_bindgen::generate!({
     generate_all
 });
 
-export!(KeyvalueToValkey);
+export!(AsKeyvalue);

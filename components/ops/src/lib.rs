@@ -4,7 +4,8 @@ use exports::componentized::valkey::resp::{
     Error as RespError, Guest as RespGuest, NestedValue, Value,
 };
 use exports::componentized::valkey::store::{
-    Connection, Error, Guest as StoreGuest, GuestConnection, HelloOpts, HrandfieldOpts, HscanOpts,
+    Connection, Duration, Error, ExpireMode, ExpireResult, Guest as StoreGuest, GuestConnection,
+    HelloOpts, HrandfieldOpts, HscanOpts, Instant,
 };
 use resp::{decode, encode};
 use std::cell::RefCell;
@@ -299,6 +300,76 @@ impl GuestConnection for ValkeyConnection {
         }
     }
 
+    #[allow(async_fn_in_trait)]
+    async fn expire(
+        &self,
+        key: String,
+        after: Duration,
+        mode: Option<ExpireMode>,
+    ) -> Result<ExpireResult, Error> {
+        // https://valkey.io/commands/exire/
+        // EXPIRE key seconds [ NX | XX | GT | LT ]
+
+        let mut cmd = vec![
+            Value::BulkString("EXPIRE".to_string()),
+            Value::BulkString(key),
+            Value::Integer((after / 1000) as i64),
+        ];
+        if let Some(mode) = mode {
+            cmd.push(mode.into());
+        }
+
+        let response = self.send(cmd).await?;
+        match response {
+            Value::Integer(code) => match code {
+                0 => Ok(ExpireResult::ConditionNotMet),
+                1 => Ok(ExpireResult::Applied),
+                _ => Err(Error::Client(format!("Unknown reply: {code}")))?,
+            },
+            Value::Null => Err(Error::Client("Operation aborted".to_string()))?,
+            Value::Error(err) => Err(Error::Valkey(err))?,
+            response => Err(Error::Client(format!(
+                "Unexpected response type: {:?}",
+                response
+            )))?,
+        }
+    }
+
+    #[allow(async_fn_in_trait)]
+    async fn expireat(
+        &self,
+        key: String,
+        after: Instant,
+        mode: Option<ExpireMode>,
+    ) -> Result<ExpireResult, Error> {
+        // https://valkey.io/commands/exireat/
+        // EXPIREAT key unix-time-seconds [ NX | XX | GT | LT ]
+
+        let mut cmd = vec![
+            Value::BulkString("EXPIRE".to_string()),
+            Value::BulkString(key),
+            Value::Integer(after.seconds),
+        ];
+        if let Some(mode) = mode {
+            cmd.push(mode.into());
+        }
+
+        let response = self.send(cmd).await?;
+        match response {
+            Value::Integer(code) => match code {
+                0 => Ok(ExpireResult::ConditionNotMet),
+                1 => Ok(ExpireResult::Applied),
+                _ => Err(Error::Client(format!("Unknown reply: {code}")))?,
+            },
+            Value::Null => Err(Error::Client("Operation aborted".to_string()))?,
+            Value::Error(err) => Err(Error::Valkey(err))?,
+            response => Err(Error::Client(format!(
+                "Unexpected response type: {:?}",
+                response
+            )))?,
+        }
+    }
+
     async fn get(&self, key: String) -> Result<Option<String>, Error> {
         // https://valkey.io/commands/get/
         // GET key
@@ -421,6 +492,122 @@ impl GuestConnection for ValkeyConnection {
         match response {
             Value::Integer(0) => Ok(false),
             Value::Integer(1) => Ok(true),
+            Value::Error(err) => Err(Error::Valkey(err))?,
+            response => Err(Error::Client(format!(
+                "Unexpected response type: {:?}",
+                response
+            )))?,
+        }
+    }
+
+    #[allow(async_fn_in_trait)]
+    async fn hexpire(
+        &self,
+        key: String,
+        after: Duration,
+        mode: Option<ExpireMode>,
+        fields: Vec<String>,
+    ) -> Result<Vec<ExpireResult>, Error> {
+        // https://valkey.io/commands/hexire/
+        // HEXPIRE key seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
+
+        let mut cmd = vec![
+            Value::BulkString("HEXPIRE".to_string()),
+            Value::BulkString(key),
+            Value::Integer((after / 1000) as i64),
+        ];
+        if let Some(mode) = mode {
+            cmd.push(mode.into());
+        }
+        cmd.push(Value::BulkString("FIELDS".to_string()));
+        cmd.push(Value::Integer(fields.len() as i64));
+        for field in fields {
+            cmd.push(Value::BulkString(field));
+        }
+
+        let response = self.send(cmd).await?;
+        match response {
+            Value::Array(codes) => {
+                let mut replies = vec![];
+                for code in codes {
+                    let code = code.into();
+                    match code {
+                        Value::Integer(code) => {
+                            replies.push(match code {
+                                -2 => ExpireResult::DoesNotExist,
+                                0 => ExpireResult::ConditionNotMet,
+                                1 => ExpireResult::Applied,
+                                2 => ExpireResult::ZeroSeconds,
+                                _ => Err(Error::Client(format!("Unknown reply: {code}")))?,
+                            });
+                        }
+                        value => Err(Error::Client(format!(
+                            "Unexpected array item type: {:?}",
+                            value
+                        )))?,
+                    }
+                }
+                Ok(replies)
+            }
+            Value::Null => Err(Error::Client("Operation aborted".to_string()))?,
+            Value::Error(err) => Err(Error::Valkey(err))?,
+            response => Err(Error::Client(format!(
+                "Unexpected response type: {:?}",
+                response
+            )))?,
+        }
+    }
+
+    #[allow(async_fn_in_trait)]
+    async fn hexpireat(
+        &self,
+        key: String,
+        after: Instant,
+        mode: Option<ExpireMode>,
+        fields: Vec<String>,
+    ) -> Result<Vec<ExpireResult>, Error> {
+        // https://valkey.io/commands/hexireat/
+        // HEXPIREAT key unix-time-seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
+
+        let mut cmd = vec![
+            Value::BulkString("HEXPIREAT".to_string()),
+            Value::BulkString(key),
+            Value::Integer(after.seconds),
+        ];
+        if let Some(mode) = mode {
+            cmd.push(mode.into());
+        }
+        cmd.push(Value::BulkString("FIELDS".to_string()));
+        cmd.push(Value::Integer(fields.len() as i64));
+        for field in fields {
+            cmd.push(Value::BulkString(field));
+        }
+
+        let response = self.send(cmd).await?;
+        match response {
+            Value::Array(codes) => {
+                let mut replies = vec![];
+                for code in codes {
+                    let code = code.into();
+                    match code {
+                        Value::Integer(code) => {
+                            replies.push(match code {
+                                -2 => ExpireResult::DoesNotExist,
+                                0 => ExpireResult::ConditionNotMet,
+                                1 => ExpireResult::Applied,
+                                2 => ExpireResult::ZeroSeconds,
+                                _ => Err(Error::Client(format!("Unknown reply: {code}")))?,
+                            });
+                        }
+                        value => Err(Error::Client(format!(
+                            "Unexpected array item type: {:?}",
+                            value
+                        )))?,
+                    }
+                }
+                Ok(replies)
+            }
+            Value::Null => Err(Error::Client("Operation aborted".to_string()))?,
             Value::Error(err) => Err(Error::Valkey(err))?,
             response => Err(Error::Client(format!(
                 "Unexpected response type: {:?}",
@@ -1170,6 +1357,17 @@ impl From<Value> for NestedValue {
 impl From<NestedValue> for Value {
     fn from(value: NestedValue) -> Self {
         ValkeyOps::decode(value).expect("nested values must decode cleanly")
+    }
+}
+
+impl From<ExpireMode> for Value {
+    fn from(mode: ExpireMode) -> Self {
+        match mode {
+            ExpireMode::Nx => Value::BulkString("NX".to_string()),
+            ExpireMode::Xx => Value::BulkString("XX".to_string()),
+            ExpireMode::Gt => Value::BulkString("GT".to_string()),
+            ExpireMode::Lt => Value::BulkString("LT".to_string()),
+        }
     }
 }
 

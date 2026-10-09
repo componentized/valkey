@@ -3,9 +3,9 @@ use componentized::valkey::{
     resp::{self, Value},
     store::{connect, Error, HelloOpts, HrandfieldOpts, HscanOpts},
 };
-use exports::wasi::cli0_3_0::run::Guest;
+use exports::wasi::cli::run::Guest;
 use std::fmt;
-use wasi::cli0_3_0::{environment::get_arguments, stderr, stdout, types::ErrorCode};
+use wasi::cli::{environment::get_arguments, stderr, stdout, types::ErrorCode};
 use wit_bindgen::{FutureReader, StreamReader};
 
 /// Prints a line to stdout, like `std::println!`, which has no stdout on wasm32-unknown-unknown.

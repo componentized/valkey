@@ -1,4 +1,5 @@
 interface store {
+    use wasi:clocks/system-clock@0.3.0.{ duration, instant };
     use resp.{error as resp-error, value};
 
     variant error {
@@ -8,6 +9,28 @@ interface store {
         resp(resp-error),
         /// Valkey errors are Error or BulkError values returned directly from the server
         valkey(string),
+    }
+
+    enum expire-mode {
+        /// Set expiration only when the field has no expiration.
+        nx,
+        /// Set expiration only when the field has an existing expiration.
+        xx,
+        /// Set expiration only when the new expiration is greater than current one.
+        gt,
+        /// Set expiration only when the new expiration is less than current one.
+        lt,
+    }
+
+    enum expire-result {
+        /// -2: key does not exist, or field does not exist in the HASH.
+        does-not-exist,
+        /// 0: the specified NX | XX | GT | LT condition has not been met.
+        condition-not-met,
+        /// 1: the expiration time was applied.
+        applied,
+        /// 2: when called with 0 seconds.
+        zero-seconds,
     }
 
     record hello-opts {
@@ -36,10 +59,14 @@ interface store {
         auth: async func(username: string, password: string) -> result<_, error>;
         del: async func(key: string) -> result<_, error>;
         exists: async func(key: string) -> result<bool, error>;
+        expire: async func(key: string, seconds: duration, mode: option<expire-mode>) -> result<expire-result, error>;
+        expireat: async func(key: string, seconds: instant, mode: option<expire-mode>) -> result<expire-result, error>;
         get: async func(key: string) -> result<option<string>, error>;
         hdel: async func(key: string, field: string) -> result<_, error>;
         hello: async func(opts: option<hello-opts>) -> result<list<tuple<string, value>>, error>;
         hexists: async func(key: string, field: string) -> result<bool, error>;
+        hexpire: async func(key: string, seconds: duration, mode: option<expire-mode>, fields: list<string>) -> result<list<expire-result>, error>;
+        hexpireat: async func(key: string, seconds: instant, mode: option<expire-mode>, fields: list<string>) -> result<list<expire-result>, error>;
         hget: async func(key: string, field: string) -> result<option<string>, error>;
         hgetall: async func(key: string) -> result<list<tuple<string, string>>, error>;
         hincrby: async func(key: string, field: string, increment: s64) -> result<s64, error>;
