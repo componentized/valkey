@@ -3,7 +3,59 @@ use componentized::valkey::{
     resp::{self, Value},
     store::{connect, Error, HelloOpts, HrandfieldOpts, HscanOpts},
 };
-use std::{fmt, process};
+use exports::wasi::cli::run::Guest;
+use std::fmt;
+use wasi::cli::{environment::get_arguments, stderr, stdout, types::ErrorCode};
+use wit_bindgen::{FutureReader, StreamReader};
+
+/// Prints a line to stdout, like `std::println!`, which has no stdout on wasm32-unknown-unknown.
+/// The write is awaited, so it is only usable in an async function.
+macro_rules! println {
+    () => {
+        $crate::write_to(stdout::write_via_stream, String::from("\n")).await
+    };
+    ($($arg:tt)*) => {
+        $crate::write_to(stdout::write_via_stream, format!("{}\n", format_args!($($arg)*))).await
+    };
+}
+
+/// Prints a line to stderr, like `std::eprintln!`, which has no stderr on wasm32-unknown-unknown.
+/// The write is awaited, so it is only usable in an async function.
+macro_rules! eprintln {
+    () => {
+        $crate::write_to(stderr::write_via_stream, String::from("\n")).await
+    };
+    ($($arg:tt)*) => {
+        $crate::write_to(stderr::write_via_stream, format!("{}\n", format_args!($($arg)*))).await
+    };
+}
+
+/// Writes the value to the target, panics when it can't be written, like `std::println!`.
+async fn write_to(
+    write_via_stream: fn(StreamReader<u8>) -> FutureReader<Result<(), ErrorCode>>,
+    value: String,
+) {
+    let (mut writer, reader) = wit_stream::new();
+    let result = write_via_stream(reader);
+    writer.write_all(value.into_bytes()).await;
+    // the host finishes writing once the writable end is dropped
+    drop(writer);
+    if let Err(e) = result.await {
+        panic!("failed printing: {e:?}");
+    }
+}
+
+impl Guest for Cli {
+    async fn run() -> Result<(), ()> {
+        match exec().await {
+            Err(e) => {
+                eprintln!("Error: {e}");
+                Err(())
+            }
+            _ => Ok(()),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "cli", version, about, long_about = None)]
@@ -319,18 +371,8 @@ enum ACLCommands {
     },
 }
 
-fn main() {
-    match exec() {
-        Err(e) => {
-            println!("Error: {e}");
-            process::exit(1);
-        }
-        _ => {}
-    }
-}
-
-fn exec() -> Result<(), Error> {
-    let cli = Cli::parse();
+async fn exec() -> Result<(), Error> {
+    let cli = Cli::parse_from(get_arguments().iter());
 
     let opts = HelloOpts {
         proto_ver: Some(cli.proto_ver.to_string()),
@@ -340,7 +382,7 @@ fn exec() -> Result<(), Error> {
         },
         client_name: cli.client_name,
     };
-    let connection = connect(&cli.host, cli.port, Some(&opts))?;
+    let connection = connect(cli.host, cli.port, Some(opts)).await?;
 
     match &cli.command {
         Commands::SEND { cmd } => {
@@ -348,41 +390,43 @@ fn exec() -> Result<(), Error> {
                 .iter()
                 .map(|c| Value::BulkString(c.to_string()))
                 .collect();
-            let response = connection.send(&cmd)?;
+            let response = connection.send(cmd).await?;
             println!("{response}");
         }
         Commands::ACL(aclargs) => match &aclargs.command {
             ACLCommands::DELUSER { username } => {
-                connection.acl_deluser(&username)?;
+                connection.acl_deluser(username.to_string()).await?;
                 println!("Deleted user {username}");
             }
             ACLCommands::GENPASS => {
-                let pass = connection.acl_genpass()?;
+                let pass = connection.acl_genpass().await?;
                 println!("{pass}");
             }
             ACLCommands::SETUSER { username, rules } => {
-                connection.acl_setuser(username, rules.as_slice())?;
+                connection
+                    .acl_setuser(username.to_string(), rules.to_vec())
+                    .await?;
                 println!("Set user {username}");
             }
         },
         Commands::DEL { key } => {
-            connection.del(key)?;
+            connection.del(key.to_string()).await?;
             println!("Deleted {key}");
         }
-        Commands::EXISTS { key } => match connection.exists(key)? {
+        Commands::EXISTS { key } => match connection.exists(key.to_string()).await? {
             true => println!("true"),
             false => println!("false"),
         },
-        Commands::GET { key } => match connection.get(key)? {
+        Commands::GET { key } => match connection.get(key.to_string()).await? {
             Some(value) => println!("{}", value),
             None => println!("<empty>"),
         },
         Commands::HDEL { key, field } => {
-            connection.hdel(key, field)?;
+            connection.hdel(key.to_string(), field.to_string()).await?;
             println!("Deleted {field}");
         }
         Commands::HELLO => {
-            for (key, value) in connection.hello(None)? {
+            for (key, value) in connection.hello(None).await? {
                 match value {
                     Value::Null => println!("{key}: <null>"),
                     Value::String(value) => println!("{key}: {value}"),
@@ -410,16 +454,21 @@ fn exec() -> Result<(), Error> {
                 }
             }
         }
-        Commands::HEXISTS { key, field } => match connection.hexists(key, field)? {
+        Commands::HEXISTS { key, field } => match connection
+            .hexists(key.to_string(), field.to_string())
+            .await?
+        {
             true => println!("true"),
             false => println!("false"),
         },
-        Commands::HGET { key, field } => match connection.hget(key, field)? {
-            Some(value) => println!("{}", value),
-            None => println!("<empty>"),
-        },
+        Commands::HGET { key, field } => {
+            match connection.hget(key.to_string(), field.to_string()).await? {
+                Some(value) => println!("{}", value),
+                None => println!("<empty>"),
+            }
+        }
         Commands::HGETALL { key } => {
-            let fields = connection.hgetall(key)?;
+            let fields = connection.hgetall(key.to_string()).await?;
             if fields.len() == 0 {
                 println!("<empty>");
             }
@@ -432,7 +481,9 @@ fn exec() -> Result<(), Error> {
             field,
             increment,
         } => {
-            let value = connection.hincrby(key, field, *increment)?;
+            let value = connection
+                .hincrby(key.to_string(), field.to_string(), *increment)
+                .await?;
             println!("{}", value);
         }
         Commands::HINCRBYFLOAT {
@@ -440,20 +491,24 @@ fn exec() -> Result<(), Error> {
             field,
             increment,
         } => {
-            let value = connection.hincrbyfloat(key, field, *increment)?;
+            let value = connection
+                .hincrbyfloat(key.to_string(), field.to_string(), *increment)
+                .await?;
             println!("{}", value);
         }
         Commands::HKEYS { key } => {
-            for key in connection.hkeys(key)? {
+            for key in connection.hkeys(key.to_string()).await? {
                 println!("- {key}");
             }
         }
         Commands::HLEN { key } => {
-            let len = connection.hlen(key)?;
+            let len = connection.hlen(key.to_string()).await?;
             println!("{len}");
         }
         Commands::HMGET { key, fields } => {
-            let fields = connection.hmget(key, fields)?;
+            let fields = connection
+                .hmget(key.to_string().to_string(), fields.to_vec())
+                .await?;
             for field in fields {
                 match field {
                     None => println!("- <empty>"),
@@ -471,7 +526,7 @@ fn exec() -> Result<(), Error> {
                 .chunks(2)
                 .map(|c| (c[0].clone(), c[1].clone()))
                 .collect();
-            connection.hmset(key, &fields)?;
+            connection.hmset(key.to_string(), fields.clone()).await?;
             println!("Set {} field(s)", fields.len());
         }
         Commands::HRANDFIELD {
@@ -483,7 +538,7 @@ fn exec() -> Result<(), Error> {
                 count: *count,
                 with_values: *with_values,
             };
-            let fields = connection.hrandfield(key, Some(opts))?;
+            let fields = connection.hrandfield(key.to_string(), Some(opts)).await?;
             match fields {
                 None => println!("<empty>"),
                 Some(fields) => {
@@ -508,7 +563,9 @@ fn exec() -> Result<(), Error> {
                 count: *count,
                 no_values: *no_values,
             };
-            let (cursor, fields) = connection.hscan(key, cursor.as_deref(), Some(opts))?;
+            let (cursor, fields) = connection
+                .hscan(key.to_string(), cursor.clone(), Some(opts.clone()))
+                .await?;
             if let Some(cursor) = cursor {
                 println!("(cursor) {cursor}");
             }
@@ -523,21 +580,28 @@ fn exec() -> Result<(), Error> {
             }
         }
         Commands::HSET { key, field, value } => {
-            connection.hset(key, field, value)?;
+            connection
+                .hset(key.to_string(), field.to_string(), value.to_string())
+                .await?;
             println!("Set {field}");
         }
         Commands::HSETNX { key, field, value } => {
-            match connection.hsetnx(key, field, value)? {
+            match connection
+                .hsetnx(key.to_string(), field.to_string(), value.to_string())
+                .await?
+            {
                 false => println!("Field already set"),
                 true => println!("Set {field}"),
             };
         }
         Commands::HSTRLEN { key, field } => {
-            let len = connection.hstrlen(key, field)?;
+            let len = connection
+                .hstrlen(key.to_string(), field.to_string())
+                .await?;
             println!("{len}");
         }
         Commands::HVALS { key } => {
-            let values = connection.hvals(key)?;
+            let values = connection.hvals(key.to_string()).await?;
             if values.len() == 0 {
                 println!("<empty>");
             }
@@ -546,24 +610,28 @@ fn exec() -> Result<(), Error> {
             }
         }
         Commands::INCR { key } => {
-            let value = connection.incr(key)?;
+            let value = connection.incr(key.to_string()).await?;
             println!("{}", value);
         }
         Commands::INCRBY { key, increment } => {
-            let value = connection.incrby(key, increment.clone())?;
+            let value = connection
+                .incrby(key.to_string(), increment.clone())
+                .await?;
             println!("{}", value);
         }
         Commands::KEYS { pattern } => {
-            for key in connection.keys(pattern)? {
+            for key in connection.keys(pattern.to_string()).await? {
                 println!("{key}");
             }
         }
         Commands::PUBLISH { channel, message } => {
-            let value = connection.publish(channel, message)?;
+            let value = connection
+                .publish(channel.to_string(), message.to_string())
+                .await?;
             println!("{}", value);
         }
         Commands::SET { key, value } => {
-            connection.set(key, value)?;
+            connection.set(key.to_string(), value.to_string()).await?;
             println!("Set {key}");
         }
     }
@@ -702,3 +770,5 @@ wit_bindgen::generate!({
     path: "../wit",
     generate_all
 });
+
+export!(Cli);

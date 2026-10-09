@@ -1,12 +1,13 @@
 package componentized:valkey-components;
 
 world cli {
-    include wasi:cli/imports@0.2.6;
+    include wasi:cli/imports@0.3.0;
     import componentized:valkey/store@0.3.0-dev;
+    export wasi:cli/run@0.3.0;
 }
 
 world ops {
-    include wasi:sockets/imports@0.2.6;
+    include wasi:sockets/imports@0.3.0;
     export componentized:valkey/resp@0.3.0-dev;
     export componentized:valkey/store@0.3.0-dev;
 }
@@ -14,13 +15,14 @@ world ops {
 world as-keyvalue {
     import componentized:valkey/store@0.3.0-dev;
     import wasi:config/store@0.2.0-rc.1;
-    export wasi:keyvalue/store@0.2.0-draft2;
-    export wasi:keyvalue/atomics@0.2.0-draft2;
-    export wasi:keyvalue/batch@0.2.0-draft2;
+    export wasmcloud:keyvalue/types@0.2.0;
+    export wasmcloud:keyvalue/store@0.2.0;
+    export wasmcloud:keyvalue/atomics@0.2.0;
+    export wasmcloud:keyvalue/batch@0.2.0;
 }
 
 world sample-http-incrementor {
-    import wasi:keyvalue/store@0.2.0-draft2;
-    import wasi:keyvalue/atomics@0.2.0-draft2;
-    export wasi:http/incoming-handler@0.2.6;
+    import wasmcloud:keyvalue/store@0.2.0;
+    import wasmcloud:keyvalue/atomics@0.2.0;
+    export wasi:http/handler@0.3.0;
 }
