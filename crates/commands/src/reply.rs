@@ -4,6 +4,7 @@
 //! than a flat array of keys and values, both are accepted.
 
 use resp_codec::{NestedValue, Value};
+use wit_bindgen::rt::Map;
 
 use crate::componentized::valkey::connection::{Connection, Error};
 
@@ -20,6 +21,21 @@ where
         .map(|word| Value::BulkString(word.into()))
         .collect();
     connection.call(command).await
+}
+
+/// Send a command, its words as bulk strings, without waiting for a reply.
+///
+/// An error reply fails the command, see `connection.send`.
+pub async fn send<I, W>(connection: &Connection, words: I) -> Result<(), Error>
+where
+    I: IntoIterator<Item = W>,
+    W: Into<String>,
+{
+    let command = words
+        .into_iter()
+        .map(|word| Value::BulkString(word.into()))
+        .collect();
+    connection.send(command).await
 }
 
 pub fn unexpected(reply: &Value) -> Error {
@@ -124,6 +140,14 @@ pub fn string_entries(reply: Value) -> Result<Vec<(String, String)>, Error> {
         .into_iter()
         .map(|(key, value)| Ok((string(key)?, string(value)?)))
         .collect()
+}
+
+pub fn counts(reply: Value) -> Result<Map<String, i64>, Error> {
+    let mut map = Map::new();
+    for (key, value) in entries(reply)? {
+        map.insert(string(key)?, integer(value)?);
+    }
+    Ok(map)
 }
 
 /// A duration, in nanoseconds, as whole seconds, the precision of EXPIRE and HEXPIRE.

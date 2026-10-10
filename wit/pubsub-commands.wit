@@ -4,19 +4,81 @@
 interface pubsub-commands {
     use connection.{connection, error};
 
+    /// Subscribes the client to the given patterns.
+    ///
+    /// PSUBSCRIBE pattern [ pattern ... ]
+    /// https://valkey.io/commands/psubscribe/
+    psubscribe: async func(connection: borrow<connection>, patterns: list<string>) -> result<_, error>;
+
+    /// Posts a message to the given channel.
+    ///
+    /// PUBLISH channel message
+    /// https://valkey.io/commands/publish/
     publish: async func(connection: borrow<connection>, channel: string, message: string) -> result<s64, error>;
 
-    // not yet implemented, from the @pubsub category:
-    //   PSUBSCRIBE
-    //   PUBSUB CHANNELS
-    //   PUBSUB NUMPAT
-    //   PUBSUB NUMSUB
-    //   PUBSUB SHARDCHANNELS
-    //   PUBSUB SHARDNUMSUB
-    //   PUNSUBSCRIBE
-    //   SPUBLISH
-    //   SSUBSCRIBE
-    //   SUBSCRIBE
-    //   SUNSUBSCRIBE
-    //   UNSUBSCRIBE
+    /// Lists the currently active channels.
+    ///
+    /// PUBSUB CHANNELS [ pattern ]
+    /// https://valkey.io/commands/pubsub-channels/
+    pubsub-channels: async func(connection: borrow<connection>, pattern: option<string>) -> result<list<string>, error>;
+
+    /// Returns the number of unique patterns that are subscribed to by clients.
+    ///
+    /// PUBSUB NUMPAT
+    /// https://valkey.io/commands/pubsub-numpat/
+    pubsub-numpat: async func(connection: borrow<connection>) -> result<s64, error>;
+
+    /// Returns the number of subscribers (exclusive of clients subscribed to patterns) for the specified channels.
+    ///
+    /// PUBSUB NUMSUB [ channel ] [ [ channel ] ... ]
+    /// https://valkey.io/commands/pubsub-numsub/
+    pubsub-numsub: async func(connection: borrow<connection>, channels: list<string>) -> result<map<string, s64>, error>;
+
+    /// Lists the currently active shard channels.
+    ///
+    /// PUBSUB SHARDCHANNELS [ pattern ]
+    /// https://valkey.io/commands/pubsub-shardchannels/
+    pubsub-shardchannels: async func(connection: borrow<connection>, pattern: option<string>) -> result<list<string>, error>;
+
+    /// Returns the number of subscribers for the specified shard channels.
+    ///
+    /// PUBSUB SHARDNUMSUB [ shardchannel [ shardchannel ... ] ]
+    /// https://valkey.io/commands/pubsub-shardnumsub/
+    pubsub-shardnumsub: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<map<string, s64>, error>;
+
+    /// Unsubscribes the client from the given patterns, or from all of them if none is given.
+    ///
+    /// PUNSUBSCRIBE [ pattern [ pattern ... ] ]
+    /// https://valkey.io/commands/punsubscribe/
+    punsubscribe: async func(connection: borrow<connection>, patterns: list<string>) -> result<_, error>;
+
+    /// Posts a message to the given shard channel.
+    ///
+    /// SPUBLISH shardchannel message
+    /// https://valkey.io/commands/spublish/
+    spublish: async func(connection: borrow<connection>, shardchannel: string, message: string) -> result<s64, error>;
+
+    /// Subscribes the client to the specified shard channels.
+    ///
+    /// SSUBSCRIBE shardchannel [ shardchannel ... ]
+    /// https://valkey.io/commands/ssubscribe/
+    ssubscribe: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<_, error>;
+
+    /// Subscribes the client to the specified channels.
+    ///
+    /// SUBSCRIBE channel [ channel ... ]
+    /// https://valkey.io/commands/subscribe/
+    subscribe: async func(connection: borrow<connection>, channels: list<string>) -> result<_, error>;
+
+    /// Unsubscribes the client from the given shard channels, or from all of them if none is given.
+    ///
+    /// SUNSUBSCRIBE [ shardchannel ] [ [ shardchannel ] ... ]
+    /// https://valkey.io/commands/sunsubscribe/
+    sunsubscribe: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<_, error>;
+
+    /// Unsubscribes the client from the given channels, or from all of them if none is given.
+    ///
+    /// UNSUBSCRIBE [ channel ] [ [ channel ] ... ]
+    /// https://valkey.io/commands/unsubscribe/
+    unsubscribe: async func(connection: borrow<connection>, channels: list<string>) -> result<_, error>;
 }
