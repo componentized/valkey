@@ -3,7 +3,7 @@ SHELL := /bin/bash
 export RUST_BACKTRACE ?= 1
 export WASMTIME_BACKTRACE_DETAILS ?= 1
 export WKG_CONFIG_FILE := $(abspath .config/wasm-pkg/config.toml)
-WASMTIME_RUN_FLAGS ?= -Sinherit-network -Sallow-ip-name-lookup
+WASMTIME_RUN_FLAGS ?= -Sinherit-network -Sallow-ip-name-lookup -Sconfig -Wcomponent-model-map
 
 # `make` without a goal runs all, otherwise the first target of an included file would run
 .DEFAULT_GOAL := all

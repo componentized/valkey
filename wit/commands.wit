@@ -1,0 +1,1360 @@
+interface commands {
+    use connection.{connection, double, duration, instant, integer, value, error};
+
+    /// XXXXXX
+    ///
+    /// XXXXXX
+    /// https://valkey.io/commands/XXXXXX/
+
+
+    /// The condition for setting an expiration, e.g. with EXPIRE or HEXPIRE.
+    enum ttl-mode {
+        /// Set expiration only when the field has no expiration.
+        nx,
+        /// Set expiration only when the field has an existing expiration.
+        xx,
+        /// Set expiration only when the new expiration is greater than current one.
+        gt,
+        /// Set expiration only when the new expiration is less than current one.
+        lt,
+    }
+
+    /// The outcome of setting the expiration of a hash field, e.g. with HEXPIRE.
+    enum ttl-result {
+        /// -2: key does not exist, or field does not exist in the HASH.
+        does-not-exist,
+        /// 0: the specified NX | XX | GT | LT condition has not been met.
+        condition-not-met,
+        /// 1: the expiration time was applied.
+        applied,
+        /// 2: when called with 0 seconds.
+        zero-seconds,
+    }
+
+    // admin commands
+
+    /// Delete all the specified ACL users and terminate all the connections that are authenticated with such users.
+    ///
+    /// ACL DELUSER username [ username ... ]
+    /// https://valkey.io/commands/acl-deluser/
+    acl-deluser: async func(connection: borrow<connection>, usernames: list<string>) -> result<integer, error>;
+
+    /// Generates a random password.
+    ///
+    /// ACL GENPASS [ bits ]
+    /// https://valkey.io/commands/acl-genpass/
+    acl-genpass: async func(connection: borrow<connection>, bits: option<integer>) -> result<string, error>;
+
+    /// A rule of an ACL user, see `acl-setuser`.
+    ///
+    /// https://valkey.io/topics/acl/
+    variant rule {
+        /// The keys the user may access.
+        keys(key-rule),
+        /// The Pub/Sub channels the user may access.
+        channel(channel-rule),
+        /// The commands the user may call.
+        command(command-rule),
+        /// The databases the user may access.
+        db(db-rule),
+        /// The user itself, e.g. whether it is enabled and its passwords.
+        user(user-rule),
+    }
+
+    /// A rule of a selector, a set of permissions matched independently of the user's root permissions,
+    /// the user may run a command when either permits it.
+    variant rule-selector {
+        /// The keys the selector permits access to.
+        keys(key-rule),
+        /// The Pub/Sub channels the selector permits access to.
+        channel(channel-rule),
+        /// The commands the selector permits.
+        command(command-rule),
+        /// The databases the selector permits access to.
+        db(db-rule),
+    }
+
+    /// A rule for the keys a user may access.
+    variant key-rule {
+        /// `~<pattern>`: allows reading and writing the keys matching the glob-style pattern.
+        add(string),
+        /// `%R~<pattern>`: allows reading the keys matching the glob-style pattern.
+        add-read(string),
+        /// `%W~<pattern>`: allows writing the keys matching the glob-style pattern.
+        add-write(string),
+        /// `%RW~<pattern>`: allows reading and writing the keys matching the glob-style pattern, the
+        /// same as `add`.
+        add-read-write(string),
+        /// `allkeys`: allows access to all keys, an alias for `~*`.
+        all,
+        /// `resetkeys`: removes all the allowed key patterns.
+        reset,
+    }
+
+    /// A rule for the Pub/Sub channels a user may access.
+    variant channel-rule {
+        /// `&<pattern>`: allows access to the Pub/Sub channels matching the glob-style pattern.
+        add(string),
+        /// `allchannels`: allows access to all Pub/Sub channels, an alias for `&*`.
+        all,
+        /// `resetchannels`: removes all the allowed channel patterns, disconnecting the user's Pub/Sub
+        /// clients that can no longer access their channels.
+        reset,
+    }
+
+    /// A rule for the commands a user may call.
+    variant command-rule {
+        /// `+<command>`: allows the command, or a subcommand, e.g. `config|get`.
+        add(string),
+        /// `+@<category>`: allows all the commands in the category, e.g. `read`, see ACL CAT for the
+        /// categories.
+        add-category(string),
+        /// `+<command>|<first-arg>`: allows the command only with the given first argument, e.g. `select`
+        /// with `0`.
+        add-first-arg(tuple<string, string>),
+        /// `allcommands`: allows all commands, including those of modules loaded later, an alias for `+@all`.
+        all,
+        /// `-<command>`: disallows the command, or a subcommand.
+        remove(string),
+        /// `-@<category>`: disallows all the commands in the category.
+        remove-category(string),
+        /// `nocommands`: disallows all commands, an alias for `-@all`.
+        reset,
+    }
+
+    /// A rule for the databases a user may access.
+    variant db-rule {
+        /// `db=<id>[,<id>...]`: allows access to the databases with the given IDs.
+        db(list<u8>),
+        /// `alldbs`: allows access to all databases.
+        all,
+        /// `resetdbs`: removes all the allowed databases.
+        reset,
+    }
+
+    /// A rule for the user itself.
+    variant user-rule {
+        /// `on`: enables the user, it is possible to authenticate as this user.
+        on,
+        /// `off`: disables the user, it is no longer possible to authenticate as this user, connections
+        /// already authenticated keep working.
+        off,
+        /// `nopass`: removes all the user's passwords, any password then authenticates as the user.
+        nopass,
+        /// `><password>`: adds the password to the user's passwords.
+        password(string),
+        /// `#<hash>`: adds a password, by its SHA-256 hash as 64 lowercase hex characters, to the user's
+        /// passwords.
+        hashed-password(string),
+        /// `<<password>`: removes the password from the user's passwords.
+        remove-password(string),
+        /// `!<hash>`: removes a password, by its SHA-256 hash, from the user's passwords.
+        remove-hashed-password(string),
+        /// `(<rule> ...)`: adds a selector, with the given rules.
+        selector(list<rule-selector>),
+        /// `clearselectors`: removes all the user's selectors.
+        clearselectors,
+        /// `reset`: resets the user to its state when created, disabled, without passwords, keys,
+        /// channels, commands or selectors.
+        reset,
+    }
+
+    /// Create an ACL user with the specified rules or modify the rules of an existing user.
+    ///
+    /// ACL SETUSER username [ rule ] [ [ rule ] ... ]
+    /// https://valkey.io/commands/acl-setuser/
+    acl-setuser: async func(connection: borrow<connection>, username: string, rules: list<rule>) -> result<_, error>;
+
+
+    // not yet implemented, from the @admin category:
+    //   ACL CAT
+    //   ACL DRYRUN
+    //   ACL GETUSER
+    //   ACL LIST
+    //   ACL LOAD
+    //   ACL LOG
+    //   ACL SAVE
+    //   ACL USERS
+    //   ACL WHOAMI
+    //   BGREWRITEAOF
+    //   BGSAVE
+    //   CLIENT KILL
+    //   CLIENT LIST
+    //   CLIENT NO-EVICT
+    //   CLIENT PAUSE
+    //   CLIENT UNBLOCK
+    //   CLIENT UNPAUSE
+    //   CLUSTER ADDSLOTS
+    //   CLUSTER ADDSLOTSRANGE
+    //   CLUSTER BUMPEPOCH
+    //   CLUSTER CANCELSLOTMIGRATIONS
+    //   CLUSTER COUNT-FAILURE-REPORTS
+    //   CLUSTER DELSLOTS
+    //   CLUSTER DELSLOTSRANGE
+    //   CLUSTER FAILOVER
+    //   CLUSTER FLUSHSLOT
+    //   CLUSTER FLUSHSLOTS
+    //   CLUSTER FORGET
+    //   CLUSTER GETSLOTMIGRATIONS
+    //   CLUSTER MEET
+    //   CLUSTER MIGRATESLOTS
+    //   CLUSTER REPLICAS
+    //   CLUSTER REPLICATE
+    //   CLUSTER RESET
+    //   CLUSTER SAVECONFIG
+    //   CLUSTER SET-CONFIG-EPOCH
+    //   CLUSTER SETSLOT
+    //   CLUSTER SLAVES
+    //   CLUSTER SYNCSLOTS
+    //   COMMANDLOG GET
+    //   COMMANDLOG LEN
+    //   COMMANDLOG RESET
+    //   CONFIG GET
+    //   CONFIG RESETSTAT
+    //   CONFIG REWRITE
+    //   CONFIG SET
+    //   DEBUG
+    //   FAILOVER
+    //   LASTSAVE
+    //   LATENCY DOCTOR
+    //   LATENCY GRAPH
+    //   LATENCY HISTOGRAM
+    //   LATENCY HISTORY
+    //   LATENCY LATEST
+    //   LATENCY RESET
+    //   MODULE LIST
+    //   MODULE LOAD
+    //   MODULE LOADEX
+    //   MODULE UNLOAD
+    //   MONITOR
+    //   PFDEBUG
+    //   PFSELFTEST
+    //   PSYNC
+    //   REPLCONF
+    //   REPLICAOF
+    //   ROLE
+    //   SAVE
+    //   SHUTDOWN
+    //   SLAVEOF
+    //   SLOWLOG GET
+    //   SLOWLOG LEN
+    //   SLOWLOG RESET
+    //   SYNC
+
+
+    // bitmap commands
+
+    // not yet implemented, from the @bitmap category:
+    //   BITCOUNT
+    //   BITFIELD
+    //   BITFIELD_RO
+    //   BITOP
+    //   BITPOS
+    //   GETBIT
+    //   SETBIT
+
+    // connection commands
+
+    /// Authenticates the current connection.
+    ///
+    /// AUTH [ username ] password
+    /// https://valkey.io/commands/auth/
+    auth: async func(connection: borrow<connection>, username: option<string>, password: string) -> result<_, error>;
+
+    /// Switch to a different protocol, optionally authenticating and setting the connection's name, or provide a contextual client report.
+    ///
+    /// RESP2 is not fully supported by this client.
+    ///
+    /// HELLO 3 [ AUTH username password ] [ SETNAME clientname ]
+    /// https://valkey.io/commands/hello/
+    hello: async func(connection: borrow<connection>, auth: option<tuple<string, string>>, client-name: option<string>) -> result<map<string, value>, error>;
+
+    /// Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk.
+    ///
+    /// PING [ message ]
+    /// https://valkey.io/commands/ping/
+    ping: async func(connection: borrow<connection>, message: option<string>) -> result<_, error>;
+
+    // not yet implemented, from the @connection category:
+    //   ASKING
+    //   CLIENT CACHING
+    //   CLIENT CAPA
+    //   CLIENT GETNAME
+    //   CLIENT GETREDIR
+    //   CLIENT ID
+    //   CLIENT IMPORT-SOURCE
+    //   CLIENT INFO
+    //   CLIENT KILL
+    //   CLIENT LIST
+    //   CLIENT NO-EVICT
+    //   CLIENT NO-TOUCH
+    //   CLIENT PAUSE
+    //   CLIENT REPLY
+    //   CLIENT SETINFO
+    //   CLIENT SETNAME
+    //   CLIENT TRACKING
+    //   CLIENT TRACKINGINFO
+    //   CLIENT UNBLOCK
+    //   CLIENT UNPAUSE
+    //   COMMAND
+    //   COMMAND COUNT
+    //   COMMAND DOCS
+    //   COMMAND GETKEYS
+    //   COMMAND GETKEYSANDFLAGS
+    //   COMMAND INFO
+    //   COMMAND LIST
+    //   ECHO
+    //   QUIT
+    //   READONLY
+    //   READWRITE
+    //   RESET
+    //   SELECT
+    //   WAIT
+    //   WAITAOF
+
+
+    // geo commands
+
+    // not yet implemented, from the @geo category:
+    //   GEOADD
+    //   GEODIST
+    //   GEOHASH
+    //   GEOPOS
+    //   GEORADIUS
+    //   GEORADIUS_RO
+    //   GEORADIUSBYMEMBER
+    //   GEORADIUSBYMEMBER_RO
+    //   GEOSEARCH
+    //   GEOSEARCHSTORE
+
+
+    // hash commands
+
+    /// Removes the specified fields from the hash stored at key.
+    ///
+    /// HDEL key field [ field ... ]
+    /// https://valkey.io/commands/hdel/
+    hdel: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<integer, error>;
+
+    /// Returns if field is an existing field in the hash stored at key.
+    ///
+    /// HEXISTS key field
+    /// https://valkey.io/commands/hexists/
+    hexists: async func(connection: borrow<connection>, key: string, field: string) -> result<bool, error>;
+
+    /// Manipulate the expiration time for existing hash fields.
+    ///
+    /// HEXPIRE key seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hexpire/
+    hexpire: async func(connection: borrow<connection>, key: string, seconds: duration, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+
+    /// Manipulate the expiration time for existing hash fields.
+    ///
+    /// HEXPIREAT key unix-time-seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hexpireat/
+    hexpireat: async func(connection: borrow<connection>, key: string, seconds: instant, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+
+    /// Returns the value associated with field in the hash stored at key.
+    ///
+    /// HGET key field
+    /// https://valkey.io/commands/hget/
+    hget: async func(connection: borrow<connection>, key: string, field: string) -> result<option<string>, error>;
+
+    /// Returns all fields and values of the hash stored at key.
+    ///
+    /// HGETALL key
+    /// https://valkey.io/commands/hgetall/
+    hgetall: async func(connection: borrow<connection>, key: string) -> result<map<string, string>, error>;
+
+    /// Increments the number stored at field in the hash stored at key by increment.
+    ///
+    /// HINCRBY key field increment
+    /// https://valkey.io/commands/hincrby/
+    hincrby: async func(connection: borrow<connection>, key: string, field: string, increment: integer) -> result<integer, error>;
+
+    /// Increment the specified field of a hash stored at key, and representing a floating point number, by the specified increment.
+    ///
+    /// HINCRBYFLOAT key field increment
+    /// https://valkey.io/commands/hincrbyfloat/
+    hincrbyfloat: async func(connection: borrow<connection>, key: string, field: string, increment: double) -> result<double, error>;
+
+    /// Returns all field names in the hash stored at key.
+    ///
+    /// HKEYS key
+    /// https://valkey.io/commands/hkeys/
+    hkeys: async func(connection: borrow<connection>, key: string) -> result<list<string>, error>;
+
+    /// Returns the number of fields contained in the hash stored at key.
+    ///
+    /// HLEN key
+    /// https://valkey.io/commands/hlen/
+    hlen: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// Returns the values associated with the specified fields in the hash stored at key.
+    ///
+    /// HMGET key field [ field ... ]
+    /// https://valkey.io/commands/hmget/
+    hmget: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<option<string>>, error>;
+
+    /// Sets the specified fields to their respective values in the hash stored at key.
+    ///
+    /// HMSET key field value [ field value ... ]
+    /// https://valkey.io/commands/hmset/
+    hmset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string>>) -> result<_, error>;
+
+    /// A random field from the hash value stored at key.
+    ///
+    /// Also see `hrandfield-count` and `hrandfield-count-withvalues`.
+    ///
+    /// HRANDFIELD key
+    /// https://valkey.io/commands/hrandfield/
+    hrandfield: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+
+    /// A random set of fields from the hash value stored at key up to the count.
+    ///
+    /// Also see `hrandfield` and `hrandfield-count-withvalues`.
+    ///
+    /// HRANDFIELD key count
+    /// https://valkey.io/commands/hrandfield/
+    hrandfield-count: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<string>, error>;
+
+    /// A random map of fields and values from the hash value stored at key up to the count.
+    ///
+    /// Also see `hrandfield` and `hrandfield-count`.
+    ///
+    /// HRANDFIELD key count WITHVALUES
+    /// https://valkey.io/commands/hrandfield/
+    hrandfield-count-withvalues: async func(connection: borrow<connection>, key: string, count: integer) -> result<map<string, string>, error>;
+
+    /// The position of an incremental iteration, e.g. with HSCAN.
+    ///
+    /// None starts a new iteration, the iteration is complete once the cursor returned is `0`.
+    type cursor = string;
+
+    /// Incrementally iterate over a collection of elements.
+    ///
+    /// See also `hscan-novalues`.
+    ///
+    /// HSCAN key cursor [ MATCH pattern ] [ COUNT count ]
+    /// https://valkey.io/commands/hscan/
+    hscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
+
+    /// Incrementally iterate over a collection of keys.
+    ///
+    /// See also `hscan`.
+    ///
+    /// HSCAN key cursor [ MATCH pattern ] [ COUNT count ] NOVALUES
+    /// https://valkey.io/commands/hscan/
+    hscan-novalues: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, map<string, string>>, error>;
+
+    /// Sets the specified fields to their respective values in the hash stored at key.
+    ///
+    /// HSET key field value [ field value ... ]
+    /// https://valkey.io/commands/hset/
+    hset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string>>) -> result<integer, error>;
+
+    /// Sets field in the hash stored at key to value, only if field does not yet exist.
+    ///
+    /// HSETNX key field value
+    /// https://valkey.io/commands/hsetnx/
+    hsetnx: async func(connection: borrow<connection>, key: string, field: string, value: string) -> result<bool, error>;
+
+    /// Returns the string length of the value associated with field in the hash stored at key.
+    ///
+    /// HSTRLEN key field
+    /// https://valkey.io/commands/hstrlen/
+    hstrlen: async func(connection: borrow<connection>, key: string, field: string) -> result<integer, error>;
+
+    /// All values in the hash stored at key.
+    ///
+    /// HVALS key
+    /// https://valkey.io/commands/hvals/
+    hvals: async func(connection: borrow<connection>, key: string) -> result<list<string>, error>;
+
+    // not yet implemented, from the @hash category:
+    //   HEXPIRETIME
+    //   HGETDEL
+    //   HGETEX
+    //   HPERSIST
+    //   HPEXPIRE
+    //   HPEXPIREAT
+    //   HPEXPIRETIME
+    //   HPTTL
+    //   HSETEX
+    //   HTTL
+
+
+    // hyperlog commands
+
+    // not yet implemented, from the @hyperloglog category:
+    //   PFADD
+    //   PFCOUNT
+    //   PFDEBUG
+    //   PFMERGE
+    //   PFSELFTEST
+
+
+    // keyspace commands
+
+    /// Removes the specified keys.
+    ///
+    /// DEL key [ key ... ]
+    /// https://valkey.io/commands/del/
+    del: async func(connection: borrow<connection>, keys: list<string>) -> result<integer, error>;
+
+    /// If key exists.
+    ///
+    /// EXISTS key [ key ... ]
+    /// https://valkey.io/commands/exists/
+    exists: async func(connection: borrow<connection>, keys: list<string>) -> result<integer, error>;
+
+    /// Set a timeout on key.
+    ///
+    /// EXPIRE key seconds [ NX | XX | GT | LT ]
+    /// https://valkey.io/commands/expire/
+    expire: async func(connection: borrow<connection>, key: string, seconds: duration, mode: option<ttl-mode>) -> result<bool, error>;
+
+    /// Set a timeout on key.
+    ///
+    /// EXPIREAT key unix-time-seconds [ NX | XX | GT | LT ]
+    /// https://valkey.io/commands/expireat/
+    expireat: async func(connection: borrow<connection>, key: string, seconds: instant, mode: option<ttl-mode>) -> result<bool, error>;
+
+    /// Returns all keys matching pattern.
+    ///
+    /// KEYS pattern
+    /// https://valkey.io/commands/keys/
+    keys: async func(connection: borrow<connection>, pattern: string) -> result<list<string>, error>;
+
+    // not yet implemented, from the @keyspace category:
+    //   CLUSTERSCAN
+    //   CLUSTER FLUSHSLOT
+    //   COPY
+    //   DBSIZE
+    //   DUMP
+    //   EXPIRETIME
+    //   FLUSHALL
+    //   FLUSHDB
+    //   MIGRATE
+    //   MOVE
+    //   OBJECT ENCODING
+    //   OBJECT FREQ
+    //   OBJECT IDLETIME
+    //   OBJECT REFCOUNT
+    //   PERSIST
+    //   PEXPIRE
+    //   PEXPIREAT
+    //   PEXPIRETIME
+    //   PTTL
+    //   RANDOMKEY
+    //   RENAME
+    //   RENAMENX
+    //   RESTORE
+    //   RESTORE-ASKING
+    //   SCAN
+    //   SWAPDB
+    //   TOUCH
+    //   TTL
+    //   TYPE
+    //   UNLINK
+
+
+    // list commands
+
+    // not yet implemented, from the @list category:
+    //   BLMOVE
+    //   BLMPOP
+    //   BLPOP
+    //   BRPOP
+    //   BRPOPLPUSH
+    //   LINDEX
+    //   LINSERT
+    //   LLEN
+    //   LMOVE
+    //   LMPOP
+    //   LPOP
+    //   LPOS
+    //   LPUSH
+    //   LPUSHX
+    //   LRANGE
+    //   LREM
+    //   LSET
+    //   LTRIM
+    //   RPOP
+    //   RPOPLPUSH
+    //   RPUSH
+    //   RPUSHX
+    //   SORT
+    //   SORT_RO
+
+
+    // pubsub commands
+
+    /// Subscribes the client to the given patterns.
+    ///
+    /// PSUBSCRIBE pattern [ pattern ... ]
+    /// https://valkey.io/commands/psubscribe/
+    psubscribe: async func(connection: borrow<connection>, patterns: list<string>) -> result<_, error>;
+
+    /// Posts a message to the given channel.
+    ///
+    /// PUBLISH channel message
+    /// https://valkey.io/commands/publish/
+    publish: async func(connection: borrow<connection>, channel: string, message: string) -> result<integer, error>;
+
+    /// Lists the currently active channels.
+    ///
+    /// PUBSUB CHANNELS [ pattern ]
+    /// https://valkey.io/commands/pubsub-channels/
+    pubsub-channels: async func(connection: borrow<connection>, pattern: option<string>) -> result<list<string>, error>;
+
+    /// Returns the number of unique patterns that are subscribed to by clients.
+    ///
+    /// PUBSUB NUMPAT
+    /// https://valkey.io/commands/pubsub-numpat/
+    pubsub-numpat: async func(connection: borrow<connection>) -> result<integer, error>;
+
+    /// Returns the number of subscribers (exclusive of clients subscribed to patterns) for the specified channels.
+    ///
+    /// PUBSUB NUMSUB [ channel ] [ [ channel ] ... ]
+    /// https://valkey.io/commands/pubsub-numsub/
+    pubsub-numsub: async func(connection: borrow<connection>, channels: list<string>) -> result<map<string, integer>, error>;
+
+    /// Lists the currently active shard channels.
+    ///
+    /// PUBSUB SHARDCHANNELS [ pattern ]
+    /// https://valkey.io/commands/pubsub-shardchannels/
+    pubsub-shardchannels: async func(connection: borrow<connection>, pattern: option<string>) -> result<list<string>, error>;
+
+    /// Returns the number of subscribers for the specified shard channels.
+    ///
+    /// PUBSUB SHARDNUMSUB [ shardchannel [ shardchannel ... ] ]
+    /// https://valkey.io/commands/pubsub-shardnumsub/
+    pubsub-shardnumsub: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<map<string, integer>, error>;
+
+    /// Unsubscribes the client from the given patterns, or from all of them if none is given.
+    ///
+    /// PUNSUBSCRIBE [ pattern [ pattern ... ] ]
+    /// https://valkey.io/commands/punsubscribe/
+    punsubscribe: async func(connection: borrow<connection>, patterns: list<string>) -> result<_, error>;
+
+    /// Posts a message to the given shard channel.
+    ///
+    /// SPUBLISH shardchannel message
+    /// https://valkey.io/commands/spublish/
+    spublish: async func(connection: borrow<connection>, shardchannel: string, message: string) -> result<integer, error>;
+
+    /// Subscribes the client to the specified shard channels.
+    ///
+    /// SSUBSCRIBE shardchannel [ shardchannel ... ]
+    /// https://valkey.io/commands/ssubscribe/
+    ssubscribe: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<_, error>;
+
+    /// Subscribes the client to the specified channels.
+    ///
+    /// SUBSCRIBE channel [ channel ... ]
+    /// https://valkey.io/commands/subscribe/
+    subscribe: async func(connection: borrow<connection>, channels: list<string>) -> result<_, error>;
+
+    /// Unsubscribes the client from the given shard channels, or from all of them if none is given.
+    ///
+    /// SUNSUBSCRIBE [ shardchannel ] [ [ shardchannel ] ... ]
+    /// https://valkey.io/commands/sunsubscribe/
+    sunsubscribe: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<_, error>;
+
+    /// Unsubscribes the client from the given channels, or from all of them if none is given.
+    ///
+    /// UNSUBSCRIBE [ channel ] [ [ channel ] ... ]
+    /// https://valkey.io/commands/unsubscribe/
+    unsubscribe: async func(connection: borrow<connection>, channels: list<string>) -> result<_, error>;
+
+
+    // scripting commands
+
+    // not yet implemented, from the @scripting category:
+    //   EVAL
+    //   EVAL_RO
+    //   EVALSHA
+    //   EVALSHA_RO
+    //   FCALL
+    //   FCALL_RO
+    //   FUNCTION DELETE
+    //   FUNCTION DUMP
+    //   FUNCTION FLUSH
+    //   FUNCTION KILL
+    //   FUNCTION LIST
+    //   FUNCTION LOAD
+    //   FUNCTION RESTORE
+    //   FUNCTION STATS
+    //   SCRIPT DEBUG
+    //   SCRIPT EXISTS
+    //   SCRIPT FLUSH
+    //   SCRIPT KILL
+    //   SCRIPT LOAD
+    //   SCRIPT SHOW
+
+
+    // set commands
+
+    // not yet implemented, from the @set category:
+    //   SADD
+    //   SCARD
+    //   SDIFF
+    //   SDIFFSTORE
+    //   SINTER
+    //   SINTERCARD
+    //   SINTERSTORE
+    //   SISMEMBER
+    //   SMEMBERS
+    //   SMISMEMBER
+    //   SMOVE
+    //   SORT
+    //   SORT_RO
+    //   SPOP
+    //   SRANDMEMBER
+    //   SREM
+    //   SSCAN
+    //   SUNION
+    //   SUNIONSTORE
+
+
+    // sortedset commands
+
+
+    // not yet implemented, from the @sortedset category:
+    //   BZMPOP
+    //   BZPOPMAX
+    //   BZPOPMIN
+    //   SORT
+    //   SORT_RO
+    //   ZADD
+    //   ZCARD
+    //   ZCOUNT
+    //   ZDIFF
+    //   ZDIFFSTORE
+    //   ZINCRBY
+    //   ZINTER
+    //   ZINTERCARD
+    //   ZINTERSTORE
+    //   ZLEXCOUNT
+    //   ZMPOP
+    //   ZMSCORE
+    //   ZPOPMAX
+    //   ZPOPMIN
+    //   ZRANDMEMBER
+    //   ZRANGE
+    //   ZRANGEBYLEX
+    //   ZRANGEBYSCORE
+    //   ZRANGESTORE
+    //   ZRANK
+    //   ZREM
+    //   ZREMRANGEBYLEX
+    //   ZREMRANGEBYRANK
+    //   ZREMRANGEBYSCORE
+    //   ZREVRANGE
+    //   ZREVRANGEBYLEX
+    //   ZREVRANGEBYSCORE
+    //   ZREVRANK
+    //   ZSCAN
+    //   ZSCORE
+    //   ZUNION
+    //   ZUNIONSTORE
+
+
+    // stream commands
+
+    /// The ID of a stream entry, `<milliseconds-time>-<sequence-number>`, e.g. `1526919030474-55`.
+    ///
+    /// Commands that add an entry also accept `*`, for the server to generate the ID.
+    type stream-id = string;
+
+    /// How a stream is trimmed, e.g. with XADD or XTRIM.
+    variant stream-trim {
+        /// Evicts entries as long as the stream's length exceeds the specified threshold, where threshold is a positive integer.
+        maxlen(stream-trim-maxlen),
+        /// Evicts entries with IDs lower than threshold, where threshold is a stream ID.
+        minid(stream-trim-minid),
+    }
+
+    /// Trims the stream to a maximum length, `MAXLEN [ = | ~ ] threshold [ LIMIT count ]`.
+    record stream-trim-maxlen {
+        /// Exact, `=`, when none.
+        efficiency: option<stream-trim-efficiency>,
+        /// The maximum number of entries kept.
+        threshold: integer,
+        /// The maximum number of entries evicted, only with nearly exact trimming, `0` for no limit.
+        limit: option<integer>,
+    }
+
+    /// Trims the entries with lower IDs, `MINID [ = | ~ ] threshold [ LIMIT count ]`.
+    record stream-trim-minid {
+        /// Exact, `=`, when none.
+        efficiency: option<stream-trim-efficiency>,
+        /// The lowest ID kept.
+        threshold: stream-id,
+        /// The maximum number of entries evicted, only with nearly exact trimming, `0` for no limit.
+        limit: option<integer>,
+    }
+
+    /// How exactly a stream is trimmed. Nearly exact trimming is more efficient, the stream may keep a
+    /// few entries more than the threshold.
+    enum stream-trim-efficiency {
+        /// `=`: exact trimming
+        exact,
+        /// `~`: nearly exact trimming
+        mearly-exact,
+    }
+
+    /// Removes one or multiple messages from the Pending Entries List (PEL) of a stream consumer group.
+    ///
+    /// XACK key group ID [ ID ... ]
+    /// https://valkey.io/commands/xack/
+    xack: async func(connection: borrow<connection>, key: string, group: string, ids: list<stream-id>) -> result<integer, error>;
+
+    /// Appends the specified stream entry to the stream at the specified key.
+    ///
+    /// XADD key [ NOMKSTREAM ] [ 〈 MAXLEN | MINID 〉 [ = | ~ ] threshold [ LIMIT count ] ] 〈 * | id 〉 field value [ field value ... ]
+    /// https://valkey.io/commands/xadd/
+    xadd: async func(connection: borrow<connection>, key: string, nomkstream: bool, trim: option<stream-trim>, id: stream-id, field-and-values: list<tuple<string, string>>) -> result<option<stream-id>, error>;
+
+    /// Transfers ownership of pending stream entries that match the specified criteria.
+    ///
+    /// See also `xautoclaim-justid`
+    ///
+    /// A start of none scans from the beginning, `0-0`. The next start is returned, none once the scan
+    /// is complete, along with the IDs of claimed entries that no longer exist, which are removed
+    /// from the pending entries list.
+    ///
+    /// XAUTOCLAIM key group consumer min-idle-time start [ COUNT count ]
+    /// https://valkey.io/commands/xautoclaim/
+    xautoclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<tuple<stream-id, map<string, string>>>, list<stream-id>>, error>;
+
+    /// Transfers ownership of pending stream entries that match the specified criteria.
+    ///
+    /// See also `xautoclaim`
+    ///
+    /// A start of none scans from the beginning, `0-0`. The next start is returned, none once the scan
+    /// is complete, along with the IDs of claimed entries that no longer exist, which are removed
+    /// from the pending entries list.
+    ///
+    /// XAUTOCLAIM key group consumer min-idle-time start [ COUNT count ] JUSTID
+    /// https://valkey.io/commands/xautoclaim/
+    xautoclaim-justid: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<stream-id>, list<stream-id>>, error>;
+
+
+    /// Options of XCLAIM.
+    record xclaim-opts {
+        /// `IDLE ms`: sets the idle time of the entries, the time since they were last delivered, instead
+        /// of resetting it.
+        idle: option<duration>,
+        /// `TIME unix-time-milliseconds`: sets the idle time of the entries to the time since this instant.
+        time: option<instant>,
+        /// `RETRYCOUNT count`: sets the delivery count of the entries, instead of incrementing it.
+        retrycount: option<integer>,
+        /// `FORCE`: claims the entries even when they are not pending for any consumer, as long as they
+        /// exist in the stream.
+        force: bool,
+        /// `LASTID lastid`: sets the ID of the last entry delivered to the group.
+        lastid: option<stream-id>,
+    }
+
+    /// Changes the ownership of a pending message, so that the new owner is the consumer specified as the command argument.
+    ///
+    /// Also see `xclaim-justid`
+    ///
+    /// XCLAIM key group consumer min-idle-time ID [ ID ... ] [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] [ LASTID lastid ]
+    /// https://valkey.io/commands/xclaim/
+    xclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
+
+    /// Changes the ownership of a pending message, so that the new owner is the consumer specified as the command argument.
+    ///
+    /// Also see `xclaim`
+    ///
+    /// XCLAIM key group consumer min-idle-time ID [ ID ... ] [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] JUSTID [ LASTID lastid ]
+    /// https://valkey.io/commands/xclaim/
+    xclaim-justid: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<stream-id>, error>;
+
+    /// Removes the specified entries from a stream, and returns the number of entries deleted.
+    ///
+    /// XDEL key ID [ ID ... ]
+    /// https://valkey.io/commands/xdel/
+    xdel: async func(connection: borrow<connection>, key: string, ids: list<stream-id>) -> result<integer, error>;
+
+    /// Create a new consumer group uniquely identified by <groupname> for the stream stored at <key>.
+    ///
+    /// XGROUP CREATE key group 〈 id | $ 〉 [ MKSTREAM ] [ ENTRIESREAD entriesread ]
+    /// https://valkey.io/commands/xgroup-create/
+    xgroup-create: async func(connection: borrow<connection>, key: string, group: string, id: stream-id, mkstream: bool, entriesread: option<stream-id>) -> result<_, error>;
+
+    /// Create a consumer named <consumername> in the consumer group <groupname> of the stream that's stored at <key>.
+    ///
+    /// XGROUP CREATECONSUMER key group consumer
+    /// https://valkey.io/commands/xgroup-createconsumer/
+    xgroup-createconsumer: async func(connection: borrow<connection>, key: string, group: string, consumer: string) -> result<bool, error>;
+
+    /// The XGROUP DELCONSUMER command deletes a consumer from the consumer group.
+    ///
+    /// XGROUP DELCONSUMER key group consumer
+    /// https://valkey.io/commands/xgroup-delconsumer/
+    xgroup-delconsumer: async func(connection: borrow<connection>, key: string, group: string, consumer: string) -> result<integer, error>;
+
+    /// Completely destroys the consumer group.
+    ///
+    /// XGROUP DESTROY key group
+    /// https://valkey.io/commands/xgroup-destroy/
+    xgroup-destroy: async func(connection: borrow<connection>, key: string, group: string) -> result<bool, error>;
+
+    /// Set the last delivered ID for a consumer group.
+    ///
+    /// XGROUP SETID key group 〈 id | $ 〉 [ ENTRIESREAD entriesread ]
+    /// https://valkey.io/commands/xgroup-setid/
+    xgroup-setid: async func(connection: borrow<connection>, key: string, group: string, id: stream-id, entriesread: option<stream-id>) -> result<_, error>;
+
+    /// A consumer of a group, see `xinfo-consumers`.
+    record xinfo-consumer {
+        /// The consumer's name.
+        name: string,
+        /// The number of entries pending for the consumer.
+        pending: integer,
+        /// The time since the consumer last attempted an interaction, e.g. XREADGROUP, XCLAIM or
+        /// XAUTOCLAIM.
+        idle: duration,
+        /// The time since the consumer last interacted successfully, e.g. read or claimed entries.
+        /// None when the consumer has never been active.
+        inactive: option<duration>,
+    }
+
+    /// Consumers that belong to the <groupname> consumer group of the stream stored at <key>.
+    ///
+    /// XINFO CONSUMERS key group
+    /// https://valkey.io/commands/xinfo-consumers/
+    xinfo-consumers: async func(connection: borrow<connection>, key: string, group: string) -> result<list<xinfo-consumer>, error>;
+
+    /// A consumer group of a stream, see `xinfo-groups`.
+    record xinfo-group {
+        /// The group's name.
+        name: string,
+        /// The number of consumers in the group.
+        consumers: integer,
+        /// The ID of the last entry delivered to the group's consumers.
+        last-delivered-id: stream-id,
+        /// The logical read counter of the last entry delivered to the group's consumers, none when unknown.
+        entries-read: option<integer>,
+        /// The number of entries in the stream not yet delivered to the group's consumers, none when it
+        /// cannot be determined.
+        lag: option<integer>,
+    }
+
+    /// Consumer groups of the stream stored at <key>.
+    ///
+    /// XINFO GROUPS key
+    /// https://valkey.io/commands/xinfo-groups/
+    xinfo-groups: async func(connection: borrow<connection>, key: string) -> result<list<xinfo-group>, error>;
+
+    /// Information about a stream, see `xinfo-stream`.
+    record xinfo-stream-reply {
+        /// The number of entries in the stream.
+        length: integer,
+        /// The number of keys in the radix tree storing the stream.
+        radix-tree-keys: integer,
+        /// The number of nodes in the radix tree storing the stream.
+        radix-tree-nodes: integer,
+        /// The number of consumer groups of the stream.
+        groups: integer,
+        /// The ID of the last entry added to the stream.
+        last-generated-id: stream-id,
+        /// The highest ID deleted from the stream.
+        max-deleted-entry-id: stream-id,
+        /// The number of entries added to the stream over its lifetime.
+        entries-added: integer,
+        /// The ID and fields of the first entry.
+        /// None when the stream is empty.
+        first-entry: option<tuple<stream-id, map<string, string>>>,
+        /// The ID and fields of the last entry.
+        /// None when the stream is empty.
+        last-entry: option<tuple<stream-id, map<string, string>>>,
+    }
+
+    /// Information about the stream stored at <key>.
+    ///
+    /// See also `xinfo-stream-full`
+    ///
+    /// XINFO STREAM key
+    /// https://valkey.io/commands/xinfo-stream/
+    xinfo-stream: async func(connection: borrow<connection>, key: string) -> result<xinfo-stream-reply, error>;
+
+    /// Information about a stream, its entries and consumer groups, see `xinfo-stream-full`.
+    record xinfo-stream-reply-full {
+        /// The number of entries in the stream.
+        length: integer,
+        /// The number of keys in the radix tree storing the stream.
+        radix-tree-keys: integer,
+        /// The number of nodes in the radix tree storing the stream.
+        radix-tree-nodes: integer,
+        /// The ID of the last entry added to the stream.
+        last-generated-id: stream-id,
+        /// The highest ID deleted from the stream.
+        max-deleted-entry-id: stream-id,
+        /// The number of entries added to the stream over its lifetime.
+        entries-added: integer,
+        /// The ID and fields of the entries, in ascending ID order, up to the count given.
+        entries: list<tuple<stream-id, map<string, string>>>,
+        /// The consumer groups of the stream.
+        groups: list<xinfo-stream-reply-full-group>,
+    }
+
+    /// A consumer group of a stream, with its pending entries and consumers.
+    record xinfo-stream-reply-full-group {
+        /// The group's name.
+        name: string,
+        /// The ID of the last entry delivered to the group's consumers.
+        last-delivered-id: stream-id,
+        /// The logical read counter of the last entry delivered to the group's consumers, none when unknown.
+        entries-read: option<integer>,
+        /// The number of entries in the stream not yet delivered to the group's consumers, none when it
+        /// cannot be determined.
+        lag: option<integer>,
+        /// The number of entries in the group's pending entries list (PEL), delivered but not acknowledged.
+        pel-count: integer,
+        /// The group's pending entries, the ID of each, the consumer it was delivered to, when it was
+        /// last delivered and the number of times it was delivered.
+        pending: list<tuple<stream-id, string, instant, integer>>,
+        /// The group's consumers.
+        consumers: list<xinfo-stream-reply-full-consumer>,
+    }
+
+    /// A consumer of a group, with its pending entries.
+    record xinfo-stream-reply-full-consumer {
+        /// The consumer's name.
+        name: string,
+        /// When the consumer last attempted an interaction, e.g. XREADGROUP, XCLAIM or XAUTOCLAIM.
+        seen-time: instant,
+        /// When the consumer last interacted successfully, e.g. read or claimed entries.
+        /// None when the consumer has never been active.
+        active-time: option<instant>,
+        /// The number of entries pending for the consumer, delivered but not acknowledged.
+        pel-count: integer,
+        /// The consumer's pending entries, the ID of each, when it was last delivered and the number of
+        /// times it was delivered.
+        pending: list<tuple<stream-id, instant, integer>>,
+    }
+
+    /// Information about the stream stored at <key>.
+    ///
+    /// See also `xinfo-stream`
+    ///
+    /// XINFO STREAM key FULL [ COUNT count ]
+    /// https://valkey.io/commands/xinfo-stream/
+    xinfo-stream-full: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<xinfo-stream-reply-full, error>;
+
+    /// Number of entries inside a stream.
+    ///
+    /// XLEN key
+    /// https://valkey.io/commands/xlen/
+    xlen: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// List of pending messages.
+    ///
+    /// See also `xpending-extended`.
+    ///
+    /// XPENDING key group
+    /// https://valkey.io/commands/xpending/
+    xpending: async func(connection: borrow<connection>, key: string, group: string) -> result<tuple<integer, stream-id, stream-id, map<string, integer>>, error>;
+
+    /// List of pending messages.
+    ///
+    /// See also `xpending`.
+    ///
+    /// XPENDING key group [ IDLE min-idle-time ] start end count [ consumer ]
+    /// https://valkey.io/commands/xpending/
+    xpending-extended: async func(connection: borrow<connection>, key: string, group: string, min-idle-time: option<duration>, start: stream-id, end: stream-id, count: integer, consumer: option<string>) -> result<list<tuple<stream-id, string, integer, integer>>, error>;
+
+    /// Stream entries matching a given range of IDs.
+    ///
+    /// XRANGE key start end [ COUNT count ]
+    /// https://valkey.io/commands/xrange/
+    xrange: async func(connection: borrow<connection>, key: string, start: stream-id, end: stream-id, count: option<integer>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
+
+    /// Read data from one or multiple streams, only returning entries with an ID greater than the last received ID reported by the caller.
+    ///
+    /// XREAD [ COUNT count ] [ BLOCK milliseconds ] STREAMS key [ key ... ] ID [ ID ... ]
+    /// https://valkey.io/commands/xread/
+    xread: async func(connection: borrow<connection>, count: option<integer>, block: option<duration>, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, map<string, string>>>>>, error>;
+
+    /// Special version of the XREAD command with support for consumer groups.
+    ///
+    /// XREADGROUP GROUP group consumer [ COUNT count ] [ BLOCK milliseconds ] [ NOACK ] STREAMS key [ key ... ] ID [ ID ... ]
+    /// https://valkey.io/commands/xreadgroup/
+    xreadgroup: async func(connection: borrow<connection>, group: string, consumer: string, count: option<integer>, block: option<duration>, noack: bool, keys: list<string>, ids: list<string>) -> result<option<map<string, list<tuple<stream-id, list<string>>>>>, error>;
+
+    /// XRANGE, but returning the entries in reverse order.
+    ///
+    /// XREVRANGE key end start [ COUNT count ]
+    /// https://valkey.io/commands/xrevrange/
+    xrevrange: async func(connection: borrow<connection>, key: string, end: stream-id, start: stream-id, count: option<integer>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
+
+    /// Internal command. It is used by a Valkey primary to replicate the last delivered ID of streams.
+    ///
+    /// XSETID key last-id [ ENTRIESADDED entries-added ] [ MAXDELETEDID max-deleted-id ]
+    /// https://valkey.io/commands/xsetid/
+    xsetid: async func(connection: borrow<connection>, key: string, last-id: stream-id, entries-added: option<integer>, max-deleted-id: option<stream-id>) -> result<_, error>;
+
+    /// Trims the stream by evicting older entries.
+    ///
+    /// XTRIM key 〈 MAXLEN | MINID 〉 [ = | ~ ] threshold [ LIMIT count ]
+    /// https://valkey.io/commands/xtrim/
+    xtrim: async func(connection: borrow<connection>, key: string, trim: stream-trim) -> result<integer, error>;
+
+
+    // string commands
+
+
+    /// Appends the value at the end of the string.
+    ///
+    /// APPEND key value
+    /// https://valkey.io/commands/append/
+    append: async func(connection: borrow<connection>, key: string, value: string) -> result<integer, error>;
+
+    /// Decrements the number stored at key by one.
+    ///
+    /// DECR key
+    /// https://valkey.io/commands/decr/
+    decr: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// Decrements the number stored at key by decrement.
+    ///
+    /// DECRBY key decrement
+    /// https://valkey.io/commands/decrby/
+    decrby: async func(connection: borrow<connection>, key: string, decrement: integer) -> result<integer, error>;
+
+    /// Deletes the key if its value matches the given string.
+    ///
+    /// DELIFEQ key value
+    /// https://valkey.io/commands/delifeq/
+    delifeq: async func(connection: borrow<connection>, key: string, value: string) -> result<bool, error>;
+
+
+    /// Get the value of key.
+    ///
+    /// GET key
+    /// https://valkey.io/commands/get/
+    get: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+
+    /// Get the value of key and delete the key.
+    ///
+    /// GETDEL key
+    /// https://valkey.io/commands/getdel/
+    getdel: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+
+    /// The expiration to set on a key, see `getex`.
+    variant getex-ttl {
+        /// Set the specified expire time, in seconds.
+        ex(duration),
+        /// Set the specified expire time, in milliseconds.
+        px(duration),
+        /// Set the specified Unix time at which the key will expire, in seconds.
+        exat(instant),
+        /// Set the specified Unix time at which the key will expire, in milliseconds.
+        pxat(instant),
+        /// Remove the time to live associated with the key.
+        persist,
+    }
+
+    /// Get the value of key and optionally set its expiration.
+    ///
+    /// GETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ]
+    /// https://valkey.io/commands/getex/
+    getex: async func(connection: borrow<connection>, key: string, ttl: option<getex-ttl>) -> result<option<string>, error>;
+
+    /// Returns the substring of the string value stored at key, determined by the offsets start and end.
+    ///
+    /// GETRANGE key start end
+    /// https://valkey.io/commands/getrange/
+    getrange: async func(connection: borrow<connection>, key: string, start: integer, end: integer) -> result<string, error>;
+
+    /// Atomically sets key to value and returns the old value stored at key.
+    ///
+    /// GETSET key value
+    /// https://valkey.io/commands/getset/
+    getset: async func(connection: borrow<connection>, key: string, value: string) -> result<option<string>, error>;
+
+    /// Increments the number stored at key by one.
+    ///
+    /// INCR key
+    /// https://valkey.io/commands/incr/
+    incr: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// Increments the number stored at key by increment.
+    ///
+    /// INCRBY key increment
+    /// https://valkey.io/commands/incrby/
+    incrby: async func(connection: borrow<connection>, key: string, increment: integer) -> result<integer, error>;
+
+    /// Increment the string representing a floating point number stored at key by the specified increment.
+    ///
+    /// INCRBYFLOAT key increment
+    /// https://valkey.io/commands/incrbyfloat/
+    incrbyfloat: async func(connection: borrow<connection>, key: string, increment: double) -> result<double, error>;
+
+    /// The LCS command implements the longest common subsequence algorithm.
+    ///
+    /// See also `lcs-len` and `lcs-idx`
+    ///
+    /// LCS key1 key2
+    /// https://valkey.io/commands/lcs/
+    lcs: async func(connection: borrow<connection>, key1: string, key2: string) -> result<string, error>;
+
+    /// The LCS command implements the longest common subsequence algorithm.
+    ///
+    /// See also `lcs` and `lcs-idx`
+    ///
+    /// LCS key1 key2 LEN
+    /// https://valkey.io/commands/lcs/
+    lcs-len: async func(connection: borrow<connection>, key1: string, key2: string) -> result<integer, error>;
+
+    /// The longest common subsequence of two strings, as the ranges matching in each, see `lcs-idx`.
+    record lcs-idx-reply {
+        /// The ranges that match, from the end of the strings to their start.
+        matches: list<lcs-idx-match>,
+        /// The length of the longest common subsequence.
+        len: integer,
+    }
+
+    /// A part of the longest common subsequence.
+    record lcs-idx-match {
+        /// The inclusive start and end positions of the match in the first key's string.
+        key1-range: tuple<integer, integer>,
+        /// The inclusive start and end positions of the match in the second key's string.
+        key2-range: tuple<integer, integer>,
+        /// The length of the match, with `with-match-len`.
+        len: option<integer>,
+    }
+
+    /// The LCS command implements the longest common subsequence algorithm.
+    ///
+    /// See also `lcs` and `lcs-len`
+    ///
+    /// LCS key1 key2 IDX [ MINMATCHLEN min-match-len ] [ WITHMATCHLEN ]
+    /// https://valkey.io/commands/lcs/
+    lcs-idx: async func(connection: borrow<connection>, key1: string, key2: string, min-match-len: option<integer>, with-match-len: bool ) -> result<lcs-idx-reply, error>;
+
+    /// Returns the values of all specified keys.
+    ///
+    /// MGET key [ key ... ]
+    /// https://valkey.io/commands/mget/
+    mget: async func(connection: borrow<connection>, keys: list<string>) -> result<list<option<string>>, error>;
+
+    /// Sets the given keys to their respective values.
+    ///
+    /// MSET key value [ key value ... ]
+    /// https://valkey.io/commands/mset/
+    mset: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string>>) -> result<_, error>;
+
+    /// The condition for setting the keys, see `msetex`.
+    variant msetex-precondition {
+        /// Only set the keys if all of them do not already exist.
+        nx,
+        /// Only set the keys if all of them already exist.
+        xx,
+    }
+
+    /// The expiration to set on the keys, see `msetex`.
+    type msetex-ttl = set-ttl;
+
+    /// Sets multiple key-value pairs while also assigning a shared expiration time to all the keys atomically.
+    ///
+    /// MSETEX numkeys key value [ key value ... ] [ NX | XX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
+    /// https://valkey.io/commands/msetex/
+    msetex: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string>>, precondition: option<msetex-precondition>, ttl: option<msetex-ttl>) -> result<bool, error>;
+
+    /// Sets the given keys to their respective values.
+    ///
+    /// MSETNX key value [ key value ... ]
+    /// https://valkey.io/commands/msetnx/
+    msetnx: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string>>) -> result<bool, error>;
+
+    /// Set key to hold the string value with expiration in milliseconds.
+    ///
+    /// PSETEX key milliseconds value
+    /// https://valkey.io/commands/psetex/
+    psetex: async func(connection: borrow<connection>, key: string, milliseconds: duration, value: string) -> result<_, error>;
+
+    /// The condition for setting a key, see `set`.
+    variant set-precondition {
+        /// Only set the key if it does not already exist.
+        nx,
+        /// Only set the key if it already exists.
+        xx,
+        /// Set the key if the comparison value matches the existing value.
+        ifeq(string),
+        /// Set the key if the comparison value does not match the existing value.
+        ifne(string),
+    }
+
+    /// The expiration to set on a key, see `set`.
+    variant set-ttl {
+        /// Set the specified expire time, in seconds.
+        ex(duration),
+        /// Set the specified expire time, in milliseconds.
+        px(duration),
+        /// Set the specified Unix time at which the key will expire, in seconds.
+        exat(instant),
+        /// Set the specified Unix time at which the key will expire, in milliseconds.
+        pxat(instant),
+        /// Retain the time to live associated with the keys.
+        keepttl,
+    }
+
+    /// Set key to hold the string value.
+    ///
+    /// SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
+    /// https://valkey.io/commands/set/
+    set: async func(connection: borrow<connection>, key: string, value: string, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<_, error>;
+
+    /// Set key to hold the string value. Returning the previous value.
+    ///
+    /// SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] GET [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
+    /// https://valkey.io/commands/set/
+    set-get: async func(connection: borrow<connection>, key: string, value: string, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<option<string>, error>;
+
+    /// Set key to hold the string value with expiration in seconds.
+    ///
+    /// SETEX key seconds value
+    /// https://valkey.io/commands/setex/
+    setex: async func(connection: borrow<connection>, key: string, seconds: duration, value: string) -> result<_, error>;
+
+    /// Set key to hold string value if key does not exist.
+    ///
+    /// SETNX key value
+    /// https://valkey.io/commands/setnx/
+    setnx: async func(connection: borrow<connection>, key: string, value: string) -> result<bool, error>;
+
+    /// Overwrites part of the string stored at key, starting at the specified offset, for the entire length of value.
+    ///
+    /// SETRANGE key offset value
+    /// https://valkey.io/commands/setrange/
+    setrange: async func(connection: borrow<connection>, key: string, offset: u32, value: string) -> result<integer, error>;
+
+    /// Returns the length of the string value stored at key.
+    ///
+    /// STRLEN key
+    /// hthttps://valkey.io/commands/strlen/
+    strlen: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// Returns the substring of the string value stored at key, determined by the offsets start and end.
+    ///
+    /// SUBSTR key start end
+    /// https://valkey.io/commands/substr/
+    substr: async func(connection: borrow<connection>, key: string, start: s32, end: s32) -> result<string, error>;
+
+
+    // transaction commands
+
+    // not yet implemented, from the @transaction category:
+    //   DISCARD
+    //   EXEC
+    //   MULTI
+    //   UNWATCH
+    //   WATCH
+
+}

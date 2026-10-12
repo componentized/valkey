@@ -56,9 +56,6 @@ pub mod bindings {
         world: "componentized:test-harness/harness",
         exports: { default: async | store },
         additional_derives: [PartialEq],
-        with: {
-            "wasi:clocks": wasmtime_wasi::p3::bindings::clocks,
-        },
     });
 }
 
@@ -134,15 +131,11 @@ fn from_codec(value: resp_codec::Value) -> Value {
 
 pub type Connection<'a> = bindings::exports::componentized::valkey::connection::GuestConnection<'a>;
 pub type Tcp = bindings::exports::componentized::valkey::tcp::Guest;
-pub use bindings::exports::wasmcloud::keyvalue;
 pub use bindings::exports::componentized::valkey::{
-    admin_commands,
-    connection_commands,
-    hash_commands,
-    keyspace_commands,
-    pubsub_commands,
+    admin_commands, connection_commands, hash_commands, keyspace_commands, pubsub_commands,
     string_commands,
 };
+pub use bindings::exports::wasmcloud::keyvalue;
 
 /// A bulk string, the type commands are sent as.
 pub fn bulk(value: &str) -> Value {
@@ -406,10 +399,7 @@ pub struct Ctx {
 }
 
 impl bindings::wasi::config::store::Host for Ctx {
-    fn get(
-        &mut self,
-        key: String,
-    ) -> Result<Option<String>, bindings::wasi::config::store::Error> {
+    fn get(&mut self, key: String) -> Result<Option<String>, bindings::wasi::config::store::Error> {
         Ok(self
             .config
             .iter()
@@ -557,7 +547,7 @@ impl Harness {
         ensure_built(name)?;
 
         let mut config = Config::new();
-        config.wasm_component_model_async(true);
+        config.wasm_component_model_map(true);
         let engine = Engine::new(&config)?;
         let component = Component::from_file(&engine, component_path(name))
             .with_context(|| format!("failed to load {name}"))?;

@@ -9,8 +9,8 @@
 /// command interfaces, e.g. `string-commands`, that borrow the connection, so command groups can be
 /// implemented independently of each other. The groups follow Valkey's ACL categories.
 interface connection {
-    use wasi:clocks/types@0.3.0.{duration};
-    use resp.{error as resp-error, value};
+    use wasi:clocks/system-clock@0.3.0.{duration, instant};
+    use resp.{error as resp-error, value, integer, double};
 
     /// The errors of a connection and of every command interface.
     variant error {
@@ -60,6 +60,10 @@ interface connection {
         ///
         /// Several commands may be in flight at once, replies are paired with commands in the order
         /// the commands were sent.
+        ///
+        /// SUBSCRIBE, PSUBSCRIBE, SSUBSCRIBE and their UNSUBSCRIBE counterparts have no reply, the
+        /// server confirms them with push messages, see `pushes`. Their call resolves to null once
+        /// the command is written.
         call: async func(command: list<value>) -> result<value, error>;
 
         /// Sends a command without waiting for its reply, resolving once the command is written.
@@ -70,6 +74,9 @@ interface connection {
         send: async func(command: list<value>) -> result<_, error>;
 
         /// Push messages, e.g. from SUBSCRIBE or client tracking, kept apart from replies.
+        ///
+        /// Values the server sends unprompted, when no command is waiting for a reply, are
+        /// included, e.g. the feed of MONITOR, which are not RESP push values.
         ///
         /// Each call returns a new stream that receives every push message arriving after the call,
         /// push messages arriving while no stream is open are dropped. A stream that falls too far

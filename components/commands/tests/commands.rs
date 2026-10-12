@@ -2,7 +2,7 @@
 //! `resp` and `tcp`. The test plays the server over a stub transport, checking the command sent
 //! and the conversion of its reply.
 
-use std::future::Future;
+use std::{collections::HashMap, future::Future};
 
 use test_harness::{
     Harness, Transport, Value, bulk, command, connection_commands, establish, hash_commands,
@@ -61,7 +61,14 @@ async fn string_commands() -> wasmtime::Result<()> {
             let (result, sent) = round_trip(
                 &mut transport,
                 ok(),
-                strings.call_set(accessor, conn, "key".to_string(), "value".to_string()),
+                strings.call_set(
+                    accessor,
+                    conn,
+                    "key".to_string(),
+                    "value".to_string(),
+                    None,
+                    None,
+                ),
             )
             .await;
             assert_eq!(sent, command(&["SET", "key", "value"]));
@@ -105,7 +112,7 @@ async fn keyspace_commands() -> wasmtime::Result<()> {
             )
             .await;
             assert_eq!(sent, command(&["DEL", "key"]));
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(1));
 
             let (result, sent) = round_trip(
                 &mut transport,
@@ -129,7 +136,7 @@ async fn keyspace_commands() -> wasmtime::Result<()> {
                 ),
             )
             .await;
-            assert_eq!(sent, command(&["EXPIRE", "key", "90", "NX"]));
+            assert_eq!(sent, command(&["EXPIRE", "key", "91", "NX"]));
             assert_eq!(result, Ok(ExpireResult::Applied));
 
             let (result, sent) = round_trip(
@@ -180,7 +187,7 @@ async fn hash_commands() -> wasmtime::Result<()> {
             )
             .await;
             assert_eq!(sent, command(&["HSET", "hash", "f", "v"]));
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(1));
 
             let (result, sent) = round_trip(
                 &mut transport,
@@ -201,10 +208,10 @@ async fn hash_commands() -> wasmtime::Result<()> {
             assert_eq!(sent, command(&["HGETALL", "hash"]));
             assert_eq!(
                 result,
-                Ok(vec![
+                Ok(HashMap::from([
                     ("f".to_string(), "v".to_string()),
                     ("g".to_string(), "w".to_string())
-                ])
+                ]))
             );
 
             let (result, _) = round_trip(
@@ -419,7 +426,7 @@ async fn hash_commands() -> wasmtime::Result<()> {
                 hashes.call_hdel(accessor, conn, key(), "f".to_string()),
             )
             .await;
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(1));
             Ok(())
         })
         .await
@@ -533,7 +540,7 @@ async fn admin_and_pubsub_commands() -> wasmtime::Result<()> {
             )
             .await;
             assert_eq!(sent, command(&["ACL", "DELUSER", "user"]));
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok(1));
 
             let (result, sent) = round_trip(
                 &mut transport,
@@ -576,6 +583,8 @@ async fn unexpected_replies_fail_the_command() -> wasmtime::Result<()> {
 /// The tests against a Valkey server on localhost:6379, ignored unless run with
 /// `make test-valkey`, which only runs the ignored tests in `with_valkey` modules.
 mod with_valkey {
+    use std::collections::HashMap;
+
     use super::*;
 
     /// Every command against a Valkey server on localhost:6379, run with
@@ -608,7 +617,14 @@ mod with_valkey {
                 assert!(hello.contains(&(s("proto"), Value::Integer(3))));
 
                 strings
-                    .call_set(accessor, conn, s("commands-test:string"), s("1"))
+                    .call_set(
+                        accessor,
+                        conn,
+                        s("commands-test:string"),
+                        s("1"),
+                        None,
+                        None,
+                    )
                     .await??;
                 assert_eq!(
                     strings
@@ -670,9 +686,8 @@ mod with_valkey {
                         vec![(s("f"), s("v")), (s("g"), s("w"))],
                     )
                     .await??;
-                let mut all = hashes.call_hgetall(accessor, conn, key()).await??;
-                all.sort();
-                assert_eq!(all, vec![(s("f"), s("v")), (s("g"), s("w"))]);
+                let all = hashes.call_hgetall(accessor, conn, key()).await??;
+                assert_eq!(all, HashMap::from([(s("f"), s("v")), (s("g"), s("w"))]));
                 assert_eq!(hashes.call_hlen(accessor, conn, key()).await??, 2);
                 assert_eq!(
                     hashes

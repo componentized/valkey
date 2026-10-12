@@ -1,18 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "components/admin-commands",
     "components/as-keyvalue",
     "components/commands",
     "components/connection",
-    "components/connection-commands",
     "components/dep-cli",
-    "components/hash-commands",
-    "components/keyspace-commands",
-    "components/pubsub-commands",
     "components/resp",
     "components/sample-http-incrementor",
-    "components/string-commands",
     "components/tcp",
     "components/tcp-connector",
     "crates/resp-codec",

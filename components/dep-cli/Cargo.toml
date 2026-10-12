@@ -8,5 +8,7 @@ license = "Apache-2.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-clap = { version = "4.6.1", features = ["derive"] }
+futures-channel = { workspace = true }
+futures-core = { workspace = true }
+resp-codec = { workspace = true }
 wit-bindgen = { workspace = true }

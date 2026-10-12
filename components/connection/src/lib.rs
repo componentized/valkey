@@ -5,7 +5,7 @@
 //!
 //! - the writer writes queued commands to the requests stream, in order
 //! - the reader reads the replies stream, handing each reply to the oldest command waiting for one,
-//!   and each push message to every reader of push messages
+//!   and each push message, or value the server sent unprompted, to every reader of push messages
 //! - the supervisor starts the work methods ask for that outlives them, e.g. keep-alive, since sync
 //!   methods have no task of their own to spawn it into
 //!
@@ -128,10 +128,7 @@ impl GuestConnection for ConnectionImpl {
     }
 
     async fn send(&self, command: Vec<Value>) -> Result<(), Error> {
-        let (written_tx, written_rx) = oneshot::channel();
-        enqueue(&self.0, command, Reply::Discard, Some(written_tx))?;
-        // the signal is dropped unsent when the transport closed first
-        written_rx.await.map_err(|_| closed_error(&self.0.state))
+        send(&self.0, command).await
     }
 
     fn pushes(&self) -> StreamReader<Value> {
@@ -139,7 +136,12 @@ impl GuestConnection for ConnectionImpl {
         let (tx, rx) = mpsc::channel(PUSH_BUFFER);
         let mut state = self.0.state.borrow_mut();
         // a closed connection drops the writer, closing the stream at once
-        if state.closed.is_none() && self.0.tasks.unbounded_send(Task::Pushes(rx, writer)).is_ok()
+        if state.closed.is_none()
+            && self
+                .0
+                .tasks
+                .unbounded_send(Task::Pushes(rx, writer))
+                .is_ok()
         {
             state.pushes.push(tx);
         }
@@ -154,19 +156,20 @@ impl GuestConnection for ConnectionImpl {
         };
         // a zero interval would ping whenever the connection is idle, treated as disabled
         if let Some(interval) = interval.filter(|interval| *interval > 0) {
-            let _ = self
-                .0
-                .tasks
-                .unbounded_send(Task::KeepAlive { generation, interval });
+            let _ = self.0.tasks.unbounded_send(Task::KeepAlive {
+                generation,
+                interval,
+            });
         }
     }
 }
 
 /// Queue a command, and where its reply goes, as one step so replies pair with commands in order.
+/// A command without a reply takes no place in the order.
 fn enqueue(
     inner: &Inner,
     command: Vec<Value>,
-    reply: Reply,
+    reply: Option<Reply>,
     written: Option<oneshot::Sender<()>>,
 ) -> Result<(), Error> {
     let mut state = inner.state.borrow_mut();
@@ -178,17 +181,50 @@ fn enqueue(
         .requests
         .unbounded_send(Request { command, written })
         .map_err(|_| Error::Closed(None))?;
-    state.pending.push_back(reply);
+    state.pending.extend(reply);
     Ok(())
 }
 
 async fn call(inner: &Inner, command: Vec<Value>) -> Result<Value, Error> {
+    if replies_with_pushes(&command) {
+        return send(inner, command).await.map(|()| Value::Null);
+    }
     let (reply_tx, reply_rx) = oneshot::channel();
-    enqueue(inner, command, Reply::Call(reply_tx), None)?;
+    enqueue(inner, command, Some(Reply::Call(reply_tx)), None)?;
     // the reply is dropped unsent when the connection closes, the reader fails it first
     reply_rx
         .await
         .unwrap_or_else(|_| Err(closed_error(&inner.state)))
+}
+
+async fn send(inner: &Inner, command: Vec<Value>) -> Result<(), Error> {
+    let reply = (!replies_with_pushes(&command)).then_some(Reply::Discard);
+    let (written_tx, written_rx) = oneshot::channel();
+    enqueue(inner, command, reply, Some(written_tx))?;
+    // the signal is dropped unsent when the transport closed first
+    written_rx.await.map_err(|_| closed_error(&inner.state))
+}
+
+/// Whether the command's replies are push messages, e.g. SUBSCRIBE, rather than a reply.
+///
+/// In RESP3 the server confirms each channel subscribed to, or unsubscribed from, with a push
+/// message. An error, e.g. for a command missing its channels, is a reply the server sends
+/// unprompted.
+fn replies_with_pushes(command: &[Value]) -> bool {
+    const COMMANDS: [&str; 6] = [
+        "SUBSCRIBE",
+        "PSUBSCRIBE",
+        "SSUBSCRIBE",
+        "UNSUBSCRIBE",
+        "PUNSUBSCRIBE",
+        "SUNSUBSCRIBE",
+    ];
+    match command.first() {
+        Some(Value::BulkString(name) | Value::String(name)) => COMMANDS
+            .iter()
+            .any(|command| name.eq_ignore_ascii_case(command)),
+        _ => false,
+    }
 }
 
 /// The error a command fails with once the connection closed.
@@ -236,8 +272,8 @@ async fn write_requests(
     }
 }
 
-/// Hand each reply to the oldest command waiting for one, and each push message to the readers of
-/// push messages, until the transport closes.
+/// Hand each reply to the oldest command waiting for one, and each push message, or value the server
+/// sent unprompted, to the readers of push messages, until the transport closes.
 async fn read_replies(
     state: Rc<RefCell<State>>,
     mut replies: StreamReader<Value>,
@@ -246,21 +282,22 @@ async fn read_replies(
     while let Some(value) = replies.next().await {
         let mut state = state.borrow_mut();
         state.activity += 1;
-        match value {
-            Value::Push(_) => {
-                // a reader that is full or gone is dropped, rather than holding up replies
-                state
-                    .pushes
-                    .retain_mut(|pushes| pushes.try_send(value.clone()).is_ok());
-            }
+        let value = match value {
+            Value::Push(_) => value,
             value => match state.pending.pop_front() {
                 Some(Reply::Call(reply)) => {
                     let _ = reply.send(reply_result(value));
+                    continue;
                 }
-                // a discarded reply, or one the server sent unprompted
-                Some(Reply::Discard) | None => {}
+                Some(Reply::Discard) => continue,
+                // sent unprompted, e.g. the feed of MONITOR
+                None => value,
             },
-        }
+        };
+        // a reader that is full or gone is dropped, rather than holding up replies
+        state
+            .pushes
+            .retain_mut(|pushes| pushes.try_send(value.clone()).is_ok());
     }
     let reason = match closed.await {
         Ok(()) => None,
@@ -361,7 +398,9 @@ async fn establish(
 /// The server's properties from the reply to HELLO, a map of property names to values.
 fn server_properties(reply: Value) -> Result<Vec<(String, Value)>, Error> {
     let Value::Map(entries) = reply else {
-        return Err(Error::Client(format!("unexpected reply to HELLO: {reply:?}")));
+        return Err(Error::Client(format!(
+            "unexpected reply to HELLO: {reply:?}"
+        )));
     };
     entries
         .into_iter()

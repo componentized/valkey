@@ -1,6 +1,6 @@
+use componentized::valkey::commands::{self, Duration};
 use componentized::valkey::connection::{Connection, Error as ValkeyError};
 use componentized::valkey::connector;
-use componentized::valkey::hash_commands::{self, Duration, HscanOpts};
 use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
 use exports::wasmcloud::keyvalue::batch::Guest as BatchGuest;
 use exports::wasmcloud::keyvalue::store::Guest as StoreGuest;
@@ -43,7 +43,7 @@ struct KeyvalueToValkeyBucket {
 
 impl GuestBucket for KeyvalueToValkeyBucket {
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
-        match hash_commands::hget(&self.connection, self.hash_key.clone(), key).await? {
+        match commands::hget(&self.connection, self.hash_key.clone(), key).await? {
             Some(value) => Ok(Some(value.into_bytes())),
             None => Ok(None),
         }
@@ -62,19 +62,24 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         });
 
         if options.if_not_exists {
-            match hash_commands::hsetnx(&self.connection, self.hash_key.clone(), key.clone(), value)
+            match commands::hsetnx(&self.connection, self.hash_key.clone(), key.clone(), value)
                 .await?
             {
                 true => (),
                 false => Err(Error::PreconditionFailed)?,
             }
         } else {
-            hash_commands::hset(&self.connection, self.hash_key.clone(), key.clone(), value).await?
+            commands::hset(
+                &self.connection,
+                self.hash_key.clone(),
+                vec![(key.clone(), value)],
+            )
+            .await?;
         }
         if let Some(ttl_ms) = options.ttl_ms {
             // HEXPIRE has whole second precision, rounded up so a short ttl does not expire at once
             let ttl: Duration = ttl_ms.div_ceil(1000) * 1_000_000_000;
-            hash_commands::hexpire(
+            commands::hexpire(
                 &self.connection,
                 self.hash_key.clone(),
                 ttl,
@@ -87,11 +92,12 @@ impl GuestBucket for KeyvalueToValkeyBucket {
     }
 
     async fn delete(&self, key: String) -> Result<(), Error> {
-        Ok(hash_commands::hdel(&self.connection, self.hash_key.clone(), key).await?)
+        commands::hdel(&self.connection, self.hash_key.clone(), vec![key]).await?;
+        Ok(())
     }
 
     async fn exists(&self, key: String) -> Result<bool, Error> {
-        Ok(hash_commands::hexists(&self.connection, self.hash_key.clone(), key).await?)
+        Ok(commands::hexists(&self.connection, self.hash_key.clone(), key).await?)
     }
 
     async fn list_keys(
@@ -99,18 +105,21 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         prefix: Option<String>,
         cursor: Option<String>,
     ) -> Result<KeyResponse, Error> {
-        let opts = HscanOpts {
-            match_: prefix.map(|prefix| format!("{}*", escape_glob(&prefix))),
-            count: None,
-            no_values: Some(true),
-        };
-        let (cursor, fields) =
-            hash_commands::hscan(&self.connection, self.hash_key.clone(), cursor, Some(opts))
-                .await?;
+        let match_ = prefix.map(|prefix| format!("{}*", escape_glob(&prefix)));
+        let count = None;
+
+        let (cursor, fields) = commands::hscan_novalues(
+            &self.connection,
+            self.hash_key.clone(),
+            cursor,
+            match_,
+            count,
+        )
+        .await?;
 
         Ok(KeyResponse {
             keys: fields.into_iter().map(|(key, _)| key).collect(),
-            cursor,
+            cursor: Some(cursor.to_string()),
         })
     }
 }
@@ -119,7 +128,7 @@ impl AtomicsGuest for AsKeyvalue {
     async fn increment(bucket: BucketBorrow<'_>, key: String, delta: i64) -> Result<i64, Error> {
         let bucket: &KeyvalueToValkeyBucket = bucket.get();
 
-        Ok(hash_commands::hincrby(&bucket.connection, bucket.hash_key.clone(), key, delta).await?)
+        Ok(commands::hincrby(&bucket.connection, bucket.hash_key.clone(), key, delta).await?)
     }
 }
 

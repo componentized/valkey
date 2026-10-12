@@ -68,14 +68,12 @@ Prereqs:
 - access to a running [Valkey](https://valkey.io) server
 
 ```sh
-wasmtime run -Sinherit-network -Sallow-ip-name-lookup target/components/cli/cli.wasm keys '*'
+wasmtime run -Sinherit-network -Sallow-ip-name-lookup -Sconfig target/components/cli/cli.wasm keys '*'
 ```
 
-- use `--host` to specify a host other than `127.0.0.1`
-- use `--port` to specify a port other than `6379`
-- use `--password`, and `--username` for a user other than `default`, to authenticate
-- use `--client-name` to name the connection
-- use `--help` for the commands, and their options
+The arguments are sent as a command and the reply is printed. A command without a reply, like `SUBSCRIBE`, prints the push messages that arrive until interrupted or the connection closes.
+
+- the server is configured with wasi:config variables, e.g. `-Sconfig-var=hostname=valkey.example.com -Sconfig-var=port=6380`, see [`tcp-connector`](./components/tcp-connector/) for the keys and their defaults
 - `-Sallow-ip-name-lookup` is only required if a hostname is used for the connection instead of an IP address.
 
 To aid incremental development a make target is available to rebuild and run the CLI:

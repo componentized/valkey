@@ -195,6 +195,33 @@ async fn push_messages_go_to_every_reader() -> wasmtime::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn unprompted_values_go_to_push_readers() -> wasmtime::Result<()> {
+    let mut harness = Harness::new("connection").await?;
+    harness
+        .run(async |accessor, exports| {
+            let guest = exports.connection();
+            let (mut transport, connection) = establish(accessor, exports).await?;
+            let pushes = guest.call_pushes(accessor, connection).await?;
+            let mut pushes = receive(accessor, pushes)?;
+
+            let call = guest.call_call(accessor, connection, command(&["MONITOR"]));
+            let server = async {
+                transport.request().await;
+                transport.reply(Value::String("OK".to_string()));
+            };
+            let (result, ()) = tokio::join!(call, server);
+            assert_eq!(result?, Ok(Value::String("OK".to_string())));
+
+            // the feed of MONITOR, simple strings with no command waiting for them
+            let feed = Value::String(r#"1760190000.123456 [0 127.0.0.1:52144] "ping""#.to_string());
+            transport.reply(feed.clone());
+            assert_eq!(pushes.recv().await, Some(feed));
+            Ok(())
+        })
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slow_push_readers_are_closed() -> wasmtime::Result<()> {
     let mut harness = Harness::new("connection").await?;
     harness

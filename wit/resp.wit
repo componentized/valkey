@@ -1,15 +1,18 @@
 interface resp {
     type error = string;
 
+    type integer = s64;
+    type double = f64;
+
     variant value {
         %string(string),
         error(string),
-        integer(s64),
+        integer(integer),
         bulk-string(string),
         array(list<nested-value>),
         null,
         boolean(bool),
-        double(f64),
+        double(double),
         big-number(string),
         bulk-error(string),
         verbatim-string(tuple<string, string>),
