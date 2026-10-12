@@ -1376,14 +1376,4 @@ interface commands {
     /// https://valkey.io/commands/substr/
     substr: async func(connection: borrow<connection>, key: string, start: integer, end: integer) -> result<string, error>;
 
-
-    // transaction commands
-
-    // not yet implemented, from the @transaction category:
-    //   DISCARD
-    //   EXEC
-    //   MULTI
-    //   UNWATCH
-    //   WATCH
-
 }

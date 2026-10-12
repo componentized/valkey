@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use test_harness::{
     ConnectOpts, Error, Harness, Value, bulk, command, connect, establish, hello_reply, push,
-    receive, resolve,
+    receive, resolve, words,
 };
 
 /// Long enough for the connection to act on what it was given, short enough to keep tests quick.
@@ -95,14 +95,14 @@ async fn closing_before_hello_fails_to_establish() -> wasmtime::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn calls_are_paired_with_replies_in_order() -> wasmtime::Result<()> {
+async fn exchanges_are_paired_with_replies_in_order() -> wasmtime::Result<()> {
     let mut harness = Harness::new("connection").await?;
     harness
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let first = guest.call_call(accessor, connection, command(&["GET", "a"]));
-            let second = guest.call_call(accessor, connection, command(&["GET", "b"]));
+            let first = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
+            let second = guest.call_exchange(accessor, connection, words(&["GET", "b"]));
             let server = async {
                 // both are in flight before either is answered
                 assert_eq!(transport.request().await, Some(command(&["GET", "a"])));
@@ -119,13 +119,13 @@ async fn calls_are_paired_with_replies_in_order() -> wasmtime::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn error_replies_fail_the_call() -> wasmtime::Result<()> {
+async fn error_replies_fail_the_exchange() -> wasmtime::Result<()> {
     let mut harness = Harness::new("connection").await?;
     harness
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let call = guest.call_call(accessor, connection, command(&["INCR", "text"]));
+            let call = guest.call_exchange(accessor, connection, words(&["INCR", "text"]));
             let server = async {
                 transport.request().await;
                 transport.reply(Value::Error("ERR value is not an integer".to_string()));
@@ -141,16 +141,16 @@ async fn error_replies_fail_the_call() -> wasmtime::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn send_discards_its_reply() -> wasmtime::Result<()> {
+async fn emit_discards_its_reply() -> wasmtime::Result<()> {
     let mut harness = Harness::new("connection").await?;
     harness
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
             guest
-                .call_send(accessor, connection, command(&["SET", "a", "1"]))
+                .call_emit(accessor, connection, words(&["SET", "a", "1"]))
                 .await??;
-            let call = guest.call_call(accessor, connection, command(&["GET", "a"]));
+            let call = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
             let server = async {
                 assert_eq!(transport.request().await, Some(command(&["SET", "a", "1"])));
                 assert_eq!(transport.request().await, Some(command(&["GET", "a"])));
@@ -178,7 +178,7 @@ async fn push_messages_go_to_every_reader() -> wasmtime::Result<()> {
             let mut second = receive(accessor, second)?;
 
             let message = push(vec![bulk("message"), bulk("news"), bulk("hello")]);
-            let call = guest.call_call(accessor, connection, command(&["PING"]));
+            let call = guest.call_exchange(accessor, connection, words(&["PING"]));
             let server = async {
                 transport.request().await;
                 // a push message arriving ahead of a reply is not mistaken for it
@@ -204,7 +204,7 @@ async fn unprompted_values_go_to_push_readers() -> wasmtime::Result<()> {
             let pushes = guest.call_pushes(accessor, connection).await?;
             let mut pushes = receive(accessor, pushes)?;
 
-            let call = guest.call_call(accessor, connection, command(&["MONITOR"]));
+            let call = guest.call_exchange(accessor, connection, words(&["MONITOR"]));
             let server = async {
                 transport.request().await;
                 transport.reply(Value::String("OK".to_string()));
@@ -238,7 +238,7 @@ async fn slow_push_readers_are_closed() -> wasmtime::Result<()> {
                 ]));
             }
             // replies are not held up behind the reader
-            let call = guest.call_call(accessor, connection, command(&["PING"]));
+            let call = guest.call_exchange(accessor, connection, words(&["PING"]));
             let server = async {
                 transport.request().await;
                 transport.reply(Value::String("PONG".to_string()));
@@ -251,14 +251,14 @@ async fn slow_push_readers_are_closed() -> wasmtime::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn closing_fails_waiting_and_later_calls() -> wasmtime::Result<()> {
+async fn closing_fails_waiting_and_later_exchanges() -> wasmtime::Result<()> {
     let mut harness = Harness::new("connection").await?;
     harness
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
             let reset = Error::Closed(Some("connection reset".to_string()));
-            let call = guest.call_call(accessor, connection, command(&["GET", "a"]));
+            let call = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
             let server = async {
                 transport.request().await;
                 transport.close(Err(reset.clone()));
@@ -266,7 +266,7 @@ async fn closing_fails_waiting_and_later_calls() -> wasmtime::Result<()> {
             let (result, ()) = tokio::join!(call, server);
             assert_eq!(result?, Err(reset.clone()));
             let later = guest
-                .call_call(accessor, connection, command(&["GET", "a"]))
+                .call_exchange(accessor, connection, words(&["GET", "a"]))
                 .await?;
             assert_eq!(later, Err(reset));
             Ok(())

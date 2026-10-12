@@ -123,12 +123,29 @@ impl GuestConnection for ConnectionImpl {
         self.0.state.borrow().server_properties.clone()
     }
 
-    async fn call(&self, command: Vec<Value>) -> Result<Value, Error> {
-        call(&self.0, command).await
+    async fn exchange(&self, command: Vec<String>) -> Result<Value, Error> {
+        exchange(&self.0, command).await
     }
 
-    async fn send(&self, command: Vec<Value>) -> Result<(), Error> {
-        send(&self.0, command).await
+    async fn exchange_all(&self, commands: Vec<Vec<String>>) -> Vec<Result<Value, Error>> {
+        exchange_all(&self.0, commands).await
+    }
+
+    async fn emit(&self, command: Vec<String>) -> Result<(), Error> {
+        emit(&self.0, command).await
+    }
+
+    async fn watch(&self, keys: Vec<String>) -> Result<(), Error> {
+        let command = std::iter::once("WATCH".to_string()).chain(keys).collect();
+        ok(exchange(&self.0, command).await?)
+    }
+
+    async fn unwatch(&self) -> Result<(), Error> {
+        ok(exchange(&self.0, words(&["UNWATCH"])).await?)
+    }
+
+    async fn transaction(&self, commands: Vec<Vec<String>>) -> Result<Option<Vec<Value>>, Error> {
+        transaction(&self.0, commands).await
     }
 
     fn pushes(&self) -> StreamReader<Value> {
@@ -168,7 +185,7 @@ impl GuestConnection for ConnectionImpl {
 /// A command without a reply takes no place in the order.
 fn enqueue(
     inner: &Inner,
-    command: Vec<Value>,
+    command: Vec<String>,
     reply: Option<Reply>,
     written: Option<oneshot::Sender<()>>,
 ) -> Result<(), Error> {
@@ -176,7 +193,13 @@ fn enqueue(
     if let Some(error) = &state.closed {
         return Err(error.clone());
     }
-    let command = Value::Array(command.into_iter().map(resp_codec::encode).collect());
+    // the words of a command are bulk strings
+    let command = Value::Array(
+        command
+            .into_iter()
+            .map(|word| resp_codec::encode(Value::BulkString(word)))
+            .collect(),
+    );
     inner
         .requests
         .unbounded_send(Request { command, written })
@@ -185,9 +208,9 @@ fn enqueue(
     Ok(())
 }
 
-async fn call(inner: &Inner, command: Vec<Value>) -> Result<Value, Error> {
+async fn exchange(inner: &Inner, command: Vec<String>) -> Result<Value, Error> {
     if replies_with_pushes(&command) {
-        return send(inner, command).await.map(|()| Value::Null);
+        return emit(inner, command).await.map(|()| Value::Null);
     }
     let (reply_tx, reply_rx) = oneshot::channel();
     enqueue(inner, command, Some(Reply::Call(reply_tx)), None)?;
@@ -197,7 +220,63 @@ async fn call(inner: &Inner, command: Vec<Value>) -> Result<Value, Error> {
         .unwrap_or_else(|_| Err(closed_error(&inner.state)))
 }
 
-async fn send(inner: &Inner, command: Vec<Value>) -> Result<(), Error> {
+/// Queue every command before waiting for any reply, so no other command is sent between them.
+async fn exchange_all(inner: &Inner, commands: Vec<Vec<String>>) -> Vec<Result<Value, Error>> {
+    // no await until every command is queued
+    let queued: Vec<Result<Option<oneshot::Receiver<_>>, Error>> = commands
+        .into_iter()
+        .map(|command| {
+            if replies_with_pushes(&command) {
+                // no reply, as for `exchange`
+                return enqueue(inner, command, None, None).map(|()| None);
+            }
+            let (reply_tx, reply_rx) = oneshot::channel();
+            enqueue(inner, command, Some(Reply::Call(reply_tx)), None).map(|()| Some(reply_rx))
+        })
+        .collect();
+    let mut replies = Vec::with_capacity(queued.len());
+    for reply in queued {
+        replies.push(match reply {
+            Err(error) => Err(error),
+            Ok(None) => Ok(Value::Null),
+            // the reply is dropped unsent when the connection closes, the reader fails it first
+            Ok(Some(reply)) => reply
+                .await
+                .unwrap_or_else(|_| Err(closed_error(&inner.state))),
+        });
+    }
+    replies
+}
+
+/// MULTI, the commands, then EXEC, with no other command between them.
+async fn transaction(
+    inner: &Inner,
+    commands: Vec<Vec<String>>,
+) -> Result<Option<Vec<Value>>, Error> {
+    let batch = std::iter::once(words(&["MULTI"]))
+        .chain(commands)
+        .chain(std::iter::once(words(&["EXEC"])))
+        .collect();
+    let mut replies = exchange_all(inner, batch).await;
+    let exec = replies.pop().expect("a reply for each command");
+    // MULTI's OK and each command's QUEUED, the first command rejected while queuing is a clearer
+    // error than EXEC's EXECABORT
+    for reply in replies {
+        reply?;
+    }
+    match exec? {
+        // a watched key changed
+        Value::Null => Ok(None),
+        Value::Array(replies) => replies
+            .into_iter()
+            .map(|reply| resp_codec::decode(reply).map_err(Error::Resp))
+            .collect::<Result<_, _>>()
+            .map(Some),
+        reply => Err(unexpected(&reply)),
+    }
+}
+
+async fn emit(inner: &Inner, command: Vec<String>) -> Result<(), Error> {
     let reply = (!replies_with_pushes(&command)).then_some(Reply::Discard);
     let (written_tx, written_rx) = oneshot::channel();
     enqueue(inner, command, reply, Some(written_tx))?;
@@ -210,7 +289,7 @@ async fn send(inner: &Inner, command: Vec<Value>) -> Result<(), Error> {
 /// In RESP3 the server confirms each channel subscribed to, or unsubscribed from, with a push
 /// message. An error, e.g. for a command missing its channels, is a reply the server sends
 /// unprompted.
-fn replies_with_pushes(command: &[Value]) -> bool {
+fn replies_with_pushes(command: &[String]) -> bool {
     const COMMANDS: [&str; 6] = [
         "SUBSCRIBE",
         "PSUBSCRIBE",
@@ -219,12 +298,11 @@ fn replies_with_pushes(command: &[Value]) -> bool {
         "PUNSUBSCRIBE",
         "SUNSUBSCRIBE",
     ];
-    match command.first() {
-        Some(Value::BulkString(name) | Value::String(name)) => COMMANDS
+    command.first().is_some_and(|name| {
+        COMMANDS
             .iter()
-            .any(|command| name.eq_ignore_ascii_case(command)),
-        _ => false,
-    }
+            .any(|command| name.eq_ignore_ascii_case(command))
+    })
 }
 
 /// The error a command fails with once the connection closed.
@@ -250,8 +328,8 @@ async fn next<S: Stream + Unpin>(stream: &mut S) -> Option<S::Item> {
     poll_fn(|cx| Pin::new(&mut *stream).poll_next(cx)).await
 }
 
-fn bulk(value: &str) -> Value {
-    Value::BulkString(value.to_string())
+fn words(words: &[&str]) -> Vec<String> {
+    words.iter().map(|word| word.to_string()).collect()
 }
 
 /// Write each queued command to the requests stream, closing it once the connection is dropped.
@@ -346,7 +424,7 @@ async fn keep_alive(inner: Weak<Inner>, generation: u64, interval: Duration) {
             state.activity == seen && state.pending.is_empty()
         };
         if idle {
-            if let Err(error) = call(&inner, vec![bulk("PING")]).await {
+            if let Err(error) = exchange(&inner, words(&["PING"])).await {
                 close(&inner.state, error);
                 inner.requests.close_channel();
                 return;
@@ -373,15 +451,15 @@ async fn establish(
         None => (None, None, None),
     };
 
-    let mut hello = vec![bulk("HELLO"), bulk("3")];
+    let mut hello = words(&["HELLO", "3"]);
     if let Some((username, password)) = auth {
-        hello.extend([bulk("AUTH"), bulk(&username), bulk(&password)]);
+        hello.extend(["AUTH".to_string(), username, password]);
     }
     if let Some(client_name) = client_name {
-        hello.extend([bulk("SETNAME"), bulk(&client_name)]);
+        hello.extend(["SETNAME".to_string(), client_name]);
     }
 
-    let result = match call(&inner, hello).await.and_then(server_properties) {
+    let result = match exchange(&inner, hello).await.and_then(server_properties) {
         Ok(properties) => {
             inner.state.borrow_mut().server_properties = properties;
             let established = ConnectionImpl(inner);
@@ -423,6 +501,18 @@ fn decode(value: NestedValue) -> Result<Value, Error> {
 }
 
 /// An error value from the server fails the command.
+/// A simple string `OK`.
+fn ok(reply: Value) -> Result<(), Error> {
+    match reply {
+        Value::String(text) if text == "OK" => Ok(()),
+        reply => Err(unexpected(&reply)),
+    }
+}
+
+fn unexpected(reply: &Value) -> Error {
+    Error::Client(format!("unexpected reply: {reply:?}"))
+}
+
 fn reply_result(value: Value) -> Result<Value, Error> {
     match value {
         Value::Error(message) | Value::BulkError(message) => Err(Error::Valkey(message)),

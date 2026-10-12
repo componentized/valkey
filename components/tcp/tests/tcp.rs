@@ -2,7 +2,7 @@
 //! server played by the test over TCP.
 
 use test_harness::{
-    Client, Ctx, Error, Exports, Harness, Server, Value, bulk, command, hello_reply, resolve,
+    Client, Ctx, Error, Exports, Harness, Server, Value, bulk, command, hello_reply, resolve, words,
 };
 use wasmtime::component::{Accessor, ResourceAny};
 
@@ -28,7 +28,7 @@ async fn establish(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn connects_and_calls() -> wasmtime::Result<()> {
+async fn connects_and_exchanges() -> wasmtime::Result<()> {
     let server = Server::bind().await?;
     let mut harness = Harness::new("test-tcp").await?;
     harness
@@ -36,7 +36,7 @@ async fn connects_and_calls() -> wasmtime::Result<()> {
             let (mut client, connection) =
                 establish(accessor, exports, &server, "127.0.0.1").await?;
             let guest = exports.connection();
-            let call = guest.call_call(accessor, connection, command(&["PING"]));
+            let call = guest.call_exchange(accessor, connection, words(&["PING"]));
             let serve = async {
                 assert_eq!(client.request().await, Some(command(&["PING"])));
                 client.reply(Value::String("PONG".to_string())).await;
@@ -73,7 +73,7 @@ async fn replies_may_span_many_reads() -> wasmtime::Result<()> {
                 .map(|n| char::from(b'a' + (n % 26) as u8))
                 .collect();
             let guest = exports.connection();
-            let call = guest.call_call(accessor, connection, command(&["GET", "big"]));
+            let call = guest.call_exchange(accessor, connection, words(&["GET", "big"]));
             let serve = async {
                 client.request().await;
                 let reply = test_harness::encode(bulk(&value));
@@ -98,8 +98,8 @@ async fn replies_may_share_a_read() -> wasmtime::Result<()> {
             let (mut client, connection) =
                 establish(accessor, exports, &server, "127.0.0.1").await?;
             let guest = exports.connection();
-            let first = guest.call_call(accessor, connection, command(&["GET", "a"]));
-            let second = guest.call_call(accessor, connection, command(&["GET", "b"]));
+            let first = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
+            let second = guest.call_exchange(accessor, connection, words(&["GET", "b"]));
             let serve = async {
                 client.request().await;
                 client.request().await;
@@ -116,7 +116,7 @@ async fn replies_may_share_a_read() -> wasmtime::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn server_closing_fails_calls() -> wasmtime::Result<()> {
+async fn server_closing_fails_exchanges() -> wasmtime::Result<()> {
     let server = Server::bind().await?;
     let mut harness = Harness::new("test-tcp").await?;
     harness
@@ -125,7 +125,7 @@ async fn server_closing_fails_calls() -> wasmtime::Result<()> {
             client.close().await;
             let result = exports
                 .connection()
-                .call_call(accessor, connection, command(&["PING"]))
+                .call_exchange(accessor, connection, words(&["PING"]))
                 .await?;
             assert!(
                 matches!(result, Err(Error::Closed(_))),
@@ -242,15 +242,15 @@ mod with_valkey {
                     .map(|n| char::from(b'a' + (n % 26) as u8))
                     .collect();
                 let set = guest
-                    .call_call(accessor, connection, command(&["SET", "tcp-test", &value]))
+                    .call_exchange(accessor, connection, words(&["SET", "tcp-test", &value]))
                     .await?;
                 assert_eq!(set, Ok(Value::String("OK".to_string())));
                 let get = guest
-                    .call_call(accessor, connection, command(&["GET", "tcp-test"]))
+                    .call_exchange(accessor, connection, words(&["GET", "tcp-test"]))
                     .await?;
                 assert_eq!(get, Ok(bulk(&value)));
                 let del = guest
-                    .call_call(accessor, connection, command(&["DEL", "tcp-test"]))
+                    .call_exchange(accessor, connection, words(&["DEL", "tcp-test"]))
                     .await?;
                 assert_eq!(del, Ok(Value::Integer(1)));
                 Ok(())

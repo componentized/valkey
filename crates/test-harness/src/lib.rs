@@ -142,7 +142,12 @@ pub fn bulk(value: &str) -> Value {
     Value::BulkString(value.to_string())
 }
 
-/// A command, e.g. `command(&["GET", "key"])`.
+/// The words of a command to send, e.g. `words(&["GET", "key"])`.
+pub fn words(words: &[&str]) -> Vec<String> {
+    words.iter().map(|word| word.to_string()).collect()
+}
+
+/// A command as the server receives it, e.g. `command(&["GET", "key"])`.
 pub fn command(words: &[&str]) -> Vec<Value> {
     words.iter().map(|word| bulk(word)).collect()
 }

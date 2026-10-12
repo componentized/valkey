@@ -7,32 +7,24 @@ use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
 /// Send a command, its words as bulk strings, and wait for the reply.
 ///
-/// An error reply fails the command, see `connection.call`.
-async fn call(connection: &Connection, command: impl IntoCommand) -> Result<Value, Error> {
-    connection.call(bulk_strings(command)).await
+/// An error reply fails the command, see `connection.exchange`.
+async fn exchange(connection: &Connection, command: impl IntoCommand) -> Result<Value, Error> {
+    connection.exchange(command.into_command()).await
 }
 
 /// Send a command, its words as bulk strings, without waiting for a reply.
 ///
-/// An error reply fails the command, see `connection.send`.
-pub(crate) async fn send(connection: &Connection, command: impl IntoCommand) -> Result<(), Error> {
-    connection.send(bulk_strings(command)).await
+/// An error reply fails the command, see `connection.emit`.
+pub(crate) async fn emit(connection: &Connection, command: impl IntoCommand) -> Result<(), Error> {
+    connection.emit(command.into_command()).await
 }
 
-/// Send a command, see `call`, and convert its reply.
+/// Send a command, see `exchange`, and convert its reply.
 pub(crate) async fn query<T: FromValue>(
     connection: &Connection,
     command: impl IntoCommand,
 ) -> Result<T, Error> {
-    T::from_value(call(connection, command).await?)
-}
-
-fn bulk_strings(command: impl IntoCommand) -> Vec<Value> {
-    command
-        .into_command()
-        .into_iter()
-        .map(Value::BulkString)
-        .collect()
+    T::from_value(exchange(connection, command).await?)
 }
 
 /// Converts a Rust type into the words of a command, e.g. `Option<String>` into no word, or one.

@@ -5,9 +5,9 @@
 /// returns to the transport to send, then await the connection. See `tcp.connect` for a transport
 /// that does this for its caller.
 ///
-/// The connection is only the mechanics of talking to a server. Commands are functions in the
-/// command interfaces, e.g. `string-commands`, that borrow the connection, so command groups can be
-/// implemented independently of each other. The groups follow Valkey's ACL categories.
+/// The connection is the mechanics of talking to a server: sending commands and pairing replies
+/// with them, push messages, and transactions. Higher level, typed operations are functions in the
+/// `commands` interface that borrow the connection.
 interface connection {
     use wasi:clocks/system-clock@0.3.0.{duration, instant};
     use resp.{error as resp-error, value, integer, double};
@@ -62,16 +62,56 @@ interface connection {
         /// the commands were sent.
         ///
         /// SUBSCRIBE, PSUBSCRIBE, SSUBSCRIBE and their UNSUBSCRIBE counterparts have no reply, the
-        /// server confirms them with push messages, see `pushes`. Their call resolves to null once
-        /// the command is written.
-        call: async func(command: list<value>) -> result<value, error>;
+        /// server confirms them with push messages, see `pushes`. Their exchange resolves to null
+        /// once the command is written.
+        exchange: async func(command: list<string>) -> result<value, error>;
+
+        /// Sends the commands one after another, with no other command sent between them, and waits
+        /// for every reply.
+        ///
+        /// Each command has its own result, in order, as if each was sent with `exchange`. Commands
+        /// sharing a connection may otherwise be interleaved with other callers' commands, which
+        /// matters for a sequence that must not be interrupted, e.g. MULTI, its commands and EXEC.
+        exchange-all: async func(commands: list<list<string>>) -> list<result<value, error>>;
 
         /// Sends a command without waiting for its reply, resolving once the command is written.
         ///
         /// The server still replies, the reply is discarded when it arrives and an error it reports
         /// is not returned. An implementation may instead ask the server not to reply, e.g. with
         /// `CLIENT REPLY SKIP`.
-        send: async func(command: list<value>) -> result<_, error>;
+        emit: async func(command: list<string>) -> result<_, error>;
+
+        /// Marks the keys to watch, EXEC aborts the next transaction when any of them changed.
+        ///
+        /// Watched keys belong to the connection, and EXEC, DISCARD or UNWATCH from any caller sharing
+        /// it clears them. Use a connection of your own for WATCH, the reads it guards, and the
+        /// transaction.
+        ///
+        /// WATCH key [ key ... ]
+        /// https://valkey.io/commands/watch/
+        watch: async func(keys: list<string>) -> result<_, error>;
+
+        /// Forgets all the watched keys.
+        ///
+        /// UNWATCH
+        /// https://valkey.io/commands/unwatch/
+        unwatch: async func() -> result<_, error>;
+
+        /// Runs the commands as a transaction, MULTI, each command, then EXEC, with no other command
+        /// sent between them, see `exchange-all`.
+        ///
+        /// Returns none when a watched key changed and the transaction was aborted, otherwise the
+        /// reply of each command in order. A command that fails while running is an error value in
+        /// its place, the others still ran. A command rejected while queuing, e.g. an unknown
+        /// command, fails the transaction with that error, none of the commands ran.
+        ///
+        /// MULTI and EXEC are only sent as part of a transaction, the commands between them reply
+        /// QUEUED rather than their reply.
+        ///
+        /// MULTI, EXEC
+        /// https://valkey.io/commands/multi/
+        /// https://valkey.io/commands/exec/
+        transaction: async func(commands: list<list<string>>) -> result<option<list<value>>, error>;
 
         /// Push messages, e.g. from SUBSCRIBE or client tracking, kept apart from replies.
         ///

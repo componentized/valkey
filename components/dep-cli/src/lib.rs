@@ -69,24 +69,23 @@ async fn exec(command: Vec<String>, out: &mut Output) -> Result<(), Error> {
     let mut pushes = connection.pushes();
     let name = command[0].to_ascii_uppercase();
     let channels = command.len() - 1;
-    let command = command.into_iter().map(Value::BulkString).collect();
 
     if SUBSCRIBE.contains(&name.as_str()) {
-        connection.send(command).await?;
+        connection.emit(command).await?;
         print_pushes(&mut pushes, out, None).await
     } else if UNSUBSCRIBE.contains(&name.as_str()) {
         // a push message for each channel, or one when no channel is given, as a new connection is
         // not subscribed to any
-        connection.send(command).await?;
+        connection.emit(command).await?;
         print_pushes(&mut pushes, out, Some(channels.max(1))).await
     } else if name == "MONITOR" {
         // the feed follows the reply, values sent unprompted that the connection treats as push
         // messages
-        let reply = connection.call(command).await?;
+        let reply = connection.exchange(command).await?;
         out.line(&render(reply)).await;
         print_pushes(&mut pushes, out, None).await
     } else {
-        let reply = connection.call(command).await?;
+        let reply = connection.exchange(command).await?;
         out.line(&render(reply)).await;
         Ok(())
     }
@@ -168,13 +167,12 @@ async fn send_lines(
         let Some(name) = words.first().map(|name| name.to_ascii_uppercase()) else {
             continue;
         };
-        let command = words.into_iter().map(Value::BulkString).collect();
         if SUBSCRIBE.contains(&name.as_str()) || UNSUBSCRIBE.contains(&name.as_str()) {
             // no reply, the push messages confirming it are printed as they arrive
-            connection.send(command).await?;
+            connection.emit(words).await?;
             continue;
         }
-        let text = match connection.call(command).await {
+        let text = match connection.exchange(words).await {
             Ok(reply) => render(reply),
             // the command failed, not the session
             Err(Error::Valkey(message)) => format!("(error) {message}"),

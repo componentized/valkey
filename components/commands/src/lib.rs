@@ -1,4 +1,4 @@
-use crate::command::{Flag, Milliseconds, NamedOption, Seconds, query, send};
+use crate::command::{Flag, Milliseconds, NamedOption, Seconds, emit, query};
 use crate::exports::componentized::valkey::commands::{
     Connection, Cursor, Double, Duration, Error, GetexTtl, Guest, Instant, Integer, LcsIdxReply,
     MsetexPrecondition, MsetexTtl, Rule, SetPrecondition, SetTtl, StreamId, StreamTrim, TtlMode,
@@ -477,7 +477,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/psubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn psubscribe(connection: &Connection, patterns: Vec<String>) -> Result<(), Error> {
-        send(connection, ("PSUBSCRIBE", patterns)).await
+        emit(connection, ("PSUBSCRIBE", patterns)).await
     }
 
     #[doc = " Posts a message to the given channel."]
@@ -556,7 +556,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/punsubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn punsubscribe(connection: &Connection, patterns: Vec<String>) -> Result<(), Error> {
-        send(connection, ("PUNSUBSCRIBE", patterns)).await
+        emit(connection, ("PUNSUBSCRIBE", patterns)).await
     }
 
     #[doc = " Posts a message to the given shard channel."]
@@ -578,7 +578,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/ssubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn ssubscribe(connection: &Connection, shardchannels: Vec<String>) -> Result<(), Error> {
-        send(connection, ("SSUBSCRIBE", shardchannels)).await
+        emit(connection, ("SSUBSCRIBE", shardchannels)).await
     }
 
     #[doc = " Subscribes the client to the specified channels."]
@@ -587,7 +587,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/subscribe/"]
     #[allow(async_fn_in_trait)]
     async fn subscribe(connection: &Connection, channels: Vec<String>) -> Result<(), Error> {
-        send(connection, ("SUBSCRIBE", channels)).await
+        emit(connection, ("SUBSCRIBE", channels)).await
     }
 
     #[doc = " Unsubscribes the client from the given shard channels, or from all of them if none is given."]
@@ -599,7 +599,7 @@ impl Guest for Commands {
         connection: &Connection,
         shardchannels: Vec<String>,
     ) -> Result<(), Error> {
-        send(connection, ("SUNSUBSCRIBE", shardchannels)).await
+        emit(connection, ("SUNSUBSCRIBE", shardchannels)).await
     }
 
     #[doc = " Unsubscribes the client from the given channels, or from all of them if none is given."]
@@ -608,7 +608,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/unsubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn unsubscribe(connection: &Connection, channels: Vec<String>) -> Result<(), Error> {
-        send(connection, ("UNSUBSCRIBE", channels)).await
+        emit(connection, ("UNSUBSCRIBE", channels)).await
     }
 
     #[doc = " Appends the value at the end of the string."]
