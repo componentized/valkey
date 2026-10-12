@@ -108,7 +108,7 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         let match_ = prefix.map(|prefix| format!("{}*", escape_glob(&prefix)));
         let count = None;
 
-        let (cursor, fields) = commands::hscan_novalues(
+        let (cursor, keys) = commands::hscan_novalues(
             &self.connection,
             self.hash_key.clone(),
             cursor,
@@ -118,7 +118,7 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         .await?;
 
         Ok(KeyResponse {
-            keys: fields.into_iter().map(|(key, _)| key).collect(),
+            keys,
             cursor: Some(cursor.to_string()),
         })
     }

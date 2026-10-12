@@ -402,29 +402,27 @@ interface commands {
     /// https://valkey.io/commands/hmset/
     hmset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string>>) -> result<_, error>;
 
-    /// A random field from the hash value stored at key.
+    /// Random fields from the hash value stored at key, up to the count.
     ///
-    /// Also see `hrandfield-count` and `hrandfield-count-withvalues`.
+    /// Without a count, one field, or none when the key does not exist. A negative count may return
+    /// the same field more than once, its absolute value is the number of fields returned.
     ///
-    /// HRANDFIELD key
+    /// Also see `hrandfield-withvalues`.
+    ///
+    /// HRANDFIELD key [ count ]
     /// https://valkey.io/commands/hrandfield/
-    hrandfield: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+    hrandfield: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
 
-    /// A random set of fields from the hash value stored at key up to the count.
+    /// Random fields and their values from the hash value stored at key, up to the count.
     ///
-    /// Also see `hrandfield` and `hrandfield-count-withvalues`.
+    /// A negative count may return the same field more than once, its absolute value is the number of
+    /// fields returned.
     ///
-    /// HRANDFIELD key count
-    /// https://valkey.io/commands/hrandfield/
-    hrandfield-count: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<string>, error>;
-
-    /// A random map of fields and values from the hash value stored at key up to the count.
-    ///
-    /// Also see `hrandfield` and `hrandfield-count`.
+    /// Also see `hrandfield`.
     ///
     /// HRANDFIELD key count WITHVALUES
     /// https://valkey.io/commands/hrandfield/
-    hrandfield-count-withvalues: async func(connection: borrow<connection>, key: string, count: integer) -> result<map<string, string>, error>;
+    hrandfield-withvalues: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<tuple<string, string>>, error>;
 
     /// The position of an incremental iteration, e.g. with HSCAN.
     ///
@@ -437,7 +435,7 @@ interface commands {
     ///
     /// HSCAN key cursor [ MATCH pattern ] [ COUNT count ]
     /// https://valkey.io/commands/hscan/
-    hscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
+    hscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, map<string, string>>, error>;
 
     /// Incrementally iterate over a collection of keys.
     ///
@@ -445,7 +443,7 @@ interface commands {
     ///
     /// HSCAN key cursor [ MATCH pattern ] [ COUNT count ] NOVALUES
     /// https://valkey.io/commands/hscan/
-    hscan-novalues: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, map<string, string>>, error>;
+    hscan-novalues: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
 
     /// Sets the specified fields to their respective values in the hash stored at key.
     ///
@@ -884,7 +882,7 @@ interface commands {
     ///
     /// XGROUP CREATE key group 〈 id | $ 〉 [ MKSTREAM ] [ ENTRIESREAD entriesread ]
     /// https://valkey.io/commands/xgroup-create/
-    xgroup-create: async func(connection: borrow<connection>, key: string, group: string, id: stream-id, mkstream: bool, entriesread: option<stream-id>) -> result<_, error>;
+    xgroup-create: async func(connection: borrow<connection>, key: string, group: string, id: stream-id, mkstream: bool, entriesread: option<integer>) -> result<_, error>;
 
     /// Create a consumer named <consumername> in the consumer group <groupname> of the stream that's stored at <key>.
     ///
@@ -908,7 +906,7 @@ interface commands {
     ///
     /// XGROUP SETID key group 〈 id | $ 〉 [ ENTRIESREAD entriesread ]
     /// https://valkey.io/commands/xgroup-setid/
-    xgroup-setid: async func(connection: borrow<connection>, key: string, group: string, id: stream-id, entriesread: option<stream-id>) -> result<_, error>;
+    xgroup-setid: async func(connection: borrow<connection>, key: string, group: string, id: stream-id, entriesread: option<integer>) -> result<_, error>;
 
     /// A consumer of a group, see `xinfo-consumers`.
     record xinfo-consumer {
@@ -936,6 +934,8 @@ interface commands {
         name: string,
         /// The number of consumers in the group.
         consumers: integer,
+        /// The number of entries in the group's pending entries list (PEL), delivered but not acknowledged.
+        pending: integer,
         /// The ID of the last entry delivered to the group's consumers.
         last-delivered-id: stream-id,
         /// The logical read counter of the last entry delivered to the group's consumers, none when unknown.
@@ -961,10 +961,10 @@ interface commands {
         radix-tree-nodes: integer,
         /// The number of consumer groups of the stream.
         groups: integer,
-        /// The ID of the last entry added to the stream.
-        last-generated-id: stream-id,
-        /// The highest ID deleted from the stream.
-        max-deleted-entry-id: stream-id,
+        /// The ID of the last entry added to the stream, none when no entry was ever added.
+        last-generated-id: option<stream-id>,
+        /// The highest ID deleted from the stream, none when no entry was ever deleted.
+        max-deleted-entry-id: option<stream-id>,
         /// The number of entries added to the stream over its lifetime.
         entries-added: integer,
         /// The ID and fields of the first entry.
@@ -991,10 +991,10 @@ interface commands {
         radix-tree-keys: integer,
         /// The number of nodes in the radix tree storing the stream.
         radix-tree-nodes: integer,
-        /// The ID of the last entry added to the stream.
-        last-generated-id: stream-id,
-        /// The highest ID deleted from the stream.
-        max-deleted-entry-id: stream-id,
+        /// The ID of the last entry added to the stream, none when no entry was ever added.
+        last-generated-id: option<stream-id>,
+        /// The highest ID deleted from the stream, none when no entry was ever deleted.
+        max-deleted-entry-id: option<stream-id>,
         /// The number of entries added to the stream over its lifetime.
         entries-added: integer,
         /// The ID and fields of the entries, in ascending ID order, up to the count given.
@@ -1053,13 +1053,37 @@ interface commands {
     /// https://valkey.io/commands/xlen/
     xlen: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
 
+    /// The pending entries of a consumer group, see `xpending`.
+    record xpending-summary {
+        /// The number of pending entries.
+        count: integer,
+        /// The lowest ID of the pending entries, none when there are none.
+        lowest-id: option<stream-id>,
+        /// The highest ID of the pending entries, none when there are none.
+        highest-id: option<stream-id>,
+        /// Each consumer with pending entries, and how many it has.
+        consumers: list<tuple<string, integer>>,
+    }
+
     /// List of pending messages.
     ///
     /// See also `xpending-extended`.
     ///
     /// XPENDING key group
     /// https://valkey.io/commands/xpending/
-    xpending: async func(connection: borrow<connection>, key: string, group: string) -> result<tuple<integer, stream-id, stream-id, map<string, integer>>, error>;
+    xpending: async func(connection: borrow<connection>, key: string, group: string) -> result<xpending-summary, error>;
+
+    /// The pending entries of a consumer group, see `xpending-extended`.
+    record xpending-extended-entry {
+        /// The ID of the message.
+        id: stream-id,
+        /// The name of the consumer that fetched the message and has still to acknowledge it. We call it the current owner of the message.
+        name: string,
+        /// The number of milliseconds that elapsed since the last time this message was delivered to this consumer.
+        since-delivery: duration,
+        /// The number of times this message was delivered.
+        delivery-count: integer,
+    }
 
     /// List of pending messages.
     ///
@@ -1067,7 +1091,7 @@ interface commands {
     ///
     /// XPENDING key group [ IDLE min-idle-time ] start end count [ consumer ]
     /// https://valkey.io/commands/xpending/
-    xpending-extended: async func(connection: borrow<connection>, key: string, group: string, min-idle-time: option<duration>, start: stream-id, end: stream-id, count: integer, consumer: option<string>) -> result<list<tuple<stream-id, string, integer, integer>>, error>;
+    xpending-extended: async func(connection: borrow<connection>, key: string, group: string, min-idle-time: option<duration>, start: stream-id, end: stream-id, count: integer, consumer: option<string>) -> result<list<xpending-extended-entry>, error>;
 
     /// Stream entries matching a given range of IDs.
     ///
@@ -1083,9 +1107,12 @@ interface commands {
 
     /// Special version of the XREAD command with support for consumer groups.
     ///
+    /// The fields of an entry are none when it was deleted after it was delivered, e.g. when reading
+    /// the pending entries with the ID `0`.
+    ///
     /// XREADGROUP GROUP group consumer [ COUNT count ] [ BLOCK milliseconds ] [ NOACK ] STREAMS key [ key ... ] ID [ ID ... ]
     /// https://valkey.io/commands/xreadgroup/
-    xreadgroup: async func(connection: borrow<connection>, group: string, consumer: string, count: option<integer>, block: option<duration>, noack: bool, keys: list<string>, ids: list<string>) -> result<option<map<string, list<tuple<stream-id, list<string>>>>>, error>;
+    xreadgroup: async func(connection: borrow<connection>, group: string, consumer: string, count: option<integer>, block: option<duration>, noack: bool, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, option<map<string, string>>>>>>, error>;
 
     /// XRANGE, but returning the entries in reverse order.
     ///
@@ -1307,9 +1334,11 @@ interface commands {
 
     /// Set key to hold the string value.
     ///
+    /// Returns false when the precondition is not met, the key is unchanged.
+    ///
     /// SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
     /// https://valkey.io/commands/set/
-    set: async func(connection: borrow<connection>, key: string, value: string, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<_, error>;
+    set: async func(connection: borrow<connection>, key: string, value: string, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<bool, error>;
 
     /// Set key to hold the string value. Returning the previous value.
     ///
@@ -1345,7 +1374,7 @@ interface commands {
     ///
     /// SUBSTR key start end
     /// https://valkey.io/commands/substr/
-    substr: async func(connection: borrow<connection>, key: string, start: s32, end: s32) -> result<string, error>;
+    substr: async func(connection: borrow<connection>, key: string, start: integer, end: integer) -> result<string, error>;
 
 
     // transaction commands

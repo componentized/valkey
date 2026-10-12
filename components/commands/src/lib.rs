@@ -3,7 +3,7 @@ use crate::exports::componentized::valkey::commands::{
     Connection, Cursor, Double, Duration, Error, GetexTtl, Guest, Instant, Integer, LcsIdxReply,
     MsetexPrecondition, MsetexTtl, Rule, SetPrecondition, SetTtl, StreamId, StreamTrim, TtlMode,
     TtlResult, Value, XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply,
-    XinfoStreamReplyFull,
+    XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary,
 };
 use crate::value::OrZeroId;
 
@@ -271,44 +271,44 @@ impl Guest for Commands {
         query(connection, ("HMSET", key, field_and_values)).await
     }
 
-    #[doc = " A random field from the hash value stored at key."]
+    #[doc = " Random fields from the hash value stored at key, up to the count."]
     #[doc = ""]
-    #[doc = " Also see `hrandfield-count` and `hrandfield-count-withvalues`."]
+    #[doc = " Without a count, one field, or none when the key does not exist. A negative count may return"]
+    #[doc = " the same field more than once, its absolute value is the number of fields returned."]
     #[doc = ""]
-    #[doc = " HRANDFIELD key"]
+    #[doc = " Also see `hrandfield-withvalues`."]
+    #[doc = ""]
+    #[doc = " HRANDFIELD key [ count ]"]
     #[doc = " https://valkey.io/commands/hrandfield/"]
     #[allow(async_fn_in_trait)]
-    async fn hrandfield(connection: &Connection, key: String) -> Result<Option<String>, Error> {
-        query(connection, ("HRANDFIELD", key)).await
-    }
-
-    #[doc = " A random set of fields from the hash value stored at key up to the count."]
-    #[doc = ""]
-    #[doc = " Also see `hrandfield` and `hrandfield-count-withvalues`."]
-    #[doc = ""]
-    #[doc = " HRANDFIELD key count"]
-    #[doc = " https://valkey.io/commands/hrandfield/"]
-    #[allow(async_fn_in_trait)]
-    async fn hrandfield_count(
+    async fn hrandfield(
         connection: &Connection,
         key: String,
-        count: Integer,
+        count: Option<Integer>,
     ) -> Result<Vec<String>, Error> {
-        query(connection, ("HRANDFIELD", key, count)).await
+        if count.is_some() {
+            return query(connection, ("HRANDFIELD", key, count)).await;
+        }
+        // without a count the reply is the field itself, or null
+        let field: Option<String> = query(connection, ("HRANDFIELD", key)).await?;
+        Ok(field.into_iter().collect())
     }
 
-    #[doc = " A random map of fields and values from the hash value stored at key up to the count."]
+    #[doc = " Random fields and their values from the hash value stored at key, up to the count."]
     #[doc = ""]
-    #[doc = " Also see `hrandfield` and `hrandfield-count`."]
+    #[doc = " A negative count may return the same field more than once, its absolute value is the number of"]
+    #[doc = " fields returned."]
+    #[doc = ""]
+    #[doc = " Also see `hrandfield`."]
     #[doc = ""]
     #[doc = " HRANDFIELD key count WITHVALUES"]
     #[doc = " https://valkey.io/commands/hrandfield/"]
     #[allow(async_fn_in_trait)]
-    async fn hrandfield_count_withvalues(
+    async fn hrandfield_withvalues(
         connection: &Connection,
         key: String,
         count: Integer,
-    ) -> Result<Map<String, String>, Error> {
+    ) -> Result<Vec<(String, String)>, Error> {
         query(connection, ("HRANDFIELD", key, count, "WITHVALUES")).await
     }
 
@@ -325,7 +325,7 @@ impl Guest for Commands {
         cursor: Option<Cursor>,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Cursor, Vec<String>), Error> {
+    ) -> Result<(Cursor, Map<String, String>), Error> {
         query(
             connection,
             (
@@ -352,7 +352,7 @@ impl Guest for Commands {
         cursor: Option<Cursor>,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Cursor, Map<String, String>), Error> {
+    ) -> Result<(Cursor, Vec<String>), Error> {
         query(
             connection,
             (
@@ -878,6 +878,8 @@ impl Guest for Commands {
 
     #[doc = " Set key to hold the string value."]
     #[doc = ""]
+    #[doc = " Returns false when the precondition is not met, the key is unchanged."]
+    #[doc = ""]
     #[doc = " SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]"]
     #[doc = " https://valkey.io/commands/set/"]
     #[allow(async_fn_in_trait)]
@@ -887,8 +889,10 @@ impl Guest for Commands {
         value: String,
         precondition: Option<SetPrecondition>,
         ttl: Option<SetTtl>,
-    ) -> Result<(), Error> {
-        query(connection, ("SET", key, value, precondition, ttl)).await
+    ) -> Result<bool, Error> {
+        // OK once set, null when the precondition is not met
+        let reply: Option<()> = query(connection, ("SET", key, value, precondition, ttl)).await?;
+        Ok(reply.is_some())
     }
 
     #[doc = " Set key to hold the string value. Returning the previous value."]
@@ -960,8 +964,8 @@ impl Guest for Commands {
     async fn substr(
         connection: &Connection,
         key: String,
-        start: i32,
-        end: i32,
+        start: Integer,
+        end: Integer,
     ) -> Result<String, Error> {
         query(connection, ("SUBSTR", key, start, end)).await
     }
@@ -1149,7 +1153,7 @@ impl Guest for Commands {
         group: String,
         id: StreamId,
         mkstream: bool,
-        entriesread: Option<StreamId>,
+        entriesread: Option<Integer>,
     ) -> Result<(), Error> {
         query(
             connection,
@@ -1221,7 +1225,7 @@ impl Guest for Commands {
         key: String,
         group: String,
         id: StreamId,
-        entriesread: Option<StreamId>,
+        entriesread: Option<Integer>,
     ) -> Result<(), Error> {
         query(
             connection,
@@ -1309,7 +1313,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         group: String,
-    ) -> Result<(Integer, StreamId, StreamId, Map<String, Integer>), Error> {
+    ) -> Result<XpendingSummary, Error> {
         query(connection, ("XPENDING", key, group)).await
     }
 
@@ -1329,7 +1333,7 @@ impl Guest for Commands {
         end: StreamId,
         count: Integer,
         consumer: Option<String>,
-    ) -> Result<Vec<(StreamId, String, Integer, Integer)>, Error> {
+    ) -> Result<Vec<XpendingExtendedEntry>, Error> {
         query(
             connection,
             (
@@ -1382,7 +1386,7 @@ impl Guest for Commands {
             (
                 "XREAD",
                 NamedOption("COUNT", count),
-                NamedOption("BLOCK", block),
+                NamedOption("BLOCK", block.map(Milliseconds)),
                 "STREAMS",
                 keys,
                 ids,
@@ -1392,6 +1396,9 @@ impl Guest for Commands {
     }
 
     #[doc = " Special version of the XREAD command with support for consumer groups."]
+    #[doc = ""]
+    #[doc = " The fields of an entry are none when it was deleted after it was delivered, e.g. when reading"]
+    #[doc = " the pending entries with the ID `0`."]
     #[doc = ""]
     #[doc = " XREADGROUP GROUP group consumer [ COUNT count ] [ BLOCK milliseconds ] [ NOACK ] STREAMS key [ key ... ] ID [ ID ... ]"]
     #[doc = " https://valkey.io/commands/xreadgroup/"]
@@ -1404,8 +1411,8 @@ impl Guest for Commands {
         block: Option<Duration>,
         noack: bool,
         keys: Vec<String>,
-        ids: Vec<String>,
-    ) -> Result<Option<Map<String, Vec<(StreamId, Vec<String>)>>>, Error> {
+        ids: Vec<StreamId>,
+    ) -> Result<Option<Map<String, Vec<(StreamId, Option<Map<String, String>>)>>>, Error> {
         query(
             connection,
             (
@@ -1414,7 +1421,8 @@ impl Guest for Commands {
                 group,
                 consumer,
                 NamedOption("COUNT", count),
-                NamedOption("BLOCK", block),
+                NamedOption("BLOCK", block.map(Milliseconds)),
+                Flag("NOACK", noack),
                 "STREAMS",
                 keys,
                 ids,

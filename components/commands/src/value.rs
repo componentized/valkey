@@ -1,7 +1,8 @@
 use crate::exports::componentized::valkey::commands::{
     Double, Duration, Error, Instant, Integer, LcsIdxMatch, LcsIdxReply, StreamId, TtlResult,
     Value, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
-    XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup,
+    XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
+    XpendingSummary,
 };
 
 use resp_codec::NestedValue;
@@ -38,10 +39,14 @@ impl FromValue for Integer {
     }
 }
 
+/// A double, or a bulk string holding one, e.g. the reply of INCRBYFLOAT, even with RESP3.
 impl FromValue for Double {
     fn from_value(value: Value) -> Result<Self, Error> {
         match value {
             Value::Double(value) => Ok(value),
+            Value::BulkString(text) => text
+                .parse()
+                .map_err(|_| Error::Client(format!("unexpected reply, not a double: {text:?}"))),
             value => Err(unexpected(&value)),
         }
     }
@@ -221,6 +226,47 @@ impl FromValue for OrZeroId {
     }
 }
 
+/// `[count, lowest-id, highest-id, [[consumer, count]...]]`, the IDs and consumers are null when
+/// nothing is pending, and each consumer's count is a bulk string.
+impl FromValue for XpendingSummary {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let (count, lowest_id, highest_id, consumers): (_, _, _, Option<Vec<(String, String)>>) =
+            FromValue::from_value(value)?;
+        let consumers = consumers
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(consumer, count)| {
+                let count = count.parse().map_err(|_| {
+                    Error::Client(format!(
+                        "unexpected pending count, not an integer: {count:?}"
+                    ))
+                })?;
+                Ok((consumer, count))
+            })
+            .collect::<Result<_, Error>>()?;
+        Ok(Self {
+            count,
+            lowest_id,
+            highest_id,
+            consumers,
+        })
+    }
+}
+
+/// `[id, consumer, milliseconds-since-delivery, delivery-count]`.
+impl FromValue for XpendingExtendedEntry {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let (id, name, since_delivery, delivery_count): (_, _, Milliseconds<Duration>, _) =
+            FromValue::from_value(value)?;
+        Ok(Self {
+            id,
+            name,
+            since_delivery: since_delivery.0,
+            delivery_count,
+        })
+    }
+}
+
 impl FromValue for TtlResult {
     fn from_value(value: Value) -> Result<Self, Error> {
         match Integer::from_value(value)? {
@@ -283,6 +329,7 @@ impl FromValue for XinfoGroup {
         Ok(Self {
             name: fields.required("name")?,
             consumers: fields.required("consumers")?,
+            pending: fields.required("pending")?,
             last_delivered_id: fields.required("last-delivered-id")?,
             entries_read: fields.required("entries-read")?,
             lag: fields.required("lag")?,
@@ -298,8 +345,8 @@ impl FromValue for XinfoStreamReply {
             radix_tree_keys: fields.required("radix-tree-keys")?,
             radix_tree_nodes: fields.required("radix-tree-nodes")?,
             groups: fields.required("groups")?,
-            last_generated_id: fields.required("last-generated-id")?,
-            max_deleted_entry_id: fields.required("max-deleted-entry-id")?,
+            last_generated_id: fields.required::<OrZeroId>("last-generated-id")?.0,
+            max_deleted_entry_id: fields.required::<OrZeroId>("max-deleted-entry-id")?.0,
             entries_added: fields.required("entries-added")?,
             first_entry: fields.required("first-entry")?,
             last_entry: fields.required("last-entry")?,
@@ -314,8 +361,8 @@ impl FromValue for XinfoStreamReplyFull {
             length: fields.required("length")?,
             radix_tree_keys: fields.required("radix-tree-keys")?,
             radix_tree_nodes: fields.required("radix-tree-nodes")?,
-            last_generated_id: fields.required("last-generated-id")?,
-            max_deleted_entry_id: fields.required("max-deleted-entry-id")?,
+            last_generated_id: fields.required::<OrZeroId>("last-generated-id")?.0,
+            max_deleted_entry_id: fields.required::<OrZeroId>("max-deleted-entry-id")?.0,
             entries_added: fields.required("entries-added")?,
             entries: fields.required("entries")?,
             groups: fields.required("groups")?,
