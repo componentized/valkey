@@ -1,8 +1,9 @@
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, ChannelRule, CommandRule, Connection, DbRule, Duration, Error, GetexTtl, Instant,
-    KeyRule, LexBound, Limit, MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound,
-    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode,
-    UserRule, Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
+    Aggregate, ChannelRule, CommandRule, Connection, DbRule, Duration, Error, GetexTtl,
+    HsetexCondition, HsetexFieldCondition, Instant, KeyRule, LexBound, Limit, MsetexPrecondition,
+    PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder,
+    StreamTrim, StreamTrimEfficiency, TtlMode, UserRule, Value, XclaimOpts, ZaddComparison,
+    ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -589,5 +590,25 @@ impl IntoCommand for SortOpts {
             Flag("ALPHA", self.alpha),
         )
             .into_command()
+    }
+}
+
+impl IntoCommand for HsetexCondition {
+    fn into_command(self) -> Vec<String> {
+        match self {
+            HsetexCondition::Nx => "NX",
+            HsetexCondition::Xx => "XX",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for HsetexFieldCondition {
+    fn into_command(self) -> Vec<String> {
+        match self {
+            HsetexFieldCondition::Fnx => "FNX",
+            HsetexFieldCondition::Fxx => "FXX",
+        }
+        .into_command()
     }
 }

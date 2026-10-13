@@ -1,8 +1,8 @@
 use crate::exports::componentized::valkey::commands::{
-    Double, Duration, Error, Instant, Integer, LcsIdxMatch, LcsIdxReply, StreamId, TtlResult,
-    Value, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
-    XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
-    XpendingSummary,
+    Double, Duration, Error, FieldExpiration, FieldPersistResult, FieldTtl, Instant, Integer,
+    LcsIdxMatch, LcsIdxReply, StreamId, TtlResult, Value, XinfoConsumer, XinfoGroup,
+    XinfoStreamReply, XinfoStreamReplyFull, XinfoStreamReplyFullConsumer,
+    XinfoStreamReplyFullGroup, XpendingExtendedEntry, XpendingSummary,
 };
 
 use resp_codec::NestedValue;
@@ -301,6 +301,46 @@ pub struct FlatPairs<K, V>(pub Vec<(K, V)>);
 impl<K: FromValue, V: FromValue> FromValue for FlatPairs<K, V> {
     fn from_value(value: Value) -> Result<Self, Error> {
         entries(value).map(FlatPairs)
+    }
+}
+
+/// `-2` when the field does not exist, `-1` when it has no expiration, otherwise the time to live in
+/// the unit, as nanoseconds, e.g. seconds for HTTL.
+pub fn field_ttl(code: Integer, unit: u64) -> Result<FieldTtl, Error> {
+    match code {
+        -2 => Ok(FieldTtl::DoesNotExist),
+        -1 => Ok(FieldTtl::NoExpiration),
+        time if time >= 0 => Ok(FieldTtl::ExpiresIn((time as u64).saturating_mul(unit))),
+        code => Err(Error::Client(format!("unexpected reply: {code}"))),
+    }
+}
+
+/// `-2` when the field does not exist, `-1` when it has no expiration, otherwise when it expires
+/// as a Unix time, in seconds or milliseconds.
+pub fn field_expiration(code: Integer, milliseconds: bool) -> Result<FieldExpiration, Error> {
+    match code {
+        -2 => Ok(FieldExpiration::DoesNotExist),
+        -1 => Ok(FieldExpiration::NoExpiration),
+        time if time >= 0 && milliseconds => Ok(FieldExpiration::ExpiresAt(Instant {
+            seconds: time / 1_000,
+            nanoseconds: (time % 1_000) as u32 * 1_000_000,
+        })),
+        time if time >= 0 => Ok(FieldExpiration::ExpiresAt(Instant {
+            seconds: time,
+            nanoseconds: 0,
+        })),
+        code => Err(Error::Client(format!("unexpected reply: {code}"))),
+    }
+}
+
+impl FromValue for FieldPersistResult {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match Integer::from_value(value)? {
+            -2 => Ok(Self::DoesNotExist),
+            -1 => Ok(Self::NoExpiration),
+            1 => Ok(Self::Removed),
+            code => Err(Error::Client(format!("unexpected reply: {code}"))),
+        }
     }
 }
 

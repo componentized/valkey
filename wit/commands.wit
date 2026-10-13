@@ -359,6 +359,34 @@ interface commands {
     /// https://valkey.io/commands/hexpireat/
     hexpireat: async func(connection: borrow<connection>, key: string, seconds: instant, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
 
+    /// The remaining time to live of a hash field.
+    variant field-ttl {
+        /// -2: the field does not exist, or the hash does not exist.
+        does-not-exist,
+        /// -1: the field exists, but has no expiration.
+        no-expiration,
+        /// The time until the field expires.
+        expires-in(duration),
+    }
+
+    /// When a hash field expires.
+    variant field-expiration {
+        /// -2: the field does not exist, or the hash does not exist.
+        does-not-exist,
+        /// -1: the field exists, but has no expiration.
+        no-expiration,
+        /// The time at which the field expires.
+        expires-at(instant),
+    }
+
+    /// When each of the hash fields expires, to the second.
+    ///
+    /// See also `hpexpiretime`.
+    ///
+    /// HEXPIRETIME key FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hexpiretime/
+    hexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-expiration>, error>;
+
     /// Returns the value associated with field in the hash stored at key.
     ///
     /// HGET key field
@@ -370,6 +398,19 @@ interface commands {
     /// HGETALL key
     /// https://valkey.io/commands/hgetall/
     hgetall: async func(connection: borrow<connection>, key: string) -> result<map<string, string>, error>;
+
+    /// The values of the hash fields, none for a field that does not exist, deleting the fields.
+    ///
+    /// HGETDEL key FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hgetdel/
+    hgetdel: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<option<string>>, error>;
+
+    /// The values of the hash fields, none for a field that does not exist, optionally setting or
+    /// removing their expiration.
+    ///
+    /// HGETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ] FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hgetex/
+    hgetex: async func(connection: borrow<connection>, key: string, ttl: option<getex-ttl>, fields: list<string>) -> result<list<option<string>>, error>;
 
     /// Increments the number stored at field in the hash stored at key by increment.
     ///
@@ -406,6 +447,50 @@ interface commands {
     /// HMSET key field value [ field value ... ]
     /// https://valkey.io/commands/hmset/
     hmset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string>>) -> result<_, error>;
+
+    /// The outcome of removing the expiration of a hash field.
+    enum field-persist-result {
+        /// -2: the field does not exist, or the hash does not exist.
+        does-not-exist,
+        /// -1: the field exists, but has no expiration.
+        no-expiration,
+        /// 1: the expiration was removed.
+        removed,
+    }
+
+    /// Removes the expiration of the hash fields.
+    ///
+    /// HPERSIST key FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hpersist/
+    hpersist: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-persist-result>, error>;
+
+    /// Manipulate the expiration time for existing hash fields, in milliseconds.
+    ///
+    /// HPEXPIRE key milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hpexpire/
+    hpexpire: async func(connection: borrow<connection>, key: string, milliseconds: duration, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+
+    /// Manipulate the expiration time for existing hash fields, as a Unix time in milliseconds.
+    ///
+    /// HPEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hpexpireat/
+    hpexpireat: async func(connection: borrow<connection>, key: string, milliseconds: instant, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+
+    /// When each of the hash fields expires, to the millisecond.
+    ///
+    /// See also `hexpiretime`.
+    ///
+    /// HPEXPIRETIME key FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hpexpiretime/
+    hpexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-expiration>, error>;
+
+    /// The remaining time to live of each of the hash fields, to the millisecond.
+    ///
+    /// See also `httl`.
+    ///
+    /// HPTTL key FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/hpttl/
+    hpttl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-ttl>, error>;
 
     /// Random fields from the hash value stored at key, up to the count.
     ///
@@ -456,6 +541,29 @@ interface commands {
     /// https://valkey.io/commands/hset/
     hset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string>>) -> result<integer, error>;
 
+    /// Only set the fields when the hash does, or does not, exist, HSETEX's `NX` and `XX`.
+    enum hsetex-condition {
+        /// Only set the fields when the hash does not exist.
+        nx,
+        /// Only set the fields when the hash exists.
+        xx,
+    }
+
+    /// Only set the fields when none, or all, of them exist, HSETEX's `FNX` and `FXX`.
+    enum hsetex-field-condition {
+        /// Only set the fields when none of them exist.
+        fnx,
+        /// Only set the fields when all of them exist.
+        fxx,
+    }
+
+    /// Sets the fields to their values in the hash stored at key, optionally setting their
+    /// expiration, returning whether they were set, false when a condition prevented it.
+    ///
+    /// HSETEX key [ NX | XX ] [ FNX | FXX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ] FIELDS numfields field value [ field value ... ]
+    /// https://valkey.io/commands/hsetex/
+    hsetex: async func(connection: borrow<connection>, key: string, condition: option<hsetex-condition>, field-condition: option<hsetex-field-condition>, ttl: option<set-ttl>, field-and-values: list<tuple<string, string>>) -> result<bool, error>;
+
     /// Sets field in the hash stored at key to value, only if field does not yet exist.
     ///
     /// HSETNX key field value
@@ -468,23 +576,19 @@ interface commands {
     /// https://valkey.io/commands/hstrlen/
     hstrlen: async func(connection: borrow<connection>, key: string, field: string) -> result<integer, error>;
 
+    /// The remaining time to live of each of the hash fields, to the second.
+    ///
+    /// See also `hpttl`.
+    ///
+    /// HTTL key FIELDS numfields field [ field ... ]
+    /// https://valkey.io/commands/httl/
+    httl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-ttl>, error>;
+
     /// All values in the hash stored at key.
     ///
     /// HVALS key
     /// https://valkey.io/commands/hvals/
     hvals: async func(connection: borrow<connection>, key: string) -> result<list<string>, error>;
-
-    // not yet implemented, from the @hash category:
-    //   HEXPIRETIME
-    //   HGETDEL
-    //   HGETEX
-    //   HPERSIST
-    //   HPEXPIRE
-    //   HPEXPIREAT
-    //   HPEXPIRETIME
-    //   HPTTL
-    //   HSETEX
-    //   HTTL
 
 
     // hyperlog commands

@@ -3,14 +3,15 @@ use crate::command::{
     Seconds, Zrange, emit, query,
 };
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, Connection, Cursor, DbRule, Double, Duration, Error, GetexTtl, Guest, Instant,
+    Aggregate, Connection, Cursor, DbRule, Double, Duration, Error, FieldExpiration,
+    FieldPersistResult, FieldTtl, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Instant,
     Integer, LcsIdxReply, LexBound, Limit, MsetexPrecondition, MsetexTtl, PopEnd, Rule,
     RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, StreamId, StreamTrim, TtlMode,
     TtlResult, UserRule, Value, XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply,
     XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition,
     ZrangeBy, ZrangeWithscoresBy,
 };
-use crate::value::{FlatPairs, OrNever, OrZeroId, ScoredMembers};
+use crate::value::{FlatPairs, OrNever, OrZeroId, ScoredMembers, field_expiration, field_ttl};
 
 use wit_bindgen::rt::Map;
 
@@ -165,6 +166,226 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn hexists(connection: &Connection, key: String, field: String) -> Result<bool, Error> {
         query(connection, ("HEXISTS", key, field)).await
+    }
+
+    #[doc = " When each of the hash fields expires, to the second."]
+    #[doc = ""]
+    #[doc = " See also `hpexpiretime`."]
+    #[doc = ""]
+    #[doc = " HEXPIRETIME key FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hexpiretime/"]
+    #[allow(async_fn_in_trait)]
+    async fn hexpiretime(
+        connection: &Connection,
+        key: String,
+        fields: Vec<String>,
+    ) -> Result<Vec<FieldExpiration>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        let codes: Vec<Integer> = query(
+            connection,
+            ("HEXPIRETIME", key, "FIELDS", fields.len(), fields),
+        )
+        .await?;
+        codes
+            .into_iter()
+            .map(|code| field_expiration(code, false))
+            .collect()
+    }
+
+    #[doc = " The values of the hash fields, none for a field that does not exist, deleting the fields."]
+    #[doc = ""]
+    #[doc = " HGETDEL key FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hgetdel/"]
+    #[allow(async_fn_in_trait)]
+    async fn hgetdel(
+        connection: &Connection,
+        key: String,
+        fields: Vec<String>,
+    ) -> Result<Vec<Option<String>>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        query(connection, ("HGETDEL", key, "FIELDS", fields.len(), fields)).await
+    }
+
+    #[doc = " The values of the hash fields, none for a field that does not exist, optionally setting or"]
+    #[doc = " removing their expiration."]
+    #[doc = ""]
+    #[doc = " HGETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ] FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hgetex/"]
+    #[allow(async_fn_in_trait)]
+    async fn hgetex(
+        connection: &Connection,
+        key: String,
+        ttl: Option<GetexTtl>,
+        fields: Vec<String>,
+    ) -> Result<Vec<Option<String>>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        query(
+            connection,
+            ("HGETEX", key, ttl, "FIELDS", fields.len(), fields),
+        )
+        .await
+    }
+
+    #[doc = " Removes the expiration of the hash fields."]
+    #[doc = ""]
+    #[doc = " HPERSIST key FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hpersist/"]
+    #[allow(async_fn_in_trait)]
+    async fn hpersist(
+        connection: &Connection,
+        key: String,
+        fields: Vec<String>,
+    ) -> Result<Vec<FieldPersistResult>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        query(
+            connection,
+            ("HPERSIST", key, "FIELDS", fields.len(), fields),
+        )
+        .await
+    }
+
+    #[doc = " Manipulate the expiration time for existing hash fields, in milliseconds."]
+    #[doc = ""]
+    #[doc = " HPEXPIRE key milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hpexpire/"]
+    #[allow(async_fn_in_trait)]
+    async fn hpexpire(
+        connection: &Connection,
+        key: String,
+        milliseconds: Duration,
+        mode: Option<TtlMode>,
+        fields: Vec<String>,
+    ) -> Result<Vec<TtlResult>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        let command = (
+            "HPEXPIRE",
+            key,
+            Milliseconds(milliseconds),
+            mode,
+            "FIELDS",
+            fields.len(),
+            fields,
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " Manipulate the expiration time for existing hash fields, as a Unix time in milliseconds."]
+    #[doc = ""]
+    #[doc = " HPEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hpexpireat/"]
+    #[allow(async_fn_in_trait)]
+    async fn hpexpireat(
+        connection: &Connection,
+        key: String,
+        milliseconds: Instant,
+        mode: Option<TtlMode>,
+        fields: Vec<String>,
+    ) -> Result<Vec<TtlResult>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        let command = (
+            "HPEXPIREAT",
+            key,
+            Milliseconds(milliseconds),
+            mode,
+            "FIELDS",
+            fields.len(),
+            fields,
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " When each of the hash fields expires, to the millisecond."]
+    #[doc = ""]
+    #[doc = " See also `hexpiretime`."]
+    #[doc = ""]
+    #[doc = " HPEXPIRETIME key FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hpexpiretime/"]
+    #[allow(async_fn_in_trait)]
+    async fn hpexpiretime(
+        connection: &Connection,
+        key: String,
+        fields: Vec<String>,
+    ) -> Result<Vec<FieldExpiration>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        let codes: Vec<Integer> = query(
+            connection,
+            ("HPEXPIRETIME", key, "FIELDS", fields.len(), fields),
+        )
+        .await?;
+        codes
+            .into_iter()
+            .map(|code| field_expiration(code, true))
+            .collect()
+    }
+
+    #[doc = " The remaining time to live of each of the hash fields, to the millisecond."]
+    #[doc = ""]
+    #[doc = " See also `httl`."]
+    #[doc = ""]
+    #[doc = " HPTTL key FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/hpttl/"]
+    #[allow(async_fn_in_trait)]
+    async fn hpttl(
+        connection: &Connection,
+        key: String,
+        fields: Vec<String>,
+    ) -> Result<Vec<FieldTtl>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        let codes: Vec<Integer> =
+            query(connection, ("HPTTL", key, "FIELDS", fields.len(), fields)).await?;
+        codes
+            .into_iter()
+            .map(|code| field_ttl(code, 1_000_000))
+            .collect()
+    }
+
+    #[doc = " Sets the fields to their values in the hash stored at key, optionally setting their"]
+    #[doc = " expiration, returning whether they were set, false when a condition prevented it."]
+    #[doc = ""]
+    #[doc = " HSETEX key [ NX | XX ] [ FNX | FXX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ] FIELDS numfields field value [ field value ... ]"]
+    #[doc = " https://valkey.io/commands/hsetex/"]
+    #[allow(async_fn_in_trait)]
+    async fn hsetex(
+        connection: &Connection,
+        key: String,
+        condition: Option<HsetexCondition>,
+        field_condition: Option<HsetexFieldCondition>,
+        ttl: Option<SetTtl>,
+        field_and_values: Vec<(String, String)>,
+    ) -> Result<bool, Error> {
+        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
+        let command = (
+            "HSETEX",
+            key,
+            condition,
+            field_condition,
+            ttl,
+            "FIELDS",
+            field_and_values.len(),
+            field_and_values,
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " The remaining time to live of each of the hash fields, to the second."]
+    #[doc = ""]
+    #[doc = " See also `hpttl`."]
+    #[doc = ""]
+    #[doc = " HTTL key FIELDS numfields field [ field ... ]"]
+    #[doc = " https://valkey.io/commands/httl/"]
+    #[allow(async_fn_in_trait)]
+    async fn httl(
+        connection: &Connection,
+        key: String,
+        fields: Vec<String>,
+    ) -> Result<Vec<FieldTtl>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
+        let codes: Vec<Integer> =
+            query(connection, ("HTTL", key, "FIELDS", fields.len(), fields)).await?;
+        codes
+            .into_iter()
+            .map(|code| field_ttl(code, 1_000_000_000))
+            .collect()
     }
 
     #[doc = " Manipulate the expiration time for existing hash fields."]
