@@ -737,31 +737,217 @@ interface commands {
 
     // list commands
 
-    // not yet implemented, from the @list category:
-    //   BLMOVE
-    //   BLMPOP
-    //   BLPOP
-    //   BRPOP
-    //   BRPOPLPUSH
-    //   LINDEX
-    //   LINSERT
-    //   LLEN
-    //   LMOVE
-    //   LMPOP
-    //   LPOP
-    //   LPOS
-    //   LPUSH
-    //   LPUSHX
-    //   LRANGE
-    //   LREM
-    //   LSET
-    //   LTRIM
-    //   RPOP
-    //   RPOPLPUSH
-    //   RPUSH
-    //   RPUSHX
-    //   SORT
-    //   SORT_RO
+    /// An end of a list.
+    enum list-side {
+        /// `LEFT`: the head, the first element.
+        left,
+        /// `RIGHT`: the tail, the last element.
+        right,
+    }
+
+    /// Where LINSERT inserts an element, relative to the pivot.
+    enum linsert-position {
+        /// `BEFORE`: in front of the pivot.
+        before,
+        /// `AFTER`: behind the pivot.
+        after,
+    }
+
+    /// The outcome of LINSERT.
+    variant linsert-result {
+        /// The element was inserted, the length of the list after it.
+        inserted(integer),
+        /// 0: the key does not exist, nothing was inserted.
+        no-such-key,
+        /// -1: the pivot is not in the list, nothing was inserted.
+        pivot-not-found,
+    }
+
+    /// Moves an element from one end of the source list to an end of the destination list, waiting
+    /// up to the timeout for the source to have one, returning it.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// BLMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉 timeout
+    /// https://valkey.io/commands/blmove/
+    blmove: async func(connection: borrow<connection>, source: string, destination: string, wherefrom: list-side, whereto: list-side, timeout: duration-milliseconds) -> result<option<string>, error>;
+
+    /// Removes elements from an end of the first non-empty list, waiting up to the timeout for one,
+    /// returning its key and the elements, one without a count.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// BLMPOP timeout numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]
+    /// https://valkey.io/commands/blmpop/
+    blmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: list-side, count: option<integer>) -> result<option<tuple<string, list<string>>>, error>;
+
+    /// Removes the first element of the first non-empty list, waiting up to the timeout for one,
+    /// returning its key and the element.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// BLPOP key [ key ... ] timeout
+    /// https://valkey.io/commands/blpop/
+    blpop: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string>>, error>;
+
+    /// Removes the last element of the first non-empty list, waiting up to the timeout for one,
+    /// returning its key and the element.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// BRPOP key [ key ... ] timeout
+    /// https://valkey.io/commands/brpop/
+    brpop: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string>>, error>;
+
+    /// Moves the last element of the source list to the head of the destination list, waiting up
+    /// to the timeout for the source to have one, returning it.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// See also `blmove`.
+    ///
+    /// BRPOPLPUSH source destination timeout
+    /// https://valkey.io/commands/brpoplpush/
+    brpoplpush: async func(connection: borrow<connection>, source: string, destination: string, timeout: duration-milliseconds) -> result<option<string>, error>;
+
+    /// The element at the index of the list stored at key, negative from the end, none when the
+    /// index is out of range.
+    ///
+    /// LINDEX key index
+    /// https://valkey.io/commands/lindex/
+    lindex: async func(connection: borrow<connection>, key: string, index: integer) -> result<option<string>, error>;
+
+    /// Inserts the element before or after the first occurrence of the pivot in the list stored at
+    /// key.
+    ///
+    /// LINSERT key 〈 BEFORE | AFTER 〉 pivot element
+    /// https://valkey.io/commands/linsert/
+    linsert: async func(connection: borrow<connection>, key: string, position: linsert-position, pivot: string, element: string) -> result<linsert-result, error>;
+
+    /// The length of the list stored at key, 0 when the key does not exist.
+    ///
+    /// LLEN key
+    /// https://valkey.io/commands/llen/
+    llen: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// Moves an element from one end of the source list to an end of the destination list,
+    /// returning it, none when the source does not exist.
+    ///
+    /// LMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉
+    /// https://valkey.io/commands/lmove/
+    lmove: async func(connection: borrow<connection>, source: string, destination: string, wherefrom: list-side, whereto: list-side) -> result<option<string>, error>;
+
+    /// Removes elements from an end of the first non-empty list, returning its key and the
+    /// elements, one without a count, none when every list is empty.
+    ///
+    /// LMPOP numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]
+    /// https://valkey.io/commands/lmpop/
+    lmpop: async func(connection: borrow<connection>, keys: list<string>, end: list-side, count: option<integer>) -> result<option<tuple<string, list<string>>>, error>;
+
+    /// Removes and returns the first elements of the list stored at key, up to the count, one
+    /// without a count, none when the key does not exist.
+    ///
+    /// LPOP key [ count ]
+    /// https://valkey.io/commands/lpop/
+    lpop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+
+    /// The positions of the element in the list stored at key, up to the count, 0 for every match,
+    /// the first match without a count.
+    ///
+    /// The rank skips matches, the second match for 2, counting from the end when negative. The
+    /// max length limits how many elements are compared.
+    ///
+    /// LPOS key element [ RANK rank ] [ COUNT num-matches ] [ MAXLEN len ]
+    /// https://valkey.io/commands/lpos/
+    lpos: async func(connection: borrow<connection>, key: string, element: string, rank: option<integer>, count: option<integer>, maxlen: option<integer>) -> result<list<integer>, error>;
+
+    /// Inserts the elements at the head of the list stored at key, creating it when it does not
+    /// exist, returning its length after.
+    ///
+    /// LPUSH key element [ element ... ]
+    /// https://valkey.io/commands/lpush/
+    lpush: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
+
+    /// Inserts the elements at the head of the list stored at key, only when it exists, returning
+    /// its length after, 0 when it does not exist.
+    ///
+    /// LPUSHX key element [ element ... ]
+    /// https://valkey.io/commands/lpushx/
+    lpushx: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
+
+    /// The elements of the list stored at key from the start to the stop, both included, negative
+    /// from the end.
+    ///
+    /// LRANGE key start stop
+    /// https://valkey.io/commands/lrange/
+    lrange: async func(connection: borrow<connection>, key: string, start: integer, stop: integer) -> result<list<string>, error>;
+
+    /// Removes occurrences of the element from the list stored at key, returning how many.
+    ///
+    /// A positive count removes up to that many from the head, a negative count from the tail, and
+    /// 0 removes them all.
+    ///
+    /// LREM key count element
+    /// https://valkey.io/commands/lrem/
+    lrem: async func(connection: borrow<connection>, key: string, count: integer, element: string) -> result<integer, error>;
+
+    /// Sets the element at the index of the list stored at key, negative from the end.
+    ///
+    /// LSET key index element
+    /// https://valkey.io/commands/lset/
+    lset: async func(connection: borrow<connection>, key: string, index: integer, element: string) -> result<_, error>;
+
+    /// Trims the list stored at key to the elements from the start to the stop, both included,
+    /// negative from the end.
+    ///
+    /// LTRIM key start stop
+    /// https://valkey.io/commands/ltrim/
+    ltrim: async func(connection: borrow<connection>, key: string, start: integer, stop: integer) -> result<_, error>;
+
+    /// Removes and returns the last elements of the list stored at key, up to the count, one
+    /// without a count, none when the key does not exist.
+    ///
+    /// RPOP key [ count ]
+    /// https://valkey.io/commands/rpop/
+    rpop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+
+    /// Moves the last element of the source list to the head of the destination list, returning
+    /// it, none when the source does not exist.
+    ///
+    /// See also `lmove`.
+    ///
+    /// RPOPLPUSH source destination
+    /// https://valkey.io/commands/rpoplpush/
+    rpoplpush: async func(connection: borrow<connection>, source: string, destination: string) -> result<option<string>, error>;
+
+    /// Inserts the elements at the tail of the list stored at key, creating it when it does not
+    /// exist, returning its length after.
+    ///
+    /// RPUSH key element [ element ... ]
+    /// https://valkey.io/commands/rpush/
+    rpush: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
+
+    /// Inserts the elements at the tail of the list stored at key, only when it exists, returning
+    /// its length after, 0 when it does not exist.
+    ///
+    /// RPUSHX key element [ element ... ]
+    /// https://valkey.io/commands/rpushx/
+    rpushx: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
 
 
     // pubsub commands
@@ -1306,8 +1492,8 @@ interface commands {
     /// The limit is a range of the members in the range, only with BYSCORE or BYLEX. With `xx`,
     /// returns none when the key does not exist.
     ///
-    /// Also covers the deprecated ZRANGEBYLEX, ZRANGEBYSCORE, ZREVRANGE, ZREVRANGEBYLEX and
-    /// ZREVRANGEBYSCORE. See also `zrange-withscores`.
+    /// Also covers ZRANGEBYLEX, ZRANGEBYSCORE, ZREVRANGE, ZREVRANGEBYLEX and ZREVRANGEBYSCORE. See
+    /// also `zrange-withscores`.
     ///
     /// ZRANGE key start stop [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ] [ XX ]
     /// https://valkey.io/commands/zrange/

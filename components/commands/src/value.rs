@@ -1,9 +1,10 @@
 use crate::exports::componentized::valkey::commands::{
     Cursor, Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime,
     FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, Integer, LcsIdxMatch, LcsIdxReply,
-    StreamId, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XinfoConsumer, XinfoGroup,
-    XinfoStreamReply, XinfoStreamReplyFull, XinfoStreamReplyFullConsumer,
-    XinfoStreamReplyFullGroup, XpendingExtendedEntry, XpendingSummary,
+    LinsertResult, StreamId, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
+    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
+    XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
+    XpendingSummary,
 };
 
 use resp_codec::NestedValue;
@@ -334,6 +335,19 @@ impl FromValue for NextCursor {
         Ok(NextCursor(
             (cursor != "0").then_some(Cursor::Resume(cursor)),
         ))
+    }
+}
+
+/// The length of the list after the insert, `0` when the key does not exist, `-1` when the pivot
+/// was not found.
+impl FromValue for LinsertResult {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match Integer::from_value(value)? {
+            -1 => Ok(Self::PivotNotFound),
+            0 => Ok(Self::NoSuchKey),
+            length if length > 0 => Ok(Self::Inserted(length)),
+            code => Err(Error::Client(format!("unexpected reply: {code}"))),
+        }
     }
 }
 

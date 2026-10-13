@@ -5,12 +5,12 @@ use crate::command::{
 use crate::exports::componentized::valkey::commands::{
     Aggregate, Connection, Cursor, Double, DurationMilliseconds, DurationSeconds, Error,
     FieldExpiretime, FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, GetexTtl, Guest,
-    HsetexCondition, HsetexFieldCondition, Integer, LcsIdxReply, LexBound, Limit,
-    MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound, SetPrecondition, SetTtl, SortOpts,
-    StreamId, StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
-    XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
-    XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition, ZrangeBy,
-    ZrangeWithscoresBy,
+    HsetexCondition, HsetexFieldCondition, Integer, LcsIdxReply, LexBound, Limit, LinsertPosition,
+    LinsertResult, ListSide, MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound,
+    SetPrecondition, SetTtl, SortOpts, StreamId, StreamTrim, TtlMode, TtlResult,
+    UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
+    XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison,
+    ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
 use crate::value::{FlatPairs, NextCursor, OrNever, OrZeroId, ScoredMembers};
 
@@ -705,6 +705,465 @@ impl Guest for Commands {
                 destination,
                 NonEmpty::optional("sources", sources),
             ),
+        )
+        .await
+    }
+
+    #[doc = " Moves an element from one end of the source list to an end of the destination list, waiting"]
+    #[doc = " up to the timeout for the source to have one, returning it."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " BLMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉 timeout"]
+    #[doc = " https://valkey.io/commands/blmove/"]
+    #[allow(async_fn_in_trait)]
+    async fn blmove(
+        connection: &Connection,
+        source: String,
+        destination: String,
+        wherefrom: ListSide,
+        whereto: ListSide,
+        timeout: DurationMilliseconds,
+    ) -> Result<Option<String>, Error> {
+        query(
+            connection,
+            (
+                "BLMOVE",
+                source,
+                destination,
+                wherefrom,
+                whereto,
+                DecimalSeconds(timeout),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Removes elements from an end of the first non-empty list, waiting up to the timeout for one,"]
+    #[doc = " returning its key and the elements, one without a count."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " BLMPOP timeout numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]"]
+    #[doc = " https://valkey.io/commands/blmpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn blmpop(
+        connection: &Connection,
+        timeout: DurationMilliseconds,
+        keys: Vec<String>,
+        end: ListSide,
+        count: Option<Integer>,
+    ) -> Result<Option<(String, Vec<String>)>, Error> {
+        query(
+            connection,
+            (
+                "BLMPOP",
+                DecimalSeconds(timeout),
+                NumKeys(NonEmpty::new("keys", keys)),
+                end,
+                NamedOption("COUNT", count),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Removes the first element of the first non-empty list, waiting up to the timeout for one,"]
+    #[doc = " returning its key and the element."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " BLPOP key [ key ... ] timeout"]
+    #[doc = " https://valkey.io/commands/blpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn blpop(
+        connection: &Connection,
+        keys: Vec<String>,
+        timeout: DurationMilliseconds,
+    ) -> Result<Option<(String, String)>, Error> {
+        query(
+            connection,
+            (
+                "BLPOP",
+                NonEmpty::new("keys", keys),
+                DecimalSeconds(timeout),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Removes the last element of the first non-empty list, waiting up to the timeout for one,"]
+    #[doc = " returning its key and the element."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " BRPOP key [ key ... ] timeout"]
+    #[doc = " https://valkey.io/commands/brpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn brpop(
+        connection: &Connection,
+        keys: Vec<String>,
+        timeout: DurationMilliseconds,
+    ) -> Result<Option<(String, String)>, Error> {
+        query(
+            connection,
+            (
+                "BRPOP",
+                NonEmpty::new("keys", keys),
+                DecimalSeconds(timeout),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Moves the last element of the source list to the head of the destination list, waiting up"]
+    #[doc = " to the timeout for the source to have one, returning it."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " See also `blmove`."]
+    #[doc = ""]
+    #[doc = " BRPOPLPUSH source destination timeout"]
+    #[doc = " https://valkey.io/commands/brpoplpush/"]
+    #[allow(async_fn_in_trait)]
+    async fn brpoplpush(
+        connection: &Connection,
+        source: String,
+        destination: String,
+        timeout: DurationMilliseconds,
+    ) -> Result<Option<String>, Error> {
+        query(
+            connection,
+            ("BRPOPLPUSH", source, destination, DecimalSeconds(timeout)),
+        )
+        .await
+    }
+
+    #[doc = " The element at the index of the list stored at key, negative from the end, none when the"]
+    #[doc = " index is out of range."]
+    #[doc = ""]
+    #[doc = " LINDEX key index"]
+    #[doc = " https://valkey.io/commands/lindex/"]
+    #[allow(async_fn_in_trait)]
+    async fn lindex(
+        connection: &Connection,
+        key: String,
+        index: Integer,
+    ) -> Result<Option<String>, Error> {
+        query(connection, ("LINDEX", key, index)).await
+    }
+
+    #[doc = " Inserts the element before or after the first occurrence of the pivot in the list stored at"]
+    #[doc = " key."]
+    #[doc = ""]
+    #[doc = " LINSERT key 〈 BEFORE | AFTER 〉 pivot element"]
+    #[doc = " https://valkey.io/commands/linsert/"]
+    #[allow(async_fn_in_trait)]
+    async fn linsert(
+        connection: &Connection,
+        key: String,
+        position: LinsertPosition,
+        pivot: String,
+        element: String,
+    ) -> Result<LinsertResult, Error> {
+        query(connection, ("LINSERT", key, position, pivot, element)).await
+    }
+
+    #[doc = " The length of the list stored at key, 0 when the key does not exist."]
+    #[doc = ""]
+    #[doc = " LLEN key"]
+    #[doc = " https://valkey.io/commands/llen/"]
+    #[allow(async_fn_in_trait)]
+    async fn llen(connection: &Connection, key: String) -> Result<Integer, Error> {
+        query(connection, ("LLEN", key)).await
+    }
+
+    #[doc = " Moves an element from one end of the source list to an end of the destination list,"]
+    #[doc = " returning it, none when the source does not exist."]
+    #[doc = ""]
+    #[doc = " LMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉"]
+    #[doc = " https://valkey.io/commands/lmove/"]
+    #[allow(async_fn_in_trait)]
+    async fn lmove(
+        connection: &Connection,
+        source: String,
+        destination: String,
+        wherefrom: ListSide,
+        whereto: ListSide,
+    ) -> Result<Option<String>, Error> {
+        query(
+            connection,
+            ("LMOVE", source, destination, wherefrom, whereto),
+        )
+        .await
+    }
+
+    #[doc = " Removes elements from an end of the first non-empty list, returning its key and the"]
+    #[doc = " elements, one without a count, none when every list is empty."]
+    #[doc = ""]
+    #[doc = " LMPOP numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]"]
+    #[doc = " https://valkey.io/commands/lmpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn lmpop(
+        connection: &Connection,
+        keys: Vec<String>,
+        end: ListSide,
+        count: Option<Integer>,
+    ) -> Result<Option<(String, Vec<String>)>, Error> {
+        let command = (
+            "LMPOP",
+            NumKeys(NonEmpty::new("keys", keys)),
+            end,
+            NamedOption("COUNT", count),
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " Removes and returns the first elements of the list stored at key, up to the count, one"]
+    #[doc = " without a count, none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " LPOP key [ count ]"]
+    #[doc = " https://valkey.io/commands/lpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn lpop(
+        connection: &Connection,
+        key: String,
+        count: Option<Integer>,
+    ) -> Result<Vec<String>, Error> {
+        match count {
+            Some(count) => {
+                // null when the key does not exist
+                let elements: Option<Vec<String>> = query(connection, ("LPOP", key, count)).await?;
+                Ok(elements.unwrap_or_default())
+            }
+            None => {
+                // without a count the reply is the element itself, or null
+                let element: Option<String> = query(connection, ("LPOP", key)).await?;
+                Ok(element.into_iter().collect())
+            }
+        }
+    }
+
+    #[doc = " The positions of the element in the list stored at key, up to the count, 0 for every match,"]
+    #[doc = " the first match without a count."]
+    #[doc = ""]
+    #[doc = " The rank skips matches, the second match for 2, counting from the end when negative. The"]
+    #[doc = " max length limits how many elements are compared."]
+    #[doc = ""]
+    #[doc = " LPOS key element [ RANK rank ] [ COUNT num-matches ] [ MAXLEN len ]"]
+    #[doc = " https://valkey.io/commands/lpos/"]
+    #[allow(async_fn_in_trait)]
+    async fn lpos(
+        connection: &Connection,
+        key: String,
+        element: String,
+        rank: Option<Integer>,
+        count: Option<Integer>,
+        maxlen: Option<Integer>,
+    ) -> Result<Vec<Integer>, Error> {
+        let command = (
+            "LPOS",
+            key,
+            element,
+            NamedOption("RANK", rank),
+            NamedOption("COUNT", count),
+            NamedOption("MAXLEN", maxlen),
+        );
+
+        match count {
+            Some(_) => query(connection, command).await,
+            None => {
+                // without a count the reply is the position itself, or null
+                let position: Option<Integer> = query(connection, command).await?;
+                Ok(position.into_iter().collect())
+            }
+        }
+    }
+
+    #[doc = " Inserts the elements at the head of the list stored at key, creating it when it does not"]
+    #[doc = " exist, returning its length after."]
+    #[doc = ""]
+    #[doc = " LPUSH key element [ element ... ]"]
+    #[doc = " https://valkey.io/commands/lpush/"]
+    #[allow(async_fn_in_trait)]
+    async fn lpush(
+        connection: &Connection,
+        key: String,
+        elements: Vec<String>,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            ("LPUSH", key, NonEmpty::new("elements", elements)),
+        )
+        .await
+    }
+
+    #[doc = " Inserts the elements at the head of the list stored at key, only when it exists, returning"]
+    #[doc = " its length after, 0 when it does not exist."]
+    #[doc = ""]
+    #[doc = " LPUSHX key element [ element ... ]"]
+    #[doc = " https://valkey.io/commands/lpushx/"]
+    #[allow(async_fn_in_trait)]
+    async fn lpushx(
+        connection: &Connection,
+        key: String,
+        elements: Vec<String>,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            ("LPUSHX", key, NonEmpty::new("elements", elements)),
+        )
+        .await
+    }
+
+    #[doc = " The elements of the list stored at key from the start to the stop, both included, negative"]
+    #[doc = " from the end."]
+    #[doc = ""]
+    #[doc = " LRANGE key start stop"]
+    #[doc = " https://valkey.io/commands/lrange/"]
+    #[allow(async_fn_in_trait)]
+    async fn lrange(
+        connection: &Connection,
+        key: String,
+        start: Integer,
+        stop: Integer,
+    ) -> Result<Vec<String>, Error> {
+        query(connection, ("LRANGE", key, start, stop)).await
+    }
+
+    #[doc = " Removes occurrences of the element from the list stored at key, returning how many."]
+    #[doc = ""]
+    #[doc = " A positive count removes up to that many from the head, a negative count from the tail, and"]
+    #[doc = " 0 removes them all."]
+    #[doc = ""]
+    #[doc = " LREM key count element"]
+    #[doc = " https://valkey.io/commands/lrem/"]
+    #[allow(async_fn_in_trait)]
+    async fn lrem(
+        connection: &Connection,
+        key: String,
+        count: Integer,
+        element: String,
+    ) -> Result<Integer, Error> {
+        query(connection, ("LREM", key, count, element)).await
+    }
+
+    #[doc = " Sets the element at the index of the list stored at key, negative from the end."]
+    #[doc = ""]
+    #[doc = " LSET key index element"]
+    #[doc = " https://valkey.io/commands/lset/"]
+    #[allow(async_fn_in_trait)]
+    async fn lset(
+        connection: &Connection,
+        key: String,
+        index: Integer,
+        element: String,
+    ) -> Result<(), Error> {
+        query(connection, ("LSET", key, index, element)).await
+    }
+
+    #[doc = " Trims the list stored at key to the elements from the start to the stop, both included,"]
+    #[doc = " negative from the end."]
+    #[doc = ""]
+    #[doc = " LTRIM key start stop"]
+    #[doc = " https://valkey.io/commands/ltrim/"]
+    #[allow(async_fn_in_trait)]
+    async fn ltrim(
+        connection: &Connection,
+        key: String,
+        start: Integer,
+        stop: Integer,
+    ) -> Result<(), Error> {
+        query(connection, ("LTRIM", key, start, stop)).await
+    }
+
+    #[doc = " Removes and returns the last elements of the list stored at key, up to the count, one"]
+    #[doc = " without a count, none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " RPOP key [ count ]"]
+    #[doc = " https://valkey.io/commands/rpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn rpop(
+        connection: &Connection,
+        key: String,
+        count: Option<Integer>,
+    ) -> Result<Vec<String>, Error> {
+        match count {
+            Some(count) => {
+                // null when the key does not exist
+                let elements: Option<Vec<String>> = query(connection, ("RPOP", key, count)).await?;
+                Ok(elements.unwrap_or_default())
+            }
+            None => {
+                // without a count the reply is the element itself, or null
+                let element: Option<String> = query(connection, ("RPOP", key)).await?;
+                Ok(element.into_iter().collect())
+            }
+        }
+    }
+
+    #[doc = " Moves the last element of the source list to the head of the destination list, returning"]
+    #[doc = " it, none when the source does not exist."]
+    #[doc = ""]
+    #[doc = " See also `lmove`."]
+    #[doc = ""]
+    #[doc = " RPOPLPUSH source destination"]
+    #[doc = " https://valkey.io/commands/rpoplpush/"]
+    #[allow(async_fn_in_trait)]
+    async fn rpoplpush(
+        connection: &Connection,
+        source: String,
+        destination: String,
+    ) -> Result<Option<String>, Error> {
+        query(connection, ("RPOPLPUSH", source, destination)).await
+    }
+
+    #[doc = " Inserts the elements at the tail of the list stored at key, creating it when it does not"]
+    #[doc = " exist, returning its length after."]
+    #[doc = ""]
+    #[doc = " RPUSH key element [ element ... ]"]
+    #[doc = " https://valkey.io/commands/rpush/"]
+    #[allow(async_fn_in_trait)]
+    async fn rpush(
+        connection: &Connection,
+        key: String,
+        elements: Vec<String>,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            ("RPUSH", key, NonEmpty::new("elements", elements)),
+        )
+        .await
+    }
+
+    #[doc = " Inserts the elements at the tail of the list stored at key, only when it exists, returning"]
+    #[doc = " its length after, 0 when it does not exist."]
+    #[doc = ""]
+    #[doc = " RPUSHX key element [ element ... ]"]
+    #[doc = " https://valkey.io/commands/rpushx/"]
+    #[allow(async_fn_in_trait)]
+    async fn rpushx(
+        connection: &Connection,
+        key: String,
+        elements: Vec<String>,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            ("RPUSHX", key, NonEmpty::new("elements", elements)),
         )
         .await
     }

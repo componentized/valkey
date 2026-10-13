@@ -1,9 +1,10 @@
 use crate::exports::componentized::valkey::commands::{
     Aggregate, ChannelRule, CommandRule, Connection, Cursor, DbRule, DurationMilliseconds,
     DurationSeconds, Error, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyRule, LexBound,
-    Limit, MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl,
-    SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds,
-    UnixTimeSeconds, UserRule, Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
+    Limit, LinsertPosition, ListSide, MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound,
+    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode,
+    UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value, XclaimOpts, ZaddComparison,
+    ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -624,5 +625,25 @@ impl IntoCommand for Cursor {
             )),
             Cursor::Resume(cursor) => cursor.into_command(),
         }
+    }
+}
+
+impl IntoCommand for ListSide {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ListSide::Left => "LEFT",
+            ListSide::Right => "RIGHT",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for LinsertPosition {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            LinsertPosition::Before => "BEFORE",
+            LinsertPosition::After => "AFTER",
+        }
+        .into_command()
     }
 }
