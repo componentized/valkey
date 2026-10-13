@@ -10,15 +10,15 @@ use crate::exports::componentized::valkey::commands::{
     CommandListFilter, CommandlogType, Connection, Cursor, Double, DurationMilliseconds,
     DurationSeconds, Error, ExpiretimeReply, FailoverTarget, FieldPersistResult, FlushMode,
     FunctionStatsReply, GeoCoordinates, GeoCount, GeoSearchResult, GeoShape, GeoUnit,
-    GeoaddCondition, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Integer, KeyType,
-    LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply, LexBound, Library, Limit,
-    LinsertPosition, LinsertResult, ListSide, LogEntry, MigrateAuth, ModuleInfo,
-    MsetexPrecondition, MsetexTtl, PexpiretimeReply, PopEnd, PttlReply, RoleReply, Rule,
-    ScoreBound, SetPrecondition, SetTtl, ShutdownSave, SlotMigration, SlotMigrationGroup, SortOpts,
-    SortOrder, StreamId, StreamTrim, TrackingRedirect, TtlMode, TtlReply, TtlResult,
-    UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
-    XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison,
-    ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
+    GeoaddCondition, GeosearchWithFlags, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition,
+    Integer, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply, LexBound, Library,
+    Limit, LinsertPosition, LinsertResult, ListSide, LogEntry, MigrateAuth, MigrateFlags,
+    ModuleInfo, MsetexPrecondition, MsetexTtl, PexpiretimeReply, PopEnd, PttlReply, RoleReply,
+    Rule, ScoreBound, SetPrecondition, SetTtl, ShutdownFlags, ShutdownSave, SlotMigration,
+    SlotMigrationGroup, SortOpts, SortOrder, StreamId, StreamTrim, TrackingRedirect, TtlMode,
+    TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer,
+    XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary,
+    ZaddComparison, ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
 use crate::value::{
     AclList, AclUserRules, ClientList, CommandDocsList, CommandInfoList, FlatPairs, Migrated,
@@ -847,18 +847,15 @@ impl Guest for Commands {
     async fn shutdown(
         connection: &Connection,
         save: Option<ShutdownSave>,
-        now: bool,
-        force: bool,
-        safe: bool,
-        failover: bool,
+        modifiers: ShutdownFlags,
     ) -> Result<(), Error> {
         let command = (
             "SHUTDOWN",
             save,
-            Flag("NOW", now),
-            Flag("FORCE", force),
-            Flag("SAFE", safe),
-            Flag("FAILOVER", failover),
+            Flag("NOW", modifiers.contains(ShutdownFlags::NOW)),
+            Flag("FORCE", modifiers.contains(ShutdownFlags::FORCE)),
+            Flag("SAFE", modifiers.contains(ShutdownFlags::SAFE)),
+            Flag("FAILOVER", modifiers.contains(ShutdownFlags::FAILOVER)),
         );
         query(connection, command).await
     }
@@ -1516,24 +1513,19 @@ impl Guest for Commands {
         shape: GeoShape,
         order: Option<SortOrder>,
         count: Option<GeoCount>,
-        withcoord: bool,
-        withdist: bool,
-        withhash: bool,
+        details: GeosearchWithFlags,
     ) -> Result<Vec<GeoSearchResult>, Error> {
-        query(
-            connection,
-            (
-                "GEOSEARCH",
-                key,
-                shape,
-                order,
-                count,
-                Flag("WITHCOORD", withcoord),
-                Flag("WITHDIST", withdist),
-                Flag("WITHHASH", withhash),
-            ),
-        )
-        .await
+        let command = (
+            "GEOSEARCH",
+            key,
+            shape,
+            order,
+            count,
+            Flag("WITHCOORD", details.contains(GeosearchWithFlags::WITHCOORD)),
+            Flag("WITHDIST", details.contains(GeosearchWithFlags::WITHDIST)),
+            Flag("WITHHASH", details.contains(GeosearchWithFlags::WITHHASH)),
+        );
+        query(connection, command).await
     }
 
     #[doc = " Stores the members of the geospatial index stored at source in the shape, returning how"]
@@ -2772,9 +2764,6 @@ impl Guest for Commands {
     #[doc = " Moves the keys to the database of another instance, returning whether any were moved, false"]
     #[doc = " when none of the keys exist."]
     #[doc = ""]
-    #[doc = " With `copy` the keys are kept in this instance, with `replace` existing keys in the other"]
-    #[doc = " instance are replaced."]
-    #[doc = ""]
     #[doc = " MIGRATE host port \"\" destination-db timeout [ COPY ] [ REPLACE ] [ AUTH password | AUTH2 username password ] KEYS key [ key ... ]"]
     #[doc = " https://valkey.io/commands/migrate/"]
     #[allow(async_fn_in_trait)]
@@ -2784,8 +2773,7 @@ impl Guest for Commands {
         port: u16,
         destination_db: Integer,
         timeout: DurationMilliseconds,
-        copy: bool,
-        replace: bool,
+        options: MigrateFlags,
         auth: Option<MigrateAuth>,
         keys: Vec<String>,
     ) -> Result<bool, Error> {
@@ -2797,8 +2785,8 @@ impl Guest for Commands {
             "",
             destination_db,
             timeout,
-            Flag("COPY", copy),
-            Flag("REPLACE", replace),
+            Flag("COPY", options.contains(MigrateFlags::COPY)),
+            Flag("REPLACE", options.contains(MigrateFlags::REPLACE)),
             auth,
             ("KEYS", NonEmpty::new("keys", keys)),
         );

@@ -416,6 +416,18 @@ interface commands {
         sentinel(list<string>),
     }
 
+    /// The modifiers of SHUTDOWN.
+    flags shutdown-flags {
+        /// `NOW`: does not wait for lagging replicas.
+        now,
+        /// `FORCE`: ignores errors that would prevent the shutdown, e.g. failing to save.
+        force,
+        /// `SAFE`: refuses to shut down while it would lose the cluster's quorum of primaries.
+        safe,
+        /// `FAILOVER`: fails over to a replica first.
+        failover,
+    }
+
     /// Whether SHUTDOWN saves to disk.
     enum shutdown-save {
         /// `NOSAVE`: does not save, even with save points configured.
@@ -950,7 +962,7 @@ interface commands {
     ///
     /// SHUTDOWN [ NOSAVE | SAVE ] [ NOW ] [ FORCE ] [ SAFE ] [ FAILOVER ]
     /// https://valkey.io/commands/shutdown/
-    shutdown: async func(connection: borrow<connection>, save: option<shutdown-save>, now: bool, force: bool, safe: bool, failover: bool) -> result<_, error>;
+    shutdown: async func(connection: borrow<connection>, save: option<shutdown-save>, modifiers: shutdown-flags) -> result<_, error>;
 
     /// Aborts a shutdown in progress.
     ///
@@ -1626,6 +1638,16 @@ interface commands {
         any: bool,
     }
 
+    /// The details GEOSEARCH returns of each member it found.
+    flags geosearch-with-flags {
+        /// `WITHCOORD`: the position.
+        withcoord,
+        /// `WITHDIST`: the distance from the center.
+        withdist,
+        /// `WITHHASH`: the geohash, as an integer.
+        withhash,
+    }
+
     /// A member a search found, with the details asked for.
     record geo-search-result {
         member: string,
@@ -1651,7 +1673,7 @@ interface commands {
     ///
     /// GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ WITHCOORD ] [ WITHDIST ] [ WITHHASH ]
     /// https://valkey.io/commands/geosearch/
-    geosearch-with: async func(connection: borrow<connection>, key: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>, withcoord: bool, withdist: bool, withhash: bool) -> result<list<geo-search-result>, error>;
+    geosearch-with: async func(connection: borrow<connection>, key: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>, details: geosearch-with-flags) -> result<list<geo-search-result>, error>;
 
     /// Stores the members of the geospatial index stored at source in the shape, returning how
     /// many, with their positions, or with `storedist`, their distance from the center as the
@@ -1946,6 +1968,14 @@ interface commands {
         other(string),
     }
 
+    /// The options of MIGRATE.
+    flags migrate-flags {
+        /// `COPY`: keeps the keys in this instance.
+        copy,
+        /// `REPLACE`: replaces keys that exist in the other instance.
+        replace,
+    }
+
     /// The credentials to authenticate to the other instance with, for MIGRATE.
     variant migrate-auth {
         /// `AUTH password`
@@ -2037,12 +2067,9 @@ interface commands {
     /// Moves the keys to the database of another instance, returning whether any were moved, false
     /// when none of the keys exist.
     ///
-    /// With `copy` the keys are kept in this instance, with `replace` existing keys in the other
-    /// instance are replaced.
-    ///
     /// MIGRATE host port "" destination-db timeout [ COPY ] [ REPLACE ] [ AUTH password | AUTH2 username password ] KEYS key [ key ... ]
     /// https://valkey.io/commands/migrate/
-    migrate: async func(connection: borrow<connection>, host: string, port: u16, destination-db: integer, timeout: duration-milliseconds, copy: bool, replace: bool, auth: option<migrate-auth>, keys: list<string>) -> result<bool, error>;
+    migrate: async func(connection: borrow<connection>, host: string, port: u16, destination-db: integer, timeout: duration-milliseconds, options: migrate-flags, auth: option<migrate-auth>, keys: list<string>) -> result<bool, error>;
 
     /// Moves the key to the database, returning whether it was moved, false when it does not
     /// exist, or exists in the database without `replace`.
