@@ -108,7 +108,7 @@ mod with_valkey {
                     vec![Some((s("x"), b("1"))), None]
                 );
 
-                // a ttl under a second is rounded up to one, the precision of HEXPIRE
+                // a ttl to the millisecond, with HPEXPIRE
                 buckets
                     .call_set(
                         accessor,
@@ -126,7 +126,7 @@ mod with_valkey {
                         .call_exists(accessor, bucket, s("expiring"))
                         .await??
                 );
-                tokio::time::sleep(Duration::from_millis(1500)).await;
+                tokio::time::sleep(Duration::from_millis(500)).await;
                 assert!(
                     !buckets
                         .call_exists(accessor, bucket, s("expiring"))

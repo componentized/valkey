@@ -1,4 +1,4 @@
-use componentized::valkey::commands::{self, Duration};
+use componentized::valkey::commands::{self, DurationMilliseconds};
 use componentized::valkey::connection::{Connection, Error as ValkeyError};
 use componentized::valkey::connector;
 use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
@@ -77,9 +77,8 @@ impl GuestBucket for KeyvalueToValkeyBucket {
             .await?;
         }
         if let Some(ttl_ms) = options.ttl_ms {
-            // HEXPIRE has whole second precision, rounded up so a short ttl does not expire at once
-            let ttl: Duration = ttl_ms.div_ceil(1000) * 1_000_000_000;
-            commands::hexpire(
+            let ttl = DurationMilliseconds { px: ttl_ms };
+            commands::hpexpire(
                 &self.connection,
                 self.hash_key.clone(),
                 ttl,

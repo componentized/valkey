@@ -1,17 +1,17 @@
 use crate::command::{
-    DecimalSeconds, Flag, LexRange, Milliseconds, NamedOption, NonEmpty, NumKeys, ScoreRange,
-    Seconds, Zrange, emit, query,
+    DecimalSeconds, Flag, LexRange, NamedOption, NonEmpty, NumKeys, ScoreRange, Zrange, emit, query,
 };
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, Connection, Cursor, DbRule, Double, Duration, Error, FieldExpiration,
-    FieldPersistResult, FieldTtl, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Instant,
-    Integer, LcsIdxReply, LexBound, Limit, MsetexPrecondition, MsetexTtl, PopEnd, Rule,
-    RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, StreamId, StreamTrim, TtlMode,
-    TtlResult, UserRule, Value, XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply,
-    XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition,
-    ZrangeBy, ZrangeWithscoresBy,
+    Aggregate, Connection, Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds, Error,
+    FieldExpiretime, FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, GetexTtl, Guest,
+    HsetexCondition, HsetexFieldCondition, Integer, LcsIdxReply, LexBound, Limit,
+    MsetexPrecondition, MsetexTtl, PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl,
+    SortOpts, StreamId, StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds,
+    UserRule, Value, XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
+    XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition, ZrangeBy,
+    ZrangeWithscoresBy,
 };
-use crate::value::{FlatPairs, OrNever, OrZeroId, ScoredMembers, field_expiration, field_ttl};
+use crate::value::{FlatPairs, OrNever, OrZeroId, ScoredMembers};
 
 use wit_bindgen::rt::Map;
 
@@ -179,17 +179,13 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldExpiration>, Error> {
+    ) -> Result<Vec<FieldExpiretime>, Error> {
         let fields = NonEmpty::new("fields", fields)?;
-        let codes: Vec<Integer> = query(
+        query(
             connection,
             ("HEXPIRETIME", key, "FIELDS", fields.len(), fields),
         )
-        .await?;
-        codes
-            .into_iter()
-            .map(|code| field_expiration(code, false))
-            .collect()
+        .await
     }
 
     #[doc = " The values of the hash fields, none for a field that does not exist, deleting the fields."]
@@ -252,7 +248,7 @@ impl Guest for Commands {
     async fn hpexpire(
         connection: &Connection,
         key: String,
-        milliseconds: Duration,
+        milliseconds: DurationMilliseconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
@@ -260,7 +256,7 @@ impl Guest for Commands {
         let command = (
             "HPEXPIRE",
             key,
-            Milliseconds(milliseconds),
+            milliseconds,
             mode,
             "FIELDS",
             fields.len(),
@@ -277,7 +273,7 @@ impl Guest for Commands {
     async fn hpexpireat(
         connection: &Connection,
         key: String,
-        milliseconds: Instant,
+        milliseconds: UnixTimeMilliseconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
@@ -285,7 +281,7 @@ impl Guest for Commands {
         let command = (
             "HPEXPIREAT",
             key,
-            Milliseconds(milliseconds),
+            milliseconds,
             mode,
             "FIELDS",
             fields.len(),
@@ -305,17 +301,13 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldExpiration>, Error> {
+    ) -> Result<Vec<FieldPexpiretime>, Error> {
         let fields = NonEmpty::new("fields", fields)?;
-        let codes: Vec<Integer> = query(
+        query(
             connection,
             ("HPEXPIRETIME", key, "FIELDS", fields.len(), fields),
         )
-        .await?;
-        codes
-            .into_iter()
-            .map(|code| field_expiration(code, true))
-            .collect()
+        .await
     }
 
     #[doc = " The remaining time to live of each of the hash fields, to the millisecond."]
@@ -329,14 +321,9 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldTtl>, Error> {
+    ) -> Result<Vec<FieldPttl>, Error> {
         let fields = NonEmpty::new("fields", fields)?;
-        let codes: Vec<Integer> =
-            query(connection, ("HPTTL", key, "FIELDS", fields.len(), fields)).await?;
-        codes
-            .into_iter()
-            .map(|code| field_ttl(code, 1_000_000))
-            .collect()
+        query(connection, ("HPTTL", key, "FIELDS", fields.len(), fields)).await
     }
 
     #[doc = " Sets the fields to their values in the hash stored at key, optionally setting their"]
@@ -380,12 +367,7 @@ impl Guest for Commands {
         fields: Vec<String>,
     ) -> Result<Vec<FieldTtl>, Error> {
         let fields = NonEmpty::new("fields", fields)?;
-        let codes: Vec<Integer> =
-            query(connection, ("HTTL", key, "FIELDS", fields.len(), fields)).await?;
-        codes
-            .into_iter()
-            .map(|code| field_ttl(code, 1_000_000_000))
-            .collect()
+        query(connection, ("HTTL", key, "FIELDS", fields.len(), fields)).await
     }
 
     #[doc = " Manipulate the expiration time for existing hash fields."]
@@ -396,7 +378,7 @@ impl Guest for Commands {
     async fn hexpire(
         connection: &Connection,
         key: String,
-        seconds: Duration,
+        seconds: DurationSeconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
@@ -406,7 +388,7 @@ impl Guest for Commands {
             (
                 "HEXPIRE",
                 key,
-                Seconds(seconds),
+                seconds,
                 mode,
                 "FIELDS",
                 fields.len(),
@@ -424,7 +406,7 @@ impl Guest for Commands {
     async fn hexpireat(
         connection: &Connection,
         key: String,
-        seconds: Instant,
+        seconds: UnixTimeSeconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
@@ -434,7 +416,7 @@ impl Guest for Commands {
             (
                 "HEXPIREAT",
                 key,
-                Seconds(seconds),
+                seconds,
                 mode,
                 "FIELDS",
                 fields.len(),
@@ -714,7 +696,7 @@ impl Guest for Commands {
     async fn expire(
         connection: &Connection,
         key: String,
-        seconds: Duration,
+        seconds: DurationSeconds,
         mode: Option<TtlMode>,
     ) -> Result<bool, Error> {
         query(connection, ("EXPIRE", key, seconds, mode)).await
@@ -728,10 +710,10 @@ impl Guest for Commands {
     async fn expireat(
         connection: &Connection,
         key: String,
-        seconds: Instant,
+        seconds: UnixTimeSeconds,
         mode: Option<TtlMode>,
     ) -> Result<bool, Error> {
-        query(connection, ("EXPIREAT", key, Seconds(seconds), mode)).await
+        query(connection, ("EXPIREAT", key, seconds, mode)).await
     }
 
     #[doc = " Returns all keys matching pattern."]
@@ -1156,14 +1138,10 @@ impl Guest for Commands {
     async fn psetex(
         connection: &Connection,
         key: String,
-        milliseconds: Duration,
+        milliseconds: DurationMilliseconds,
         value: String,
     ) -> Result<(), Error> {
-        query(
-            connection,
-            ("PSETEX", key, Milliseconds(milliseconds), value),
-        )
-        .await
+        query(connection, ("PSETEX", key, milliseconds, value)).await
     }
 
     #[doc = " Set key to hold the string value."]
@@ -1208,7 +1186,7 @@ impl Guest for Commands {
     async fn setex(
         connection: &Connection,
         key: String,
-        seconds: Duration,
+        seconds: DurationSeconds,
         value: String,
     ) -> Result<(), Error> {
         query(connection, ("SETEX", key, seconds, value)).await
@@ -1315,7 +1293,7 @@ impl Guest for Commands {
         key: String,
         group: String,
         consumer: String,
-        min_idle_time: Duration,
+        min_idle_time: DurationMilliseconds,
         start: Option<StreamId>,
         count: Option<Integer>,
     ) -> Result<
@@ -1333,7 +1311,7 @@ impl Guest for Commands {
                 key,
                 group,
                 consumer,
-                Milliseconds(min_idle_time),
+                min_idle_time,
                 OrZeroId(start),
                 NamedOption("COUNT", count),
             ),
@@ -1354,7 +1332,7 @@ impl Guest for Commands {
         key: String,
         group: String,
         consumer: String,
-        min_idle_time: Duration,
+        min_idle_time: DurationMilliseconds,
         start: Option<StreamId>,
         count: Option<Integer>,
     ) -> Result<(Option<StreamId>, Vec<StreamId>, Vec<StreamId>), Error> {
@@ -1365,7 +1343,7 @@ impl Guest for Commands {
                 key,
                 group,
                 consumer,
-                Milliseconds(min_idle_time),
+                min_idle_time,
                 OrZeroId(start),
                 NamedOption("COUNT", count),
                 "JUSTID",
@@ -1387,7 +1365,7 @@ impl Guest for Commands {
         key: String,
         group: String,
         consumer: String,
-        min_idle_time: Duration,
+        min_idle_time: DurationMilliseconds,
         ids: Vec<StreamId>,
         opts: Option<XclaimOpts>,
     ) -> Result<Vec<(StreamId, Map<String, String>)>, Error> {
@@ -1411,7 +1389,7 @@ impl Guest for Commands {
         key: String,
         group: String,
         consumer: String,
-        min_idle_time: Duration,
+        min_idle_time: DurationMilliseconds,
         ids: Vec<StreamId>,
         opts: Option<XclaimOpts>,
     ) -> Result<Vec<StreamId>, Error> {
@@ -1623,7 +1601,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         group: String,
-        min_idle_time: Option<Duration>,
+        min_idle_time: Option<DurationMilliseconds>,
         start: StreamId,
         end: StreamId,
         count: Integer,
@@ -1635,7 +1613,7 @@ impl Guest for Commands {
                 "XPENDING",
                 key,
                 group,
-                NamedOption("IDLE", min_idle_time.map(Milliseconds)),
+                NamedOption("IDLE", min_idle_time),
                 start,
                 end,
                 count,
@@ -1672,7 +1650,7 @@ impl Guest for Commands {
     async fn xread(
         connection: &Connection,
         count: Option<Integer>,
-        block: Option<Duration>,
+        block: Option<DurationMilliseconds>,
         keys: Vec<String>,
         ids: Vec<StreamId>,
     ) -> Result<Option<Map<String, Vec<(StreamId, Map<String, String>)>>>, Error> {
@@ -1683,7 +1661,7 @@ impl Guest for Commands {
             (
                 "XREAD",
                 NamedOption("COUNT", count),
-                NamedOption("BLOCK", block.map(Milliseconds)),
+                NamedOption("BLOCK", block),
                 "STREAMS",
                 keys,
                 ids,
@@ -1705,7 +1683,7 @@ impl Guest for Commands {
         group: String,
         consumer: String,
         count: Option<Integer>,
-        block: Option<Duration>,
+        block: Option<DurationMilliseconds>,
         noack: bool,
         keys: Vec<String>,
         ids: Vec<StreamId>,
@@ -1720,7 +1698,7 @@ impl Guest for Commands {
                 group,
                 consumer,
                 NamedOption("COUNT", count),
-                NamedOption("BLOCK", block.map(Milliseconds)),
+                NamedOption("BLOCK", block),
                 Flag("NOACK", noack),
                 "STREAMS",
                 keys,
@@ -2113,7 +2091,7 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn bzmpop(
         connection: &Connection,
-        timeout: Duration,
+        timeout: DurationMilliseconds,
         keys: Vec<String>,
         end: PopEnd,
         count: Option<Integer>,
@@ -2143,7 +2121,7 @@ impl Guest for Commands {
     async fn bzpopmax(
         connection: &Connection,
         keys: Vec<String>,
-        timeout: Duration,
+        timeout: DurationMilliseconds,
     ) -> Result<Option<(String, String, Double)>, Error> {
         let keys = NonEmpty::new("keys", keys)?;
         query(connection, ("BZPOPMAX", keys, DecimalSeconds(timeout))).await
@@ -2163,7 +2141,7 @@ impl Guest for Commands {
     async fn bzpopmin(
         connection: &Connection,
         keys: Vec<String>,
-        timeout: Duration,
+        timeout: DurationMilliseconds,
     ) -> Result<Option<(String, String, Double)>, Error> {
         let keys = NonEmpty::new("keys", keys)?;
         query(connection, ("BZPOPMIN", keys, DecimalSeconds(timeout))).await

@@ -4,7 +4,28 @@
 /// client error before anything is sent. A list the command allows to be left out is an option,
 /// none rather than empty.
 interface commands {
-    use connection.{connection, double, duration, instant, integer, value, error};
+    use connection.{connection, double, integer, value, error};
+
+    /// A duration in whole seconds, e.g. `EX seconds`.
+    record duration-seconds {
+        ex: u64,
+    }
+
+    /// A duration in whole milliseconds, e.g. `PX milliseconds`.
+    record duration-milliseconds {
+        px: u64,
+    }
+
+    /// A point in time as whole seconds since the Unix epoch, e.g. `EXAT unix-time-seconds`.
+    record unix-time-seconds {
+        exat: s64,
+    }
+
+    /// A point in time as whole milliseconds since the Unix epoch, e.g. `PXAT
+    /// unix-time-milliseconds`.
+    record unix-time-milliseconds {
+        pxat: s64,
+    }
 
     /// XXXXXX
     ///
@@ -351,32 +372,52 @@ interface commands {
     ///
     /// HEXPIRE key seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hexpire/
-    hexpire: async func(connection: borrow<connection>, key: string, seconds: duration, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hexpire: async func(connection: borrow<connection>, key: string, seconds: duration-seconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
 
     /// Manipulate the expiration time for existing hash fields.
     ///
     /// HEXPIREAT key unix-time-seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hexpireat/
-    hexpireat: async func(connection: borrow<connection>, key: string, seconds: instant, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hexpireat: async func(connection: borrow<connection>, key: string, seconds: unix-time-seconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
 
-    /// The remaining time to live of a hash field.
+    /// The remaining time to live of a hash field, to the second, see `httl`.
     variant field-ttl {
         /// -2: the field does not exist, or the hash does not exist.
         does-not-exist,
         /// -1: the field exists, but has no expiration.
         no-expiration,
         /// The time until the field expires.
-        expires-in(duration),
+        expires-in(duration-seconds),
     }
 
-    /// When a hash field expires.
-    variant field-expiration {
+    /// The remaining time to live of a hash field, to the millisecond, see `hpttl`.
+    variant field-pttl {
+        /// -2: the field does not exist, or the hash does not exist.
+        does-not-exist,
+        /// -1: the field exists, but has no expiration.
+        no-expiration,
+        /// The time until the field expires.
+        expires-in(duration-milliseconds),
+    }
+
+    /// When a hash field expires, to the second, see `hexpiretime`.
+    variant field-expiretime {
         /// -2: the field does not exist, or the hash does not exist.
         does-not-exist,
         /// -1: the field exists, but has no expiration.
         no-expiration,
         /// The time at which the field expires.
-        expires-at(instant),
+        expires-at(unix-time-seconds),
+    }
+
+    /// When a hash field expires, to the millisecond, see `hpexpiretime`.
+    variant field-pexpiretime {
+        /// -2: the field does not exist, or the hash does not exist.
+        does-not-exist,
+        /// -1: the field exists, but has no expiration.
+        no-expiration,
+        /// The time at which the field expires.
+        expires-at(unix-time-milliseconds),
     }
 
     /// When each of the hash fields expires, to the second.
@@ -385,7 +426,7 @@ interface commands {
     ///
     /// HEXPIRETIME key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hexpiretime/
-    hexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-expiration>, error>;
+    hexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-expiretime>, error>;
 
     /// Returns the value associated with field in the hash stored at key.
     ///
@@ -468,13 +509,13 @@ interface commands {
     ///
     /// HPEXPIRE key milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpexpire/
-    hpexpire: async func(connection: borrow<connection>, key: string, milliseconds: duration, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hpexpire: async func(connection: borrow<connection>, key: string, milliseconds: duration-milliseconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
 
     /// Manipulate the expiration time for existing hash fields, as a Unix time in milliseconds.
     ///
     /// HPEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpexpireat/
-    hpexpireat: async func(connection: borrow<connection>, key: string, milliseconds: instant, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hpexpireat: async func(connection: borrow<connection>, key: string, milliseconds: unix-time-milliseconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
 
     /// When each of the hash fields expires, to the millisecond.
     ///
@@ -482,7 +523,7 @@ interface commands {
     ///
     /// HPEXPIRETIME key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpexpiretime/
-    hpexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-expiration>, error>;
+    hpexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-pexpiretime>, error>;
 
     /// The remaining time to live of each of the hash fields, to the millisecond.
     ///
@@ -490,7 +531,7 @@ interface commands {
     ///
     /// HPTTL key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpttl/
-    hpttl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-ttl>, error>;
+    hpttl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-pttl>, error>;
 
     /// Random fields from the hash value stored at key, up to the count.
     ///
@@ -619,13 +660,13 @@ interface commands {
     ///
     /// EXPIRE key seconds [ NX | XX | GT | LT ]
     /// https://valkey.io/commands/expire/
-    expire: async func(connection: borrow<connection>, key: string, seconds: duration, mode: option<ttl-mode>) -> result<bool, error>;
+    expire: async func(connection: borrow<connection>, key: string, seconds: duration-seconds, mode: option<ttl-mode>) -> result<bool, error>;
 
     /// Set a timeout on key.
     ///
     /// EXPIREAT key unix-time-seconds [ NX | XX | GT | LT ]
     /// https://valkey.io/commands/expireat/
-    expireat: async func(connection: borrow<connection>, key: string, seconds: instant, mode: option<ttl-mode>) -> result<bool, error>;
+    expireat: async func(connection: borrow<connection>, key: string, seconds: unix-time-seconds, mode: option<ttl-mode>) -> result<bool, error>;
 
     /// Returns all keys matching pattern.
     ///
@@ -1059,7 +1100,7 @@ interface commands {
     ///
     /// BZMPOP timeout numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]
     /// https://valkey.io/commands/bzmpop/
-    bzmpop: async func(connection: borrow<connection>, timeout: duration, keys: list<string>, end: pop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
+    bzmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: pop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
 
     /// Removes the member with the highest score from the first non-empty sorted set, waiting up to
     /// the timeout for one, returning its key, the member and its score.
@@ -1071,7 +1112,7 @@ interface commands {
     ///
     /// BZPOPMAX key [ key ... ] timeout
     /// https://valkey.io/commands/bzpopmax/
-    bzpopmax: async func(connection: borrow<connection>, keys: list<string>, timeout: duration) -> result<option<tuple<string, string, double>>, error>;
+    bzpopmax: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string, double>>, error>;
 
     /// Removes the member with the lowest score from the first non-empty sorted set, waiting up to
     /// the timeout for one, returning its key, the member and its score.
@@ -1083,7 +1124,7 @@ interface commands {
     ///
     /// BZPOPMIN key [ key ... ] timeout
     /// https://valkey.io/commands/bzpopmin/
-    bzpopmin: async func(connection: borrow<connection>, keys: list<string>, timeout: duration) -> result<option<tuple<string, string, double>>, error>;
+    bzpopmin: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string, double>>, error>;
 
     /// Adds the members with their scores to the sorted set stored at key, or updates their scores,
     /// returning how many were added, or with `changed`, added or updated.
@@ -1440,7 +1481,7 @@ interface commands {
     ///
     /// XAUTOCLAIM key group consumer min-idle-time start [ COUNT count ]
     /// https://valkey.io/commands/xautoclaim/
-    xautoclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<tuple<stream-id, map<string, string>>>, list<stream-id>>, error>;
+    xautoclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<tuple<stream-id, map<string, string>>>, list<stream-id>>, error>;
 
     /// Transfers ownership of pending stream entries that match the specified criteria.
     ///
@@ -1452,16 +1493,16 @@ interface commands {
     ///
     /// XAUTOCLAIM key group consumer min-idle-time start [ COUNT count ] JUSTID
     /// https://valkey.io/commands/xautoclaim/
-    xautoclaim-justid: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<stream-id>, list<stream-id>>, error>;
+    xautoclaim-justid: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<stream-id>, list<stream-id>>, error>;
 
 
     /// Options of XCLAIM.
     record xclaim-opts {
         /// `IDLE ms`: sets the idle time of the entries, the time since they were last delivered, instead
         /// of resetting it.
-        idle: option<duration>,
+        idle: option<duration-milliseconds>,
         /// `TIME unix-time-milliseconds`: sets the idle time of the entries to the time since this instant.
-        time: option<instant>,
+        time: option<unix-time-milliseconds>,
         /// `RETRYCOUNT count`: sets the delivery count of the entries, instead of incrementing it.
         retrycount: option<integer>,
         /// `FORCE`: claims the entries even when they are not pending for any consumer, as long as they
@@ -1477,7 +1518,7 @@ interface commands {
     ///
     /// XCLAIM key group consumer min-idle-time ID [ ID ... ] [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] [ LASTID lastid ]
     /// https://valkey.io/commands/xclaim/
-    xclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
+    xclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
 
     /// Changes the ownership of a pending message, so that the new owner is the consumer specified as the command argument.
     ///
@@ -1485,7 +1526,7 @@ interface commands {
     ///
     /// XCLAIM key group consumer min-idle-time ID [ ID ... ] [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] JUSTID [ LASTID lastid ]
     /// https://valkey.io/commands/xclaim/
-    xclaim-justid: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<stream-id>, error>;
+    xclaim-justid: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<stream-id>, error>;
 
     /// Removes the specified entries from a stream, and returns the number of entries deleted.
     ///
@@ -1531,10 +1572,10 @@ interface commands {
         pending: integer,
         /// The time since the consumer last attempted an interaction, e.g. XREADGROUP, XCLAIM or
         /// XAUTOCLAIM.
-        idle: duration,
+        idle: duration-milliseconds,
         /// The time since the consumer last interacted successfully, e.g. read or claimed entries.
         /// None when the consumer has never been active.
-        inactive: option<duration>,
+        inactive: option<duration-milliseconds>,
     }
 
     /// Consumers that belong to the <groupname> consumer group of the stream stored at <key>.
@@ -1633,7 +1674,7 @@ interface commands {
         pel-count: integer,
         /// The group's pending entries, the ID of each, the consumer it was delivered to, when it was
         /// last delivered and the number of times it was delivered.
-        pending: list<tuple<stream-id, string, instant, integer>>,
+        pending: list<tuple<stream-id, string, unix-time-milliseconds, integer>>,
         /// The group's consumers.
         consumers: list<xinfo-stream-reply-full-consumer>,
     }
@@ -1643,15 +1684,15 @@ interface commands {
         /// The consumer's name.
         name: string,
         /// When the consumer last attempted an interaction, e.g. XREADGROUP, XCLAIM or XAUTOCLAIM.
-        seen-time: instant,
+        seen-time: unix-time-milliseconds,
         /// When the consumer last interacted successfully, e.g. read or claimed entries.
         /// None when the consumer has never been active.
-        active-time: option<instant>,
+        active-time: option<unix-time-milliseconds>,
         /// The number of entries pending for the consumer, delivered but not acknowledged.
         pel-count: integer,
         /// The consumer's pending entries, the ID of each, when it was last delivered and the number of
         /// times it was delivered.
-        pending: list<tuple<stream-id, instant, integer>>,
+        pending: list<tuple<stream-id, unix-time-milliseconds, integer>>,
     }
 
     /// Information about the stream stored at <key>.
@@ -1695,7 +1736,7 @@ interface commands {
         /// The name of the consumer that fetched the message and has still to acknowledge it. We call it the current owner of the message.
         name: string,
         /// The number of milliseconds that elapsed since the last time this message was delivered to this consumer.
-        since-delivery: duration,
+        since-delivery: duration-milliseconds,
         /// The number of times this message was delivered.
         delivery-count: integer,
     }
@@ -1706,7 +1747,7 @@ interface commands {
     ///
     /// XPENDING key group [ IDLE min-idle-time ] start end count [ consumer ]
     /// https://valkey.io/commands/xpending/
-    xpending-extended: async func(connection: borrow<connection>, key: string, group: string, min-idle-time: option<duration>, start: stream-id, end: stream-id, count: integer, consumer: option<string>) -> result<list<xpending-extended-entry>, error>;
+    xpending-extended: async func(connection: borrow<connection>, key: string, group: string, min-idle-time: option<duration-milliseconds>, start: stream-id, end: stream-id, count: integer, consumer: option<string>) -> result<list<xpending-extended-entry>, error>;
 
     /// Stream entries matching a given range of IDs.
     ///
@@ -1718,7 +1759,7 @@ interface commands {
     ///
     /// XREAD [ COUNT count ] [ BLOCK milliseconds ] STREAMS key [ key ... ] ID [ ID ... ]
     /// https://valkey.io/commands/xread/
-    xread: async func(connection: borrow<connection>, count: option<integer>, block: option<duration>, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, map<string, string>>>>>, error>;
+    xread: async func(connection: borrow<connection>, count: option<integer>, block: option<duration-milliseconds>, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, map<string, string>>>>>, error>;
 
     /// Special version of the XREAD command with support for consumer groups.
     ///
@@ -1727,7 +1768,7 @@ interface commands {
     ///
     /// XREADGROUP GROUP group consumer [ COUNT count ] [ BLOCK milliseconds ] [ NOACK ] STREAMS key [ key ... ] ID [ ID ... ]
     /// https://valkey.io/commands/xreadgroup/
-    xreadgroup: async func(connection: borrow<connection>, group: string, consumer: string, count: option<integer>, block: option<duration>, noack: bool, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, option<map<string, string>>>>>>, error>;
+    xreadgroup: async func(connection: borrow<connection>, group: string, consumer: string, count: option<integer>, block: option<duration-milliseconds>, noack: bool, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, option<map<string, string>>>>>>, error>;
 
     /// XRANGE, but returning the entries in reverse order.
     ///
@@ -1791,13 +1832,13 @@ interface commands {
     /// The expiration to set on a key, see `getex`.
     variant getex-ttl {
         /// Set the specified expire time, in seconds.
-        ex(duration),
+        ex(duration-seconds),
         /// Set the specified expire time, in milliseconds.
-        px(duration),
+        px(duration-milliseconds),
         /// Set the specified Unix time at which the key will expire, in seconds.
-        exat(instant),
+        exat(unix-time-seconds),
         /// Set the specified Unix time at which the key will expire, in milliseconds.
-        pxat(instant),
+        pxat(unix-time-milliseconds),
         /// Remove the time to live associated with the key.
         persist,
     }
@@ -1919,7 +1960,7 @@ interface commands {
     ///
     /// PSETEX key milliseconds value
     /// https://valkey.io/commands/psetex/
-    psetex: async func(connection: borrow<connection>, key: string, milliseconds: duration, value: string) -> result<_, error>;
+    psetex: async func(connection: borrow<connection>, key: string, milliseconds: duration-milliseconds, value: string) -> result<_, error>;
 
     /// The condition for setting a key, see `set`.
     variant set-precondition {
@@ -1936,13 +1977,13 @@ interface commands {
     /// The expiration to set on a key, see `set`.
     variant set-ttl {
         /// Set the specified expire time, in seconds.
-        ex(duration),
+        ex(duration-seconds),
         /// Set the specified expire time, in milliseconds.
-        px(duration),
+        px(duration-milliseconds),
         /// Set the specified Unix time at which the key will expire, in seconds.
-        exat(instant),
+        exat(unix-time-seconds),
         /// Set the specified Unix time at which the key will expire, in milliseconds.
-        pxat(instant),
+        pxat(unix-time-milliseconds),
         /// Retain the time to live associated with the keys.
         keepttl,
     }
@@ -1965,7 +2006,7 @@ interface commands {
     ///
     /// SETEX key seconds value
     /// https://valkey.io/commands/setex/
-    setex: async func(connection: borrow<connection>, key: string, seconds: duration, value: string) -> result<_, error>;
+    setex: async func(connection: borrow<connection>, key: string, seconds: duration-seconds, value: string) -> result<_, error>;
 
     /// Set key to hold string value if key does not exist.
     ///

@@ -25,7 +25,7 @@ let keyvalue = new local:as-keyvalue {
     "componentized:valkey/resp@0.3.0-dev": resp.resp,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     "componentized:valkey/connector@0.3.0-dev": connector.connector,
-    "componentized:valkey/hash-commands@0.3.0-dev": commands["componentized:valkey/hash-commands@0.3.0-dev"],
+    "componentized:valkey/commands@0.3.0-dev": commands.commands,
     ...
 };
 

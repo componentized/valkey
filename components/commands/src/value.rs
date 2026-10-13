@@ -1,8 +1,9 @@
 use crate::exports::componentized::valkey::commands::{
-    Double, Duration, Error, FieldExpiration, FieldPersistResult, FieldTtl, Instant, Integer,
-    LcsIdxMatch, LcsIdxReply, StreamId, TtlResult, Value, XinfoConsumer, XinfoGroup,
-    XinfoStreamReply, XinfoStreamReplyFull, XinfoStreamReplyFullConsumer,
-    XinfoStreamReplyFullGroup, XpendingExtendedEntry, XpendingSummary,
+    Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime, FieldPersistResult,
+    FieldPexpiretime, FieldPttl, FieldTtl, Integer, LcsIdxMatch, LcsIdxReply, StreamId, TtlResult,
+    UnixTimeMilliseconds, UnixTimeSeconds, Value, XinfoConsumer, XinfoGroup, XinfoStreamReply,
+    XinfoStreamReplyFull, XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup,
+    XpendingExtendedEntry, XpendingSummary,
 };
 
 use resp_codec::NestedValue;
@@ -158,46 +159,31 @@ impl Fields {
     }
 }
 
-/// A duration or instant in whole seconds, e.g. for EX and EXAT.
-pub struct Seconds<T>(pub T);
-
-/// A duration or instant in whole milliseconds, e.g. for PX and PXAT.
-pub struct Milliseconds<T>(pub T);
-
-impl FromValue for Seconds<Duration> {
+/// Whole seconds, never negative.
+impl FromValue for DurationSeconds {
     fn from_value(value: Value) -> Result<Self, Error> {
-        let seconds = u64::from_value(value)?;
-        Ok(Seconds(seconds.saturating_mul(1_000_000_000)))
+        u64::from_value(value).map(|ex| DurationSeconds { ex })
     }
 }
 
-impl FromValue for Milliseconds<Duration> {
+/// Whole milliseconds, never negative.
+impl FromValue for DurationMilliseconds {
     fn from_value(value: Value) -> Result<Self, Error> {
-        let milliseconds = u64::from_value(value)?;
-        Ok(Milliseconds(milliseconds.saturating_mul(1_000_000)))
+        u64::from_value(value).map(|px| DurationMilliseconds { px })
     }
 }
 
-/// Seconds since the unix epoch.
-impl FromValue for Seconds<Instant> {
+/// Whole seconds since the Unix epoch.
+impl FromValue for UnixTimeSeconds {
     fn from_value(value: Value) -> Result<Self, Error> {
-        let seconds = Integer::from_value(value)?;
-        Ok(Seconds(Instant {
-            seconds,
-            nanoseconds: 0,
-        }))
+        Integer::from_value(value).map(|exat| UnixTimeSeconds { exat })
     }
 }
 
-/// Milliseconds since the unix epoch.
-impl FromValue for Milliseconds<Instant> {
+/// Whole milliseconds since the Unix epoch.
+impl FromValue for UnixTimeMilliseconds {
     fn from_value(value: Value) -> Result<Self, Error> {
-        let milliseconds = Integer::from_value(value)?;
-        // euclidean, so the nanoseconds are positive for an instant before the epoch
-        Ok(Milliseconds(Instant {
-            seconds: milliseconds.div_euclid(1_000),
-            nanoseconds: milliseconds.rem_euclid(1_000) as u32 * 1_000_000,
-        }))
+        Integer::from_value(value).map(|pxat| UnixTimeMilliseconds { pxat })
     }
 }
 
@@ -256,12 +242,11 @@ impl FromValue for XpendingSummary {
 /// `[id, consumer, milliseconds-since-delivery, delivery-count]`.
 impl FromValue for XpendingExtendedEntry {
     fn from_value(value: Value) -> Result<Self, Error> {
-        let (id, name, since_delivery, delivery_count): (_, _, Milliseconds<Duration>, _) =
-            FromValue::from_value(value)?;
+        let (id, name, since_delivery, delivery_count) = FromValue::from_value(value)?;
         Ok(Self {
             id,
             name,
-            since_delivery: since_delivery.0,
+            since_delivery,
             delivery_count,
         })
     }
@@ -304,34 +289,30 @@ impl<K: FromValue, V: FromValue> FromValue for FlatPairs<K, V> {
     }
 }
 
-/// `-2` when the field does not exist, `-1` when it has no expiration, otherwise the time to live in
-/// the unit, as nanoseconds, e.g. seconds for HTTL.
-pub fn field_ttl(code: Integer, unit: u64) -> Result<FieldTtl, Error> {
-    match code {
-        -2 => Ok(FieldTtl::DoesNotExist),
-        -1 => Ok(FieldTtl::NoExpiration),
-        time if time >= 0 => Ok(FieldTtl::ExpiresIn((time as u64).saturating_mul(unit))),
-        code => Err(Error::Client(format!("unexpected reply: {code}"))),
-    }
+/// The codes of HTTL and the like, `-2` when the field does not exist, `-1` when it has no
+/// expiration, otherwise the time.
+macro_rules! from_value_field_times {
+    ($($variant:ident($time:ident) => $case:ident),*) => {
+        $(
+            impl FromValue for $variant {
+                fn from_value(value: Value) -> Result<Self, Error> {
+                    match value {
+                        Value::Integer(-2) => Ok($variant::DoesNotExist),
+                        Value::Integer(-1) => Ok($variant::NoExpiration),
+                        value => $time::from_value(value).map($variant::$case),
+                    }
+                }
+            }
+        )*
+    };
 }
 
-/// `-2` when the field does not exist, `-1` when it has no expiration, otherwise when it expires
-/// as a Unix time, in seconds or milliseconds.
-pub fn field_expiration(code: Integer, milliseconds: bool) -> Result<FieldExpiration, Error> {
-    match code {
-        -2 => Ok(FieldExpiration::DoesNotExist),
-        -1 => Ok(FieldExpiration::NoExpiration),
-        time if time >= 0 && milliseconds => Ok(FieldExpiration::ExpiresAt(Instant {
-            seconds: time / 1_000,
-            nanoseconds: (time % 1_000) as u32 * 1_000_000,
-        })),
-        time if time >= 0 => Ok(FieldExpiration::ExpiresAt(Instant {
-            seconds: time,
-            nanoseconds: 0,
-        })),
-        code => Err(Error::Client(format!("unexpected reply: {code}"))),
-    }
-}
+from_value_field_times!(
+    FieldTtl(DurationSeconds) => ExpiresIn,
+    FieldPttl(DurationMilliseconds) => ExpiresIn,
+    FieldExpiretime(UnixTimeSeconds) => ExpiresAt,
+    FieldPexpiretime(UnixTimeMilliseconds) => ExpiresAt
+);
 
 impl FromValue for FieldPersistResult {
     fn from_value(value: Value) -> Result<Self, Error> {
@@ -389,13 +370,13 @@ impl FromValue for LcsIdxMatch {
 impl FromValue for XinfoConsumer {
     fn from_value(value: Value) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
-        let idle: Milliseconds<Duration> = fields.required("idle")?;
-        let inactive: OrNever<Milliseconds<Duration>> = fields.required("inactive")?;
         Ok(Self {
             name: fields.required("name")?,
             pending: fields.required("pending")?,
-            idle: idle.0,
-            inactive: inactive.0.map(|inactive| inactive.0),
+            idle: fields.required("idle")?,
+            inactive: fields
+                .required::<OrNever<DurationMilliseconds>>("inactive")?
+                .0,
         })
     }
 }
@@ -450,21 +431,13 @@ impl FromValue for XinfoStreamReplyFull {
 impl FromValue for XinfoStreamReplyFullGroup {
     fn from_value(value: Value) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
-        // the entry, its consumer, when it was last delivered and how often
-        let pending: Vec<(StreamId, String, Milliseconds<Instant>, Integer)> =
-            fields.required("pending")?;
         Ok(Self {
             name: fields.required("name")?,
             last_delivered_id: fields.required("last-delivered-id")?,
             entries_read: fields.required("entries-read")?,
             lag: fields.required("lag")?,
             pel_count: fields.required("pel-count")?,
-            pending: pending
-                .into_iter()
-                .map(|(id, consumer, delivered, deliveries)| {
-                    (id, consumer, delivered.0, deliveries)
-                })
-                .collect(),
+            pending: fields.required("pending")?,
             consumers: fields.required("consumers")?,
         })
     }
@@ -473,20 +446,14 @@ impl FromValue for XinfoStreamReplyFullGroup {
 impl FromValue for XinfoStreamReplyFullConsumer {
     fn from_value(value: Value) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
-        let seen_time: Milliseconds<Instant> = fields.required("seen-time")?;
-        let active_time: OrNever<Milliseconds<Instant>> = fields.required("active-time")?;
-        // the entry, when it was last delivered and how often
-        let pending: Vec<(StreamId, Milliseconds<Instant>, Integer)> =
-            fields.required("pending")?;
         Ok(Self {
             name: fields.required("name")?,
-            seen_time: seen_time.0,
-            active_time: active_time.0.map(|active_time| active_time.0),
+            seen_time: fields.required("seen-time")?,
+            active_time: fields
+                .required::<OrNever<UnixTimeMilliseconds>>("active-time")?
+                .0,
             pel_count: fields.required("pel-count")?,
-            pending: pending
-                .into_iter()
-                .map(|(id, delivered, deliveries)| (id, delivered.0, deliveries))
-                .collect(),
+            pending: fields.required("pending")?,
         })
     }
 }

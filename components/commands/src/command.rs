@@ -1,9 +1,9 @@
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, ChannelRule, CommandRule, Connection, DbRule, Duration, Error, GetexTtl,
-    HsetexCondition, HsetexFieldCondition, Instant, KeyRule, LexBound, Limit, MsetexPrecondition,
-    PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder,
-    StreamTrim, StreamTrimEfficiency, TtlMode, UserRule, Value, XclaimOpts, ZaddComparison,
-    ZaddCondition, ZrangeBy,
+    Aggregate, ChannelRule, CommandRule, Connection, DbRule, DurationMilliseconds, DurationSeconds,
+    Error, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyRule, LexBound, Limit,
+    MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts,
+    SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds,
+    UserRule, Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -55,8 +55,7 @@ impl IntoCommand for &String {
     }
 }
 
-/// Numbers, without a unit, a `Duration` is a `u64` of nanoseconds, see `Seconds` and
-/// `Milliseconds`.
+/// Numbers, without a unit, see `DurationSeconds` and the other records for times.
 macro_rules! into_command_numbers {
     ($($number:ty),*) => {
         $(
@@ -159,33 +158,31 @@ impl IntoCommand for OrZeroId {
     }
 }
 
-/// A duration or instant in whole seconds, e.g. for EX and EXAT.
-pub struct Seconds<T>(pub T);
-
-/// A duration or instant in whole milliseconds, e.g. for PX and PXAT.
-pub struct Milliseconds<T>(pub T);
-
-impl IntoCommand for Seconds<Duration> {
+/// Whole seconds, e.g. for EX.
+impl IntoCommand for DurationSeconds {
     fn into_command(self) -> Vec<String> {
-        vec![duration_seconds(self.0)]
+        self.ex.into_command()
     }
 }
 
-impl IntoCommand for Milliseconds<Duration> {
+/// Whole milliseconds, e.g. for PX.
+impl IntoCommand for DurationMilliseconds {
     fn into_command(self) -> Vec<String> {
-        vec![duration_milliseconds(self.0)]
+        self.px.into_command()
     }
 }
 
-impl IntoCommand for Seconds<Instant> {
+/// Whole seconds since the Unix epoch, e.g. for EXAT.
+impl IntoCommand for UnixTimeSeconds {
     fn into_command(self) -> Vec<String> {
-        vec![instant_seconds(self.0)]
+        self.exat.into_command()
     }
 }
 
-impl IntoCommand for Milliseconds<Instant> {
+/// Whole milliseconds since the Unix epoch, e.g. for PXAT.
+impl IntoCommand for UnixTimeMilliseconds {
     fn into_command(self) -> Vec<String> {
-        vec![instant_milliseconds(self.0)]
+        self.pxat.into_command()
     }
 }
 
@@ -299,10 +296,10 @@ impl IntoCommand for TtlMode {
 impl IntoCommand for GetexTtl {
     fn into_command(self) -> Vec<String> {
         match self {
-            GetexTtl::Ex(duration) => ("EX", Seconds(duration)).into_command(),
-            GetexTtl::Px(duration) => ("PX", Milliseconds(duration)).into_command(),
-            GetexTtl::Exat(instant) => ("EXAT", Seconds(instant)).into_command(),
-            GetexTtl::Pxat(instant) => ("PXAT", Milliseconds(instant)).into_command(),
+            GetexTtl::Ex(duration) => ("EX", duration).into_command(),
+            GetexTtl::Px(duration) => ("PX", duration).into_command(),
+            GetexTtl::Exat(unix_time) => ("EXAT", unix_time).into_command(),
+            GetexTtl::Pxat(unix_time) => ("PXAT", unix_time).into_command(),
             GetexTtl::Persist => "PERSIST".into_command(),
         }
     }
@@ -312,10 +309,10 @@ impl IntoCommand for GetexTtl {
 impl IntoCommand for SetTtl {
     fn into_command(self) -> Vec<String> {
         match self {
-            SetTtl::Ex(duration) => ("EX", Seconds(duration)).into_command(),
-            SetTtl::Px(duration) => ("PX", Milliseconds(duration)).into_command(),
-            SetTtl::Exat(instant) => ("EXAT", Seconds(instant)).into_command(),
-            SetTtl::Pxat(instant) => ("PXAT", Milliseconds(instant)).into_command(),
+            SetTtl::Ex(duration) => ("EX", duration).into_command(),
+            SetTtl::Px(duration) => ("PX", duration).into_command(),
+            SetTtl::Exat(unix_time) => ("EXAT", unix_time).into_command(),
+            SetTtl::Pxat(unix_time) => ("PXAT", unix_time).into_command(),
             SetTtl::Keepttl => "KEEPTTL".into_command(),
         }
     }
@@ -374,32 +371,12 @@ impl IntoCommand for StreamTrimEfficiency {
     }
 }
 
-/// A duration, in nanoseconds, as whole seconds, the precision of EX.
-pub fn duration_seconds(nanoseconds: u64) -> String {
-    nanoseconds.div_ceil(1_000_000_000).to_string()
-}
-
-/// A duration, in nanoseconds, as whole milliseconds, the precision of PX.
-pub fn duration_milliseconds(nanoseconds: u64) -> String {
-    nanoseconds.div_ceil(1_000_000).to_string()
-}
-
-/// An instant as seconds since the unix epoch, the precision of EXAT.
-pub fn instant_seconds(instant: Instant) -> String {
-    (instant.seconds + instant.nanoseconds.div_ceil(1_000_000_000) as i64).to_string()
-}
-
-/// An instant as milliseconds since the unix epoch, the precision of PXAT.
-pub fn instant_milliseconds(instant: Instant) -> String {
-    ((instant.seconds * 1_000) + instant.nanoseconds.div_ceil(1_000_000) as i64).to_string()
-}
-
 impl IntoCommand for XclaimOpts {
     fn into_command(self) -> Vec<String> {
         // [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] [ LASTID lastid ]
         (
-            NamedOption("IDLE", self.idle.map(Milliseconds)),
-            NamedOption("TIME", self.time.map(Milliseconds)),
+            NamedOption("IDLE", self.idle),
+            NamedOption("TIME", self.time),
             NamedOption("RETRYCOUNT", self.retrycount),
             Flag("FORCE", self.force),
             NamedOption("LASTID", self.lastid),
@@ -408,12 +385,17 @@ impl IntoCommand for XclaimOpts {
     }
 }
 
-/// A duration in seconds with a fraction, e.g. the timeout of BZPOPMIN.
-pub struct DecimalSeconds(pub Duration);
+/// Milliseconds as seconds with a fraction, e.g. the timeout of BZPOPMIN, `1500` as `1.500`.
+pub struct DecimalSeconds(pub DurationMilliseconds);
 
 impl IntoCommand for DecimalSeconds {
     fn into_command(self) -> Vec<String> {
-        vec![(self.0 as f64 / 1_000_000_000.0).to_string()]
+        let milliseconds = self.0.px;
+        vec![format!(
+            "{}.{:03}",
+            milliseconds / 1_000,
+            milliseconds % 1_000
+        )]
     }
 }
 
