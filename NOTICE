@@ -7,7 +7,7 @@ Your use of these subcomponents is subject to the terms and conditions of the su
 -------------------------------------------------------------------------------
 
 This product includes a RESP codec adapted from resp v1.0.3
-(https://github.com/iorust/resp/tree/v1.0.3), in crates/componentized-valkey/src/codec.rs,
+(https://github.com/iorust/resp/tree/v1.0.3), in crates/componentized-valkey/src/resp.rs,
 used under the MIT license:
 
 Copyright (c) 2016-2022 IORust Developers

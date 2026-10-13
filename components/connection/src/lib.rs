@@ -213,7 +213,7 @@ fn enqueue(
     let command = RespValue::Array(
         command
             .into_iter()
-            .map(|word| componentized_valkey::codec::encode(RespValue::BulkString(word)))
+            .map(|word| componentized_valkey::resp::encode(RespValue::BulkString(word)))
             .collect(),
     );
     inner
@@ -291,7 +291,7 @@ async fn transaction(
         RespValue::Null => Ok(None),
         RespValue::Array(replies) => replies
             .into_iter()
-            .map(|reply| componentized_valkey::codec::decode(reply).map_err(Error::Resp))
+            .map(|reply| componentized_valkey::resp::decode(reply).map_err(Error::Resp))
             .collect::<Result<_, _>>()
             .map(Some),
         reply => Err(unexpected(&reply)),
@@ -523,7 +523,7 @@ fn server_properties(reply: RespValue) -> Result<Vec<(String, RespValue)>, Error
 }
 
 fn decode(value: RespNestedValue) -> Result<RespValue, Error> {
-    componentized_valkey::codec::decode(value).map_err(Error::Resp)
+    componentized_valkey::resp::decode(value).map_err(Error::Resp)
 }
 
 /// An error value from the server fails the command.

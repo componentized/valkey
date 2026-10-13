@@ -164,11 +164,11 @@ async fn receive_pump(
     let result = 'pump: loop {
         // hand over each whole value buffered, a value may span several reads
         loop {
-            match componentized_valkey::codec::frame_len(&buffered) {
+            match componentized_valkey::resp::frame_len(&buffered) {
                 Ok(Some(len)) => {
                     let rest = buffered.split_off(len);
                     let frame = std::mem::replace(&mut buffered, rest);
-                    match componentized_valkey::codec::decode(frame) {
+                    match componentized_valkey::resp::decode(frame) {
                         Ok(value) => {
                             if replies.write_one(value).await.is_some() {
                                 // nobody reads the values anymore
@@ -210,7 +210,7 @@ async fn send_pump(
     };
     while let Some(value) = requests.next().await {
         if !bytes
-            .write_all(componentized_valkey::codec::encode(value))
+            .write_all(componentized_valkey::resp::encode(value))
             .await
             .is_empty()
         {

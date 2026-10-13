@@ -7,5 +7,5 @@ conversions between Rust values and commands and replies.
 
 Licensed under the Apache License, Version 2.0, see [LICENSE](./LICENSE).
 
-The RESP codec, `src/codec.rs`, is adapted from https://github.com/iorust/resp/tree/v1.0.3, used
+The RESP codec, `src/resp.rs`, is adapted from https://github.com/iorust/resp/tree/v1.0.3, used
 under the MIT license, see [NOTICE](./NOTICE).

@@ -379,7 +379,7 @@ fn render(value: RespValue) -> String {
 }
 
 fn render_nested(value: RespNestedValue) -> String {
-    match componentized_valkey::codec::decode(value) {
+    match componentized_valkey::resp::decode(value) {
         Ok(value) => render(value),
         Err(error) => format!("(invalid) {error}"),
     }

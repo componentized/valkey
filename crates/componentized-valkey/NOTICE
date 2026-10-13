@@ -8,7 +8,7 @@ as noted in the LICENSE file.
 -------------------------------------------------------------------------------
 
 This product includes a RESP codec adapted from resp v1.0.3
-(https://github.com/iorust/resp/tree/v1.0.3), in src/codec.rs,
+(https://github.com/iorust/resp/tree/v1.0.3), in src/resp.rs,
 used under the MIT license:
 
 Copyright (c) 2016-2022 IORust Developers

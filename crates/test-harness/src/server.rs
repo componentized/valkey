@@ -43,7 +43,7 @@ impl Client {
     pub async fn request(&mut self) -> Option<Vec<RespValue>> {
         loop {
             if let Some(len) =
-                componentized_valkey::codec::frame_len(&self.buffered).expect("valid RESP")
+                componentized_valkey::resp::frame_len(&self.buffered).expect("valid RESP")
             {
                 let rest = self.buffered.split_off(len);
                 let frame = std::mem::replace(&mut self.buffered, rest);

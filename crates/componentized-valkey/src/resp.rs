@@ -9,7 +9,7 @@ const CRLF_BYTES: &'static [u8] = b"\r\n";
 /// Encodes RESP value to RESP binary buffer.
 /// # Examples
 /// ```
-/// # use componentized_valkey::codec::encode;
+/// # use componentized_valkey::resp::encode;
 /// # use componentized_valkey::types::RespValue;
 /// let val = RespValue::String("OK".to_string());
 /// assert_eq!(encode(val), b"+OK\r\n");
@@ -125,7 +125,7 @@ fn buf_encode(value: RespValue, buf: &mut Vec<u8>) {
 ///
 /// # Examples
 /// ```
-/// # use componentized_valkey::codec::{decode, encode};
+/// # use componentized_valkey::resp::{decode, encode};
 /// # use componentized_valkey::types::RespValue;
 /// let value = RespValue::BulkString("Hello".to_string());
 /// assert_eq!(decode(encode(value.clone())), Ok(value));

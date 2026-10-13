@@ -2,7 +2,7 @@
 //! its interfaces.
 //!
 //! - [`types`]: the package's `types` interface, shared by every component's bindings.
-//! - [`codec`]: RESP serialization of a [`types::RespValue`], to and from bytes.
+//! - [`resp`]: RESP serialization of a [`types::RespValue`], to and from bytes.
 //! - [`command`]: [`IntoCommand`], converting Rust values into the words of a command.
 //! - [`value`]: [`FromValue`], converting a reply into Rust values.
 //!
@@ -36,8 +36,8 @@ mod bindings {
 /// The `componentized:valkey/types` interface.
 pub use bindings::componentized::valkey::types;
 
-pub mod codec;
 pub mod command;
+pub mod resp;
 pub mod value;
 
 pub use command::IntoCommand;

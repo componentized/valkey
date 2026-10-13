@@ -1276,7 +1276,7 @@ fn unexpected(reply: &RespValue) -> Error {
 }
 
 fn decode(value: RespNestedValue) -> Result<RespValue, Error> {
-    crate::codec::decode(value).map_err(Error::Resp)
+    crate::resp::decode(value).map_err(Error::Resp)
 }
 
 /// The nested values of an array, or a set.
