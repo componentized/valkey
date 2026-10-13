@@ -9,32 +9,7 @@
 /// with them, push messages, and transactions. Higher level, typed operations are functions in the
 /// `commands` interface that borrow the connection.
 interface connection {
-    use wasi:clocks/system-clock@0.3.0.{duration, instant};
-    use resp.{error as resp-error, value, integer, double};
-
-    /// The errors of a connection and of every command interface.
-    variant error {
-        /// The transport closed while a reply was outstanding, or before the command was sent. Holds
-        /// the transport's error when it did not close gracefully.
-        closed(option<string>),
-        /// Client errors are semantic issues with input/output values, e.g. a reply that does not
-        /// have the shape the command expects.
-        client(string),
-        /// RESP errors are encoding issues converting values to/from bytes.
-        resp(resp-error),
-        /// Valkey errors are Error or BulkError values returned directly from the server.
-        valkey(string),
-    }
-
-    /// Options for establishing a connection.
-    record connect-opts {
-        /// The username and password to authenticate with.
-        auth: option<tuple<string, string>>,
-        /// The name of the connection, see `CLIENT SETNAME`.
-        client-name: option<string>,
-        /// Enables keep-alive pings at this interval, see `connection.set-keep-alive`.
-        keep-alive-interval: option<duration>,
-    }
+    use types.{connect-opts, duration-milliseconds, error, value};
 
     resource connection {
         /// Establishes a connection over a transport.
@@ -134,6 +109,6 @@ interface connection {
         ///
         /// Unlike TCP keep-alive, a PING counts as activity for the server's idle client timeout,
         /// and works over any transport.
-        set-keep-alive: func(interval: option<duration>);
+        set-keep-alive: func(interval: option<duration-milliseconds>);
     }
 }

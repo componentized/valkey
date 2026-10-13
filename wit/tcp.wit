@@ -1,7 +1,7 @@
 /// A transport for connections over wasi:sockets TCP.
 interface tcp {
-    use resp.{value};
-    use connection.{connection, connect-opts, error};
+    use types.{connect-opts, error, value};
+    use connection.{connection};
 
     /// A TCP connection to a Valkey server, framing the bytes it carries into RESP values in each
     /// direction.

@@ -22,13 +22,12 @@ use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
 use exports::componentized::valkey::connection::{
-    ConnectOpts, Connection, Error, Guest, GuestConnection,
+    ConnectOpts, Connection, DurationMilliseconds, Error, Guest, GuestConnection,
 };
 use futures_channel::{mpsc, oneshot};
 use futures_core::Stream;
 use resp_codec::{NestedValue, Value};
 use wasi::clocks::monotonic_clock::wait_for;
-use wasi::clocks::types::Duration;
 use wit_bindgen::{FutureReader, FutureWriter, StreamReader, StreamWriter, spawn_local};
 
 /// How many push messages a reader may fall behind before its stream is closed.
@@ -59,7 +58,10 @@ enum Task {
     /// Forward push messages from the channel to a reader's stream.
     Pushes(mpsc::Receiver<Value>, StreamWriter<Value>),
     /// Keep the connection alive, until the keep-alive is set again.
-    KeepAlive { generation: u64, interval: Duration },
+    KeepAlive {
+        generation: u64,
+        interval: DurationMilliseconds,
+    },
 }
 
 /// State shared by a connection and its background tasks.
@@ -168,14 +170,14 @@ impl GuestConnection for ConnectionImpl {
         reader
     }
 
-    fn set_keep_alive(&self, interval: Option<Duration>) {
+    fn set_keep_alive(&self, interval: Option<DurationMilliseconds>) {
         let generation = {
             let mut state = self.0.state.borrow_mut();
             state.keep_alive_generation += 1;
             state.keep_alive_generation
         };
         // a zero interval would ping whenever the connection is idle, treated as disabled
-        if let Some(interval) = interval.filter(|interval| *interval > 0) {
+        if let Some(interval) = interval.filter(|interval| interval.px > 0) {
             let _ = self.0.tasks.unbounded_send(Task::KeepAlive {
                 generation,
                 interval,
@@ -421,12 +423,13 @@ async fn forward_pushes(mut pushes: mpsc::Receiver<Value>, mut writer: StreamWri
 }
 
 /// Send PING whenever the connection was idle for `interval`, closing it if PING fails.
-async fn keep_alive(inner: Weak<Inner>, generation: u64, interval: Duration) {
+async fn keep_alive(inner: Weak<Inner>, generation: u64, interval: DurationMilliseconds) {
     loop {
         let Some(seen) = keep_alive_activity(&inner, generation) else {
             return;
         };
-        wait_for(interval).await;
+        // a wasi:clocks duration is in nanoseconds
+        wait_for(interval.px.saturating_mul(1_000_000)).await;
         let Some(inner) = inner.upgrade() else {
             return;
         };
@@ -548,7 +551,7 @@ wit_bindgen::generate!({
     world: "connection",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/resp@0.3.0-dev": resp_codec::bindings::componentized::valkey::resp,
+        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
     },
     generate_all,
 });

@@ -1,0 +1,1519 @@
+/// The types of the package's interfaces, their stable public names.
+///
+/// The other interfaces use these types under names of their own, which may change, e.g. renamed
+/// to avoid clashing with a function for a new command. Refer to a type through this interface for
+/// a name that does not change.
+interface types {
+    // resp
+
+    /// An encoding error, converting RESP values to or from bytes.
+    type resp-error = string;
+
+    type integer = s64;
+
+    type double = f64;
+
+    variant value {
+        %string(string),
+        error(string),
+        integer(integer),
+        bulk-string(string),
+        array(list<nested-value>),
+        null,
+        boolean(bool),
+        double(double),
+        big-number(string),
+        bulk-error(string),
+        verbatim-string(tuple<string, string>),
+        %map(list<tuple<nested-value, nested-value>>),
+        set(list<nested-value>),
+        push(list<nested-value>),
+    }
+
+    /// Values nested within an aggregate type. Since WIT types are not allowed to depend on
+    /// themselves, nested values are stored as encoded RESP.
+    type nested-value = list<u8>;
+
+    // connection
+
+    /// The errors of a connection and of every command interface.
+    variant error {
+        /// The transport closed while a reply was outstanding, or before the command was sent. Holds
+        /// the transport's error when it did not close gracefully.
+        closed(option<string>),
+        /// Client errors are semantic issues with input/output values, e.g. a reply that does not
+        /// have the shape the command expects.
+        client(string),
+        /// RESP errors are encoding issues converting values to/from bytes.
+        resp(resp-error),
+        /// Valkey errors are Error or BulkError values returned directly from the server.
+        valkey(string),
+    }
+
+    /// Options for establishing a connection.
+    record connect-opts {
+        /// The username and password to authenticate with.
+        auth: option<tuple<string, string>>,
+        /// The name of the connection, see `CLIENT SETNAME`.
+        client-name: option<string>,
+        /// Enables keep-alive pings at this interval, see `connection.set-keep-alive`.
+        keep-alive-interval: option<duration-milliseconds>,
+    }
+
+    /// A duration in whole seconds, e.g. `EX seconds`.
+    record duration-seconds {
+        ex: u64,
+    }
+
+    /// A duration in whole milliseconds, e.g. `PX milliseconds`.
+    record duration-milliseconds {
+        px: u64,
+    }
+
+    /// A point in time as whole seconds since the Unix epoch, e.g. `EXAT unix-time-seconds`.
+    record unix-time-seconds {
+        exat: s64,
+    }
+
+    /// A point in time as whole milliseconds since the Unix epoch, e.g. `PXAT
+    /// unix-time-milliseconds`.
+    record unix-time-milliseconds {
+        pxat: s64,
+    }
+
+    /// Where an incremental iteration continues from, e.g. with HSCAN.
+    ///
+    /// A scan returns the cursor to resume from, always `resume`, none once the scan is complete.
+    /// Pass it to the next call until then.
+    variant cursor {
+        /// Starts a new scan, the cursor `0`.
+        start,
+        /// Continues a scan from the opaque cursor the previous call returned, `0` fails with a client
+        /// error, use `start`.
+        resume(string),
+    }
+
+    /// The condition for setting an expiration, e.g. with EXPIRE or HEXPIRE.
+    enum ttl-mode {
+        /// Set expiration only when the field has no expiration.
+        nx,
+        /// Set expiration only when the field has an existing expiration.
+        xx,
+        /// Set expiration only when the new expiration is greater than current one.
+        gt,
+        /// Set expiration only when the new expiration is less than current one.
+        lt,
+    }
+
+    /// The outcome of setting the expiration of a hash field, e.g. with HEXPIRE.
+    enum ttl-result {
+        /// -2: key does not exist, or field does not exist in the HASH.
+        does-not-exist,
+        /// 0: the specified NX | XX | GT | LT condition has not been met.
+        condition-not-met,
+        /// 1: the expiration time was applied.
+        applied,
+        /// 2: when called with 0 seconds.
+        zero-seconds,
+    }
+
+    /// The remaining time to live of a key or hash field, to the second, see `ttl` and `httl`.
+    variant ttl-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time until it expires.
+        expires-in(duration-seconds),
+    }
+
+    /// The remaining time to live of a key or hash field, to the millisecond, see `pttl` and `hpttl`.
+    variant pttl-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time until it expires.
+        expires-in(duration-milliseconds),
+    }
+
+    /// When a key or hash field expires, to the second, see `expiretime` and `hexpiretime`.
+    variant expiretime-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time at which it expires.
+        expires-at(unix-time-seconds),
+    }
+
+    /// When a key or hash field expires, to the millisecond, see `pexpiretime` and `hpexpiretime`.
+    variant pexpiretime-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time at which it expires.
+        expires-at(unix-time-milliseconds),
+    }
+
+    // admin commands
+
+    /// Whether a user may run a command, see `acl-dryrun`.
+    variant acl-dryrun-result {
+        /// The user may run the command.
+        allowed,
+        /// The user may not run the command, and why.
+        denied(string),
+    }
+
+    /// A security event, a command or authentication the rules denied, see `acl-log`.
+    record acl-log-entry {
+        /// The number of events like this one, within 60 seconds of each other.
+        count: integer,
+        /// What was denied, e.g. `command`, `key`, `channel` or `auth`.
+        reason: string,
+        /// Where it was denied, e.g. `toplevel`, `multi` or `lua`.
+        context: string,
+        /// The command, key or channel that was denied.
+        object: string,
+        username: string,
+        /// The seconds since the latest of these events.
+        age-seconds: double,
+        /// The connection, in the format of CLIENT LIST.
+        client-info: string,
+        /// The ID of the entry, since Valkey 7.2.
+        entry-id: option<integer>,
+        /// When the first of these events happened, since Valkey 7.2.
+        timestamp-created: option<unix-time-milliseconds>,
+        /// When the latest of these events happened, since Valkey 7.2.
+        timestamp-last-updated: option<unix-time-milliseconds>,
+    }
+
+    /// What BGSAVE does.
+    enum bgsave-operation {
+        /// `SCHEDULE`: saves once the rewrite of the append-only file in progress is done.
+        schedule,
+        /// `CANCEL`: cancels the save in progress, or scheduled.
+        cancel,
+    }
+
+    /// The type of a connection, for the `client-filter`.
+    enum client-type {
+        /// `normal`
+        normal,
+        /// `master`: the connection to the primary of a replica.
+        primary,
+        /// `replica`
+        replica,
+        /// `pubsub`
+        pubsub,
+    }
+
+    /// A filter of connections, for CLIENT KILL and CLIENT LIST.
+    variant client-filter {
+        /// `ID client-id [ client-id ... ]`
+        id(list<integer>),
+        /// `TYPE`
+        %type(client-type),
+        /// `USER username`
+        user(string),
+        /// `ADDR ip:port`: the address of the client.
+        addr(string),
+        /// `LADDR ip:port`: the address of the server the client connected to.
+        laddr(string),
+        /// `SKIPME YES | NO`: whether to skip this connection, yes by default for CLIENT KILL.
+        skipme(bool),
+        /// `MAXAGE`: connections older than the time.
+        maxage(duration-seconds),
+        /// `NAME`
+        name(string),
+        /// `IDLE`: connections idle for at least the time.
+        idle(duration-seconds),
+        /// `FLAGS`: connections with all the flags, e.g. `N`.
+        %flags(string),
+        /// `LIB-NAME`
+        lib-name(string),
+        /// `LIB-VER`
+        lib-ver(string),
+        /// `DB`
+        db(integer),
+        /// `CAPA`: connections with the capability, e.g. `redirect`.
+        capa(string),
+        /// `IP`
+        ip(string),
+        /// `NOT-ID client-id [ client-id ... ]`
+        not-id(list<integer>),
+        /// `NOT-TYPE`
+        not-type(client-type),
+        /// `NOT-USER`
+        not-user(string),
+        /// `NOT-ADDR`
+        not-addr(string),
+        /// `NOT-LADDR`
+        not-laddr(string),
+        /// `NOT-NAME`
+        not-name(string),
+        /// `NOT-FLAGS`
+        not-flags(string),
+        /// `NOT-LIB-NAME`
+        not-lib-name(string),
+        /// `NOT-LIB-VER`
+        not-lib-ver(string),
+        /// `NOT-DB`
+        not-db(integer),
+        /// `NOT-CAPA`
+        not-capa(string),
+        /// `NOT-IP`
+        not-ip(string),
+    }
+
+    /// Which commands CLIENT PAUSE suspends.
+    enum client-pause-mode {
+        /// `WRITE`: commands that may write.
+        write,
+        /// `ALL`: every command, the default.
+        all,
+    }
+
+    /// How CLIENT UNBLOCK unblocks a connection.
+    enum client-unblock-type {
+        /// `TIMEOUT`: as if the command timed out, the default.
+        timeout,
+        /// `ERROR`: with an `UNBLOCKED` error.
+        error,
+    }
+
+    /// The outcome of CLUSTER BUMPEPOCH.
+    variant cluster-bumpepoch-result {
+        /// `BUMPED`: the config epoch was advanced, to this one.
+        bumped(integer),
+        /// `STILL`: the config epoch is already the greatest in the cluster, this one.
+        still(integer),
+    }
+
+    /// How CLUSTER FAILOVER fails over.
+    enum cluster-failover-mode {
+        /// `FORCE`: without the agreement of the primary, which may be down.
+        force,
+        /// `TAKEOVER`: without the agreement of the primary or the rest of the cluster.
+        takeover,
+    }
+
+    /// Which way a slot migration moves the slots.
+    enum slot-migration-operation {
+        /// `IMPORT`: to this node.
+        %import,
+        /// `EXPORT`: from this node.
+        %export,
+    }
+
+    /// A slot migration, see `cluster-getslotmigrations`.
+    record slot-migration {
+        /// The ID of the migration.
+        link-name: string,
+        operation: slot-migration-operation,
+        /// The ranges of slots, start and end both included.
+        slot-ranges: list<tuple<u16, u16>>,
+        /// The ID of the node the slots move to.
+        target-node: string,
+        /// The ID of the node the slots move from.
+        source-node: string,
+        create-time: unix-time-seconds,
+        last-update-time: unix-time-seconds,
+        last-ack-time: unix-time-seconds,
+        /// The state of the migration, for people to read.
+        state: string,
+        /// More details of the state, for people to read.
+        message: string,
+        /// The bytes copied on write while forked for the migration.
+        cow-size: integer,
+    }
+
+    /// Ranges of slots to migrate to a node, see `cluster-migrateslots`.
+    record slot-migration-group {
+        /// The ranges of slots, start and end both included.
+        ranges: list<tuple<u16, u16>>,
+        /// The ID of the node to migrate the slots to.
+        node-id: string,
+        /// `AUTH username password`: the credentials for the node, since Valkey 9.2.
+        auth: option<tuple<string, string>>,
+    }
+
+    /// How CLUSTER RESET resets a node.
+    enum cluster-reset-mode {
+        /// `HARD`: also generates a new node ID and resets the epochs.
+        hard,
+        /// `SOFT`: the default.
+        soft,
+    }
+
+    /// The state to set a slot to, see `cluster-setslot`.
+    variant cluster-setslot-state {
+        /// `IMPORTING node-id`: importing the slot from the node.
+        importing(string),
+        /// `MIGRATING node-id`: migrating the slot to the node.
+        migrating(string),
+        /// `NODE node-id`: assigned to the node.
+        node(string),
+        /// `STABLE`: neither importing nor migrating.
+        stable,
+    }
+
+    /// A command log, see `commandlog-get`.
+    enum commandlog-type {
+        /// `slow`: commands that took longer than `commandlog-execution-slower-than`.
+        slow,
+        /// `large-request`: commands larger than `commandlog-request-larger-than`.
+        large-request,
+        /// `large-reply`: replies larger than `commandlog-reply-larger-than`.
+        large-reply,
+    }
+
+    /// An entry of the slow log or a command log.
+    record log-entry {
+        /// The ID of the entry, unique until the server restarts.
+        id: integer,
+        /// When the command ran.
+        timestamp: unix-time-seconds,
+        /// The microseconds the command took, or for the large logs, the bytes of the request or
+        /// reply.
+        value: integer,
+        /// The command and its arguments, long ones shortened.
+        arguments: list<string>,
+        /// The client's address, `ip:port`.
+        client-address: string,
+        /// The client's name, see CLIENT SETNAME, empty when it has none.
+        client-name: string,
+    }
+
+    /// Where FAILOVER fails over to.
+    record failover-target {
+        host: string,
+        port: u16,
+        /// `FORCE`: fails over at the timeout, even before the replica has caught up.
+        force: bool,
+    }
+
+    /// The latency histogram of a command, see `latency-histogram`.
+    record latency-histogram-entry {
+        /// The number of times the command ran.
+        calls: integer,
+        /// The cumulative counts of the calls that took up to each number of microseconds, a power
+        /// of 2.
+        histogram-usec: list<tuple<integer, integer>>,
+    }
+
+    /// The latest sample of the latency of an event, see `latency-latest`.
+    record latency-latest-entry {
+        event: string,
+        /// When the latest sample was taken.
+        timestamp: unix-time-seconds,
+        latest: duration-milliseconds,
+        /// The highest latency since the server started, or the event was reset.
+        max: duration-milliseconds,
+        /// The sum of the latencies of the samples.
+        sum: duration-milliseconds,
+        /// The number of samples.
+        count: integer,
+    }
+
+    /// A loaded module, see `module-list`.
+    record module-info {
+        name: string,
+        /// The module's version.
+        ver: integer,
+        /// The path the module was loaded from.
+        path: string,
+        /// The arguments the module was loaded with.
+        args: list<string>,
+    }
+
+    /// A replica of a primary, see `role`.
+    record role-replica-info {
+        ip: string,
+        port: u16,
+        /// The replication offset the replica last acknowledged.
+        offset: integer,
+    }
+
+    /// The replication state of a primary, see `role`.
+    record role-primary {
+        /// The primary's replication offset.
+        offset: integer,
+        replicas: list<role-replica-info>,
+    }
+
+    /// The replication state of a replica, see `role`.
+    record role-replica {
+        primary-host: string,
+        primary-port: u16,
+        /// The state of replication, e.g. `connected`, `connecting` or `sync`.
+        state: string,
+        /// The replication offset of the data received from the primary, -1 when not connected.
+        offset: integer,
+    }
+
+    /// The server's role in replication, see `role`.
+    variant role-reply {
+        /// `master`
+        primary(role-primary),
+        /// `slave`
+        replica(role-replica),
+        /// `sentinel`: the names of the primaries it monitors.
+        sentinel(list<string>),
+    }
+
+    /// The modifiers of SHUTDOWN.
+    flags shutdown-flags {
+        /// `NOW`: does not wait for lagging replicas.
+        now,
+        /// `FORCE`: ignores errors that would prevent the shutdown, e.g. failing to save.
+        force,
+        /// `SAFE`: refuses to shut down while it would lose the cluster's quorum of primaries.
+        safe,
+        /// `FAILOVER`: fails over to a replica first.
+        failover,
+    }
+
+    /// Whether SHUTDOWN saves to disk.
+    enum shutdown-save {
+        /// `NOSAVE`: does not save, even with save points configured.
+        nosave,
+        /// `SAVE`: saves, even without save points configured.
+        save,
+    }
+
+    /// A user and its rules, see `acl-list`.
+    record acl-list-entry {
+        username: string,
+        /// The user's rules, as the server normalized them, e.g. `allkeys` is `~*`. Applied with
+        /// `acl-setuser`, after `reset`, they recreate the user.
+        rules: list<rule>,
+    }
+
+    /// A rule of an ACL user, see `acl-setuser`.
+    ///
+    /// https://valkey.io/topics/acl/
+    variant rule {
+        /// The keys the user may access.
+        keys(key-rule),
+        /// The Pub/Sub channels the user may access.
+        channel(channel-rule),
+        /// The commands the user may call.
+        command(command-rule),
+        /// The databases the user may access.
+        db(db-rule),
+        /// The user itself, e.g. whether it is enabled and its passwords.
+        user(user-rule),
+        /// A rule this interface does not know, e.g. from a newer server, sent as is.
+        other(string),
+    }
+
+    /// A rule of a selector, a set of permissions matched independently of the user's root permissions,
+    /// the user may run a command when either permits it.
+    variant rule-selector {
+        /// The keys the selector permits access to.
+        keys(key-rule),
+        /// The Pub/Sub channels the selector permits access to.
+        channel(channel-rule),
+        /// The commands the selector permits.
+        command(command-rule),
+        /// The databases the selector permits access to.
+        db(db-rule),
+        /// A rule this interface does not know, e.g. from a newer server, sent as is.
+        other(string),
+    }
+
+    /// A rule for the keys a user may access.
+    variant key-rule {
+        /// `~<pattern>`: allows reading and writing the keys matching the glob-style pattern.
+        add(string),
+        /// `%R~<pattern>`: allows reading the keys matching the glob-style pattern.
+        add-read(string),
+        /// `%W~<pattern>`: allows writing the keys matching the glob-style pattern.
+        add-write(string),
+        /// `%RW~<pattern>`: allows reading and writing the keys matching the glob-style pattern, the
+        /// same as `add`.
+        add-read-write(string),
+        /// `allkeys`: allows access to all keys, an alias for `~*`.
+        all,
+        /// `resetkeys`: removes all the allowed key patterns.
+        reset,
+    }
+
+    /// A rule for the Pub/Sub channels a user may access.
+    variant channel-rule {
+        /// `&<pattern>`: allows access to the Pub/Sub channels matching the glob-style pattern.
+        add(string),
+        /// `allchannels`: allows access to all Pub/Sub channels, an alias for `&*`.
+        all,
+        /// `resetchannels`: removes all the allowed channel patterns, disconnecting the user's Pub/Sub
+        /// clients that can no longer access their channels.
+        reset,
+    }
+
+    /// A rule for the commands a user may call.
+    variant command-rule {
+        /// `+<command>`: allows the command, or a subcommand, e.g. `config|get`.
+        add(string),
+        /// `+@<category>`: allows all the commands in the category, e.g. `read`, see ACL CAT for the
+        /// categories.
+        add-category(string),
+        /// `+<command>|<first-arg>`: allows the command only with the given first argument, e.g. `select`
+        /// with `0`.
+        add-first-arg(tuple<string, string>),
+        /// `allcommands`: allows all commands, including those of modules loaded later, an alias for `+@all`.
+        all,
+        /// `-<command>`: disallows the command, or a subcommand.
+        remove(string),
+        /// `-@<category>`: disallows all the commands in the category.
+        remove-category(string),
+        /// `nocommands`: disallows all commands, an alias for `-@all`.
+        reset,
+    }
+
+    /// A rule for the databases a user may access.
+    variant db-rule {
+        /// `db=<id>[,<id>...]`: allows access to the databases with the given IDs.
+        db(list<u8>),
+        /// `alldbs`: allows access to all databases.
+        all,
+        /// `resetdbs`: removes all the allowed databases.
+        reset,
+    }
+
+    /// A rule for the user itself.
+    variant user-rule {
+        /// `on`: enables the user, it is possible to authenticate as this user.
+        on,
+        /// `off`: disables the user, it is no longer possible to authenticate as this user, connections
+        /// already authenticated keep working.
+        off,
+        /// `nopass`: removes all the user's passwords, any password then authenticates as the user.
+        nopass,
+        /// `sanitize-payload`: validates the payloads of the user's RESTORE commands, the default.
+        sanitize-payload,
+        /// `skip-sanitize-payload`: skips validating the payloads of the user's RESTORE commands.
+        skip-sanitize-payload,
+        /// `><password>`: adds the password to the user's passwords.
+        password(string),
+        /// `#<hash>`: adds a password, by its SHA-256 hash as 64 lowercase hex characters, to the user's
+        /// passwords.
+        hashed-password(string),
+        /// `<<password>`: removes the password from the user's passwords.
+        remove-password(string),
+        /// `!<hash>`: removes a password, by its SHA-256 hash, from the user's passwords.
+        remove-hashed-password(string),
+        /// `(<rule> ...)`: adds a selector, with the given rules.
+        selector(list<rule-selector>),
+        /// `clearselectors`: removes all the user's selectors.
+        clearselectors,
+        /// `reset`: resets the user to its state when created, disabled, without passwords, keys,
+        /// channels, commands or selectors.
+        reset,
+    }
+
+    // bitmap commands
+
+    /// A range of a string, negative from the end, for BITCOUNT and BITPOS.
+    variant bit-range {
+        /// `start`: the bytes from the start to the end of the string.
+        %from(integer),
+        /// `start end`: the bytes from the start to the end, both included.
+        bytes(tuple<integer, integer>),
+        /// `start end BIT`: the bits from the start to the end, both included.
+        bits(tuple<integer, integer>),
+    }
+
+    /// The type of an integer field of a string, for BITFIELD.
+    variant bitfield-encoding {
+        /// `i1` to `i64`: a signed integer of the width in bits.
+        signed(u8),
+        /// `u1` to `u63`: an unsigned integer of the width in bits.
+        unsigned(u8),
+    }
+
+    /// Where an integer field of a string starts, for BITFIELD.
+    variant bitfield-offset {
+        /// The offset in bits.
+        bit(u64),
+        /// `#field`: the field of the encoding's width, the offset in bits is the field times the
+        /// width.
+        field(u64),
+    }
+
+    /// What a write does when the field overflows, `OVERFLOW`.
+    enum bitfield-overflow {
+        /// `WRAP`: wraps around, the default.
+        wrap,
+        /// `SAT`: saturates at the minimum or maximum.
+        sat,
+        /// `FAIL`: does not write, the result is none.
+        fail,
+    }
+
+    /// `GET encoding offset`: the value of the field.
+    record bitfield-get {
+        encoding: bitfield-encoding,
+        offset: bitfield-offset,
+    }
+
+    /// `SET encoding offset value`: sets the field, the result is its previous value.
+    record bitfield-set {
+        encoding: bitfield-encoding,
+        offset: bitfield-offset,
+        value: s64,
+    }
+
+    /// `INCRBY encoding offset increment`: increments the field, the result is its new value.
+    record bitfield-incrby {
+        encoding: bitfield-encoding,
+        offset: bitfield-offset,
+        increment: s64,
+    }
+
+    /// An operation of BITFIELD.
+    ///
+    /// A write is preceded by an optional overflow mode, `OVERFLOW WRAP | SAT | FAIL`, for it and
+    /// the following writes. None keeps the current mode, `WRAP` at the start of the command.
+    variant bitfield-operation {
+        /// `GET encoding offset`
+        get(bitfield-get),
+        /// `[ OVERFLOW WRAP | SAT | FAIL ] SET encoding offset value`
+        set(tuple<option<bitfield-overflow>, bitfield-set>),
+        /// `[ OVERFLOW WRAP | SAT | FAIL ] INCRBY encoding offset increment`
+        incrby(tuple<option<bitfield-overflow>, bitfield-incrby>),
+    }
+
+    /// A bitwise operation of BITOP, and its source keys.
+    variant bitop-operation {
+        /// `AND`
+        and(list<string>),
+        /// `OR`
+        or(list<string>),
+        /// `XOR`
+        xor(list<string>),
+        /// `NOT`: of a single key.
+        not(string),
+    }
+
+    // connection commands
+
+    /// How a key spec finds the first key, see `key-spec`.
+    variant key-spec-begin-search {
+        /// `index`: the argument at the index.
+        index(integer),
+        /// `keyword`: the argument after the keyword.
+        keyword(key-spec-keyword),
+        /// `unknown`: the keys cannot be found from the arguments alone.
+        unknown,
+    }
+
+    /// The keyword before the first key, see `key-spec-begin-search`.
+    record key-spec-keyword {
+        keyword: string,
+        /// The index of the argument to start searching from, from the end when negative.
+        startfrom: integer,
+    }
+
+    /// How a key spec finds the keys after the first one, see `key-spec`.
+    variant key-spec-find-keys {
+        /// `range`: a range of arguments.
+        range(key-spec-range),
+        /// `keynum`: the number of keys is an argument.
+        keynum(key-spec-keynum),
+        /// `unknown`: the keys cannot be found from the arguments alone.
+        unknown,
+    }
+
+    /// A range of keys, see `key-spec-find-keys`.
+    record key-spec-range {
+        /// The index of the last key, relative to the first, from the end when negative.
+        lastkey: integer,
+        /// The number of arguments from one key to the next.
+        keystep: integer,
+        /// With a `lastkey` of -1, divides the remaining arguments, e.g. 2 for half of them.
+        limit: integer,
+    }
+
+    /// A number of keys, see `key-spec-find-keys`.
+    record key-spec-keynum {
+        /// The index of the argument with the number of keys, relative to the first.
+        keynumidx: integer,
+        /// The index of the first key, relative to the first.
+        firstkey: integer,
+        /// The number of arguments from one key to the next.
+        keystep: integer,
+    }
+
+    /// Where a command's keys are and how it uses them.
+    record key-spec {
+        notes: option<string>,
+        /// How the command uses the keys, e.g. `RW`, `access` and `update`.
+        %flags: list<string>,
+        begin-search: key-spec-begin-search,
+        find-keys: key-spec-find-keys,
+    }
+
+    /// A command, see `command` and `command-info`.
+    record command-info-reply {
+        /// The command's name, e.g. `get`, or for a subcommand, `config|get`.
+        name: string,
+        /// The number of arguments, the name included, the minimum when negative.
+        arity: integer,
+        /// The command's flags, e.g. `readonly` and `fast`.
+        %flags: list<string>,
+        /// The index of the first key, 0 for none.
+        first-key: integer,
+        /// The index of the last key, from the end when negative.
+        last-key: integer,
+        /// The number of arguments from one key to the next.
+        step: integer,
+        /// The ACL categories of the command, e.g. `@read`.
+        acl-categories: list<string>,
+        /// Hints for clients, e.g. `nondeterministic_output`.
+        tips: list<string>,
+        key-specs: list<key-spec>,
+    }
+
+    /// The type of an argument of a command, see `command-argument`.
+    variant command-argument-type {
+        /// `string`
+        %string,
+        /// `integer`
+        integer,
+        /// `double`
+        double,
+        /// `key`: a key, see `key-spec-index`.
+        key,
+        /// `pattern`: a glob-style pattern.
+        pattern,
+        /// `unix-time`
+        unix-time,
+        /// `pure-token`: the token alone, without a value.
+        pure-token,
+        /// `oneof`: one of the arguments it contains.
+        oneof,
+        /// `block`: the arguments it contains, together.
+        block,
+        /// A type this interface does not know, e.g. from a newer server.
+        other(string),
+    }
+
+    /// An argument of a command, see `command-docs`.
+    record command-argument {
+        /// The index of the `oneof` or `block` argument containing this one, in the command's
+        /// arguments, none at the top level.
+        parent: option<u32>,
+        name: string,
+        %type: command-argument-type,
+        /// The name to show for the argument.
+        display-text: option<string>,
+        /// The index of the argument's key spec, for a key.
+        key-spec-index: option<integer>,
+        /// The token before the argument's value, e.g. `EX`, or for a `pure-token`, the token alone.
+        token: option<string>,
+        summary: option<string>,
+        /// The version that added the argument.
+        since: option<string>,
+        deprecated-since: option<string>,
+        /// The argument's flags, e.g. `optional`, `multiple` and `multiple_token`.
+        %flags: list<string>,
+    }
+
+    /// The documentation of a command, see `command-docs`.
+    record command-docs-reply {
+        /// The command's name, e.g. `get`, or for a subcommand, `config|get`.
+        name: string,
+        summary: string,
+        /// The version that added the command.
+        since: string,
+        /// The command's group, e.g. `string`.
+        group: string,
+        /// The command's time complexity, none for a few commands, e.g. MONITOR.
+        complexity: option<string>,
+        /// The module of the command, for a module's command.
+        module: option<string>,
+        /// The command's documentation flags, e.g. `deprecated` or `syscmd`.
+        doc-flags: list<string>,
+        deprecated-since: option<string>,
+        /// The command to use instead, for a deprecated command.
+        replaced-by: option<string>,
+        /// The changes to the command, the version of each and what changed.
+        history: list<tuple<string, string>>,
+        /// The arguments, depth first, those an argument contains after it.
+        arguments: list<command-argument>,
+    }
+
+    /// Where a connection's tracking notifications are redirected, see `client-getredir` and
+    /// `client-trackinginfo`.
+    variant tracking-redirect {
+        /// -1: tracking is not on.
+        not-tracking,
+        /// 0: tracking is on, the notifications are not redirected.
+        not-redirected,
+        /// The ID of the connection the notifications are redirected to.
+        redirected(integer),
+    }
+
+    /// Information about the library of a connection, see `client-setinfo`.
+    variant client-setinfo-attr {
+        /// `LIB-NAME`: the name of the library, e.g. `valkey-wasm`.
+        lib-name(string),
+        /// `LIB-VER`: the version of the library.
+        lib-ver(string),
+    }
+
+    /// Which keys tracking tracks without CLIENT CACHING.
+    enum client-tracking-mode {
+        /// `OPTIN`: none, only those of commands after CLIENT CACHING YES.
+        optin,
+        /// `OPTOUT`: all, except those of commands after CLIENT CACHING NO.
+        optout,
+    }
+
+    /// The options of CLIENT TRACKING ON.
+    record client-tracking-options {
+        /// `REDIRECT client-id`: sends the notifications to the connection with the ID instead.
+        redirect: option<integer>,
+        /// `PREFIX prefix`: with `bcast`, only notifies about keys with the prefixes.
+        prefixes: option<list<string>>,
+        /// `BCAST`: notifies about every change of the keys with the prefixes, read or not.
+        bcast: bool,
+        mode: option<client-tracking-mode>,
+        /// `NOLOOP`: does not notify about the keys the connection changed itself.
+        noloop: bool,
+    }
+
+    /// A connection's tracking state, see `client-trackinginfo`.
+    record client-trackinginfo-reply {
+        /// The tracking flags, e.g. `on`, `bcast`, `optin` or `noloop`.
+        %flags: list<string>,
+        /// Where the notifications are redirected.
+        redirect: tracking-redirect,
+        /// The prefixes of BCAST.
+        prefixes: list<string>,
+    }
+
+    /// The filter of COMMAND LIST.
+    variant command-list-filter {
+        /// `MODULE module-name`: the commands of the module.
+        module(string),
+        /// `ACLCAT category`: the commands in the ACL category.
+        aclcat(string),
+        /// `PATTERN pattern`: the commands matching the glob-style pattern.
+        pattern(string),
+    }
+
+    // geo commands
+
+    /// A position on the Earth.
+    ///
+    /// The exact limits, as specified by EPSG:900913 / EPSG:3785 / OSGEO:41001
+    record geo-coordinates {
+        /// The longitude, from -180 to 180 degrees.
+        longitude: double,
+        /// The latitude, from -85.05112878 to 85.05112878 degrees.
+        latitude: double,
+    }
+
+    /// A unit of distance.
+    enum geo-unit {
+        /// `m`: meters.
+        m,
+        /// `km`: kilometers.
+        km,
+        /// `ft`: feet.
+        ft,
+        /// `mi`: miles.
+        mi,
+    }
+
+    /// Only add or only update members, GEOADD's `NX` and `XX`.
+    enum geoadd-condition {
+        /// Only add new members, never update existing ones.
+        nx,
+        /// Only update existing members, never add new ones.
+        xx,
+    }
+
+    /// The center of a search, `FROMMEMBER` or `FROMLONLAT`.
+    variant geo-from {
+        /// `FROMMEMBER member`: the position of a member of the index.
+        member(string),
+        /// `FROMLONLAT longitude latitude`
+        lonlat(geo-coordinates),
+    }
+
+    /// `BYRADIUS`: a circle around the center.
+    record geo-radius {
+        %from: geo-from,
+        radius: double,
+        unit: geo-unit,
+    }
+
+    /// `BYBOX`: a rectangle around the center.
+    record geo-box {
+        %from: geo-from,
+        width: double,
+        height: double,
+        unit: geo-unit,
+    }
+
+    /// The area of a search.
+    variant geo-shape {
+        /// `[ FROMMEMBER member | FROMLONLAT longitude latitude ] BYRADIUS radius unit`
+        radius(geo-radius),
+        /// `[ FROMMEMBER member | FROMLONLAT longitude latitude ] BYBOX width height unit`
+        box(geo-box),
+        /// `BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ]`: the polygon with
+        /// the vertices, in order, which has no center.
+        polygon(list<geo-coordinates>),
+    }
+
+    /// At most a count of the members, `COUNT count [ ANY ]`.
+    record geo-count {
+        count: integer,
+        /// `ANY`: returns as soon as enough members are found, rather than the nearest ones.
+        any: bool,
+    }
+
+    /// The details GEOSEARCH returns of each member it found.
+    flags geosearch-with-flags {
+        /// `WITHCOORD`: the position.
+        withcoord,
+        /// `WITHDIST`: the distance from the center.
+        withdist,
+        /// `WITHHASH`: the geohash, as an integer.
+        withhash,
+    }
+
+    /// A member a search found, with the details asked for.
+    record geo-search-result {
+        member: string,
+        /// `WITHDIST`: the distance from the center, in the unit of the shape.
+        distance: option<double>,
+        /// `WITHHASH`: the geohash, as an integer.
+        hash: option<integer>,
+        /// `WITHCOORD`: the position.
+        coordinates: option<geo-coordinates>,
+    }
+
+    // hash commands
+
+    /// The outcome of removing the expiration of a hash field.
+    enum field-persist-result {
+        /// -2: the field does not exist, or the hash does not exist.
+        does-not-exist,
+        /// -1: the field exists, but has no expiration.
+        no-expiration,
+        /// 1: the expiration was removed.
+        removed,
+    }
+
+    /// Only set the fields when the hash does, or does not, exist, HSETEX's `NX` and `XX`.
+    enum hsetex-condition {
+        /// Only set the fields when the hash does not exist.
+        nx,
+        /// Only set the fields when the hash exists.
+        xx,
+    }
+
+    /// Only set the fields when none, or all, of them exist, HSETEX's `FNX` and `FXX`.
+    enum hsetex-field-condition {
+        /// Only set the fields when none of them exist.
+        fnx,
+        /// Only set the fields when all of them exist.
+        fxx,
+    }
+
+    // keyspace commands
+
+    /// The type of the value stored at a key.
+    variant key-type {
+        /// `string`
+        %string,
+        /// `list`
+        %list,
+        /// `set`
+        set,
+        /// `zset`: a sorted set.
+        zset,
+        /// `hash`
+        hash,
+        /// `stream`
+        %stream,
+        /// The type of a module, by name.
+        other(string),
+    }
+
+    /// The options of MIGRATE.
+    flags migrate-flags {
+        /// `COPY`: keeps the keys in this instance.
+        copy,
+        /// `REPLACE`: replaces keys that exist in the other instance.
+        replace,
+    }
+
+    /// The credentials to authenticate to the other instance with, for MIGRATE.
+    variant migrate-auth {
+        /// `AUTH password`
+        password(string),
+        /// `AUTH2 username password`
+        username-password(tuple<string, string>),
+    }
+
+    // list commands
+
+    /// An end of a list.
+    enum list-side {
+        /// `LEFT`: the head, the first element.
+        left,
+        /// `RIGHT`: the tail, the last element.
+        right,
+    }
+
+    /// Where LINSERT inserts an element, relative to the pivot.
+    enum linsert-position {
+        /// `BEFORE`: in front of the pivot.
+        before,
+        /// `AFTER`: behind the pivot.
+        after,
+    }
+
+    /// The outcome of LINSERT.
+    variant linsert-result {
+        /// The element was inserted, the length of the list after it.
+        inserted(integer),
+        /// 0: the key does not exist, nothing was inserted.
+        no-such-key,
+        /// -1: the pivot is not in the list, nothing was inserted.
+        pivot-not-found,
+    }
+
+    // scripting commands
+
+    /// Whether a flush happens in the background, `ASYNC`, or before replying, `SYNC`.
+    enum flush-mode {
+        /// `ASYNC`
+        %async,
+        /// `SYNC`
+        sync,
+    }
+
+    /// A function of a library.
+    record library-function {
+        name: string,
+        description: option<string>,
+        /// The function's flags, e.g. `no-writes`.
+        %flags: list<string>,
+    }
+
+    /// A library of functions.
+    record library {
+        library-name: string,
+        /// The engine that runs the library, e.g. `LUA`.
+        engine: string,
+        functions: list<library-function>,
+        /// The library's source code, with `withcode`.
+        library-code: option<string>,
+    }
+
+    /// The function that is running.
+    record running-function {
+        name: string,
+        /// The command and its arguments that called the function.
+        command: list<string>,
+        /// How long the function has been running.
+        duration: duration-milliseconds,
+    }
+
+    /// The libraries and functions of an engine.
+    record engine-stats {
+        libraries-count: integer,
+        functions-count: integer,
+    }
+
+    /// The function that is running, and the libraries and functions of each engine.
+    record function-stats-reply {
+        /// None when no function is running.
+        running-script: option<running-function>,
+        /// The statistics of each engine, by name.
+        engines: map<string, engine-stats>,
+    }
+
+    // set commands
+
+    /// A range of a sorted result, `LIMIT offset count`.
+    record limit {
+        /// The number of elements skipped.
+        offset: integer,
+        /// The maximum number of elements returned, negative for all of them.
+        count: integer,
+    }
+
+    /// How SORT orders and projects the elements of a list, set or sorted set.
+    record sort-opts {
+        /// `BY pattern`: sorts by the values of the keys the pattern names, `*` replaced with each
+        /// element, or `nosort` to skip sorting.
+        by: option<string>,
+        /// `LIMIT offset count`: a range of the sorted elements.
+        limit: option<limit>,
+        /// `GET pattern`: returns the values of the keys each pattern names instead of the elements,
+        /// `#` for the element itself.
+        get: option<list<string>>,
+        /// order to sort elements.
+        order: option<sort-order>,
+        /// `ALPHA`: sorts lexicographically, rather than numerically.
+        alpha: bool,
+    }
+
+    enum sort-order {
+        /// ascending, smallest to largest.
+        asc,
+        /// descending, largest to smallest.
+        desc,
+    }
+
+    // sortedset commands
+
+    /// A bound of a range of scores.
+    variant score-bound {
+        /// The score, included in the range.
+        inclusive(double),
+        /// `(score`: the score, excluded from the range.
+        exclusive(double),
+        /// `-inf` as the min, `+inf` as the max, the start is the max with `REV`.
+        unbounded,
+    }
+
+    /// A bound of a range of members, for members of equal score, ordered lexicographically.
+    variant lex-bound {
+        /// `[member`: the member, included in the range.
+        inclusive(string),
+        /// `(member`: the member, excluded from the range.
+        exclusive(string),
+        /// `-` as the min, `+` as the max, the start is the max with `REV`.
+        unbounded,
+    }
+
+    /// Which end of a sorted set to pop from.
+    enum pop-end {
+        /// The members with the lowest scores.
+        min,
+        /// The members with the highest scores.
+        max,
+    }
+
+    /// How scores combine for a member in several sorted sets.
+    enum aggregate {
+        /// The sum of the weighted scores, the default.
+        sum,
+        /// The lowest weighted score.
+        min,
+        /// The highest weighted score.
+        max,
+    }
+
+    /// The range of ZRANGE and ZRANGESTORE, `start` and `stop`, given as they are sent: with `REV`,
+    /// the higher bound first.
+    variant zrange-by {
+        /// Positions, both included, negative from the end.
+        rank(tuple<integer, integer>),
+        /// `BYSCORE`: the members with scores in the range.
+        score(tuple<score-bound, score-bound>),
+        /// `BYLEX`: the members in the range, for members of equal score.
+        lex(tuple<lex-bound, lex-bound>),
+    }
+
+    /// The range of ZRANGE WITHSCORES, which does not support BYLEX, see `zrange-by`.
+    variant zrange-withscores-by {
+        /// Positions, both included, negative from the end.
+        rank(tuple<integer, integer>),
+        /// `BYSCORE`: the members with scores in the range.
+        score(tuple<score-bound, score-bound>),
+    }
+
+    /// Only update or only add members, ZADD's `NX` and `XX`.
+    enum zadd-condition {
+        /// Only add new members, never update existing ones.
+        nx,
+        /// Only update existing members, never add new ones.
+        xx,
+    }
+
+    /// Only update a member's score when the new score is greater or less, ZADD's `GT` and `LT`.
+    enum zadd-comparison {
+        /// Only update when the new score is greater than the current one.
+        gt,
+        /// Only update when the new score is less than the current one.
+        lt,
+    }
+
+    // stream commands
+
+    /// The ID of a stream entry, `<milliseconds-time>-<sequence-number>`, e.g. `1526919030474-55`.
+    ///
+    /// Commands that add an entry also accept `*`, for the server to generate the ID.
+    type stream-id = string;
+
+    /// How a stream is trimmed, e.g. with XADD or XTRIM.
+    variant stream-trim {
+        /// Evicts entries as long as the stream's length exceeds the specified threshold, where threshold is a positive integer.
+        maxlen(stream-trim-maxlen),
+        /// Evicts entries with IDs lower than threshold, where threshold is a stream ID.
+        minid(stream-trim-minid),
+    }
+
+    /// Trims the stream to a maximum length, `MAXLEN [ = | ~ ] threshold [ LIMIT count ]`.
+    record stream-trim-maxlen {
+        /// Exact, `=`, when none.
+        efficiency: option<stream-trim-efficiency>,
+        /// The maximum number of entries kept.
+        threshold: integer,
+        /// The maximum number of entries evicted, only with nearly exact trimming, `0` for no limit.
+        limit: option<integer>,
+    }
+
+    /// Trims the entries with lower IDs, `MINID [ = | ~ ] threshold [ LIMIT count ]`.
+    record stream-trim-minid {
+        /// Exact, `=`, when none.
+        efficiency: option<stream-trim-efficiency>,
+        /// The lowest ID kept.
+        threshold: stream-id,
+        /// The maximum number of entries evicted, only with nearly exact trimming, `0` for no limit.
+        limit: option<integer>,
+    }
+
+    /// How exactly a stream is trimmed. Nearly exact trimming is more efficient, the stream may keep a
+    /// few entries more than the threshold.
+    enum stream-trim-efficiency {
+        /// `=`: exact trimming
+        exact,
+        /// `~`: nearly exact trimming
+        mearly-exact,
+    }
+
+    /// Options of XCLAIM.
+    record xclaim-opts {
+        /// `IDLE ms`: sets the idle time of the entries, the time since they were last delivered, instead
+        /// of resetting it.
+        idle: option<duration-milliseconds>,
+        /// `TIME unix-time-milliseconds`: sets the idle time of the entries to the time since this instant.
+        time: option<unix-time-milliseconds>,
+        /// `RETRYCOUNT count`: sets the delivery count of the entries, instead of incrementing it.
+        retrycount: option<integer>,
+        /// `FORCE`: claims the entries even when they are not pending for any consumer, as long as they
+        /// exist in the stream.
+        force: bool,
+        /// `LASTID lastid`: sets the ID of the last entry delivered to the group.
+        lastid: option<stream-id>,
+    }
+
+    /// A consumer of a group, see `xinfo-consumers`.
+    record xinfo-consumer {
+        /// The consumer's name.
+        name: string,
+        /// The number of entries pending for the consumer.
+        pending: integer,
+        /// The time since the consumer last attempted an interaction, e.g. XREADGROUP, XCLAIM or
+        /// XAUTOCLAIM.
+        idle: duration-milliseconds,
+        /// The time since the consumer last interacted successfully, e.g. read or claimed entries.
+        /// None when the consumer has never been active.
+        inactive: option<duration-milliseconds>,
+    }
+
+    /// A consumer group of a stream, see `xinfo-groups`.
+    record xinfo-group {
+        /// The group's name.
+        name: string,
+        /// The number of consumers in the group.
+        consumers: integer,
+        /// The number of entries in the group's pending entries list (PEL), delivered but not acknowledged.
+        pending: integer,
+        /// The ID of the last entry delivered to the group's consumers.
+        last-delivered-id: stream-id,
+        /// The logical read counter of the last entry delivered to the group's consumers, none when unknown.
+        entries-read: option<integer>,
+        /// The number of entries in the stream not yet delivered to the group's consumers, none when it
+        /// cannot be determined.
+        lag: option<integer>,
+    }
+
+    /// Information about a stream, see `xinfo-stream`.
+    record xinfo-stream-reply {
+        /// The number of entries in the stream.
+        length: integer,
+        /// The number of keys in the radix tree storing the stream.
+        radix-tree-keys: integer,
+        /// The number of nodes in the radix tree storing the stream.
+        radix-tree-nodes: integer,
+        /// The number of consumer groups of the stream.
+        groups: integer,
+        /// The ID of the last entry added to the stream, none when no entry was ever added.
+        last-generated-id: option<stream-id>,
+        /// The highest ID deleted from the stream, none when no entry was ever deleted.
+        max-deleted-entry-id: option<stream-id>,
+        /// The number of entries added to the stream over its lifetime.
+        entries-added: integer,
+        /// The ID and fields of the first entry.
+        /// None when the stream is empty.
+        first-entry: option<tuple<stream-id, map<string, string>>>,
+        /// The ID and fields of the last entry.
+        /// None when the stream is empty.
+        last-entry: option<tuple<stream-id, map<string, string>>>,
+    }
+
+    /// Information about a stream, its entries and consumer groups, see `xinfo-stream-full`.
+    record xinfo-stream-reply-full {
+        /// The number of entries in the stream.
+        length: integer,
+        /// The number of keys in the radix tree storing the stream.
+        radix-tree-keys: integer,
+        /// The number of nodes in the radix tree storing the stream.
+        radix-tree-nodes: integer,
+        /// The ID of the last entry added to the stream, none when no entry was ever added.
+        last-generated-id: option<stream-id>,
+        /// The highest ID deleted from the stream, none when no entry was ever deleted.
+        max-deleted-entry-id: option<stream-id>,
+        /// The number of entries added to the stream over its lifetime.
+        entries-added: integer,
+        /// The ID and fields of the entries, in ascending ID order, up to the count given.
+        entries: list<tuple<stream-id, map<string, string>>>,
+        /// The consumer groups of the stream.
+        groups: list<xinfo-stream-reply-full-group>,
+    }
+
+    /// A consumer group of a stream, with its pending entries and consumers.
+    record xinfo-stream-reply-full-group {
+        /// The group's name.
+        name: string,
+        /// The ID of the last entry delivered to the group's consumers.
+        last-delivered-id: stream-id,
+        /// The logical read counter of the last entry delivered to the group's consumers, none when unknown.
+        entries-read: option<integer>,
+        /// The number of entries in the stream not yet delivered to the group's consumers, none when it
+        /// cannot be determined.
+        lag: option<integer>,
+        /// The number of entries in the group's pending entries list (PEL), delivered but not acknowledged.
+        pel-count: integer,
+        /// The group's pending entries, the ID of each, the consumer it was delivered to, when it was
+        /// last delivered and the number of times it was delivered.
+        pending: list<tuple<stream-id, string, unix-time-milliseconds, integer>>,
+        /// The group's consumers.
+        consumers: list<xinfo-stream-reply-full-consumer>,
+    }
+
+    /// A consumer of a group, with its pending entries.
+    record xinfo-stream-reply-full-consumer {
+        /// The consumer's name.
+        name: string,
+        /// When the consumer last attempted an interaction, e.g. XREADGROUP, XCLAIM or XAUTOCLAIM.
+        seen-time: unix-time-milliseconds,
+        /// When the consumer last interacted successfully, e.g. read or claimed entries.
+        /// None when the consumer has never been active.
+        active-time: option<unix-time-milliseconds>,
+        /// The number of entries pending for the consumer, delivered but not acknowledged.
+        pel-count: integer,
+        /// The consumer's pending entries, the ID of each, when it was last delivered and the number of
+        /// times it was delivered.
+        pending: list<tuple<stream-id, unix-time-milliseconds, integer>>,
+    }
+
+    /// The pending entries of a consumer group, see `xpending`.
+    record xpending-summary {
+        /// The number of pending entries.
+        count: integer,
+        /// The lowest ID of the pending entries, none when there are none.
+        lowest-id: option<stream-id>,
+        /// The highest ID of the pending entries, none when there are none.
+        highest-id: option<stream-id>,
+        /// Each consumer with pending entries, and how many it has.
+        consumers: list<tuple<string, integer>>,
+    }
+
+    /// The pending entries of a consumer group, see `xpending-extended`.
+    record xpending-extended-entry {
+        /// The ID of the message.
+        id: stream-id,
+        /// The name of the consumer that fetched the message and has still to acknowledge it. We call it the current owner of the message.
+        name: string,
+        /// The number of milliseconds that elapsed since the last time this message was delivered to this consumer.
+        since-delivery: duration-milliseconds,
+        /// The number of times this message was delivered.
+        delivery-count: integer,
+    }
+
+    // string commands
+
+    /// The expiration to set on a key, see `getex`.
+    variant getex-ttl {
+        /// Set the specified expire time, in seconds.
+        ex(duration-seconds),
+        /// Set the specified expire time, in milliseconds.
+        px(duration-milliseconds),
+        /// Set the specified Unix time at which the key will expire, in seconds.
+        exat(unix-time-seconds),
+        /// Set the specified Unix time at which the key will expire, in milliseconds.
+        pxat(unix-time-milliseconds),
+        /// Remove the time to live associated with the key.
+        persist,
+    }
+
+    /// The longest common subsequence of two strings, as the ranges matching in each, see `lcs-idx`.
+    record lcs-idx-reply {
+        /// The ranges that match, from the end of the strings to their start.
+        matches: list<lcs-idx-match>,
+        /// The length of the longest common subsequence.
+        len: integer,
+    }
+
+    /// A part of the longest common subsequence.
+    record lcs-idx-match {
+        /// The inclusive start and end positions of the match in the first key's string.
+        key1-range: tuple<integer, integer>,
+        /// The inclusive start and end positions of the match in the second key's string.
+        key2-range: tuple<integer, integer>,
+        /// The length of the match, with `with-match-len`.
+        len: option<integer>,
+    }
+
+    /// The condition for setting the keys, see `msetex`.
+    variant msetex-precondition {
+        /// Only set the keys if all of them do not already exist.
+        nx,
+        /// Only set the keys if all of them already exist.
+        xx,
+    }
+
+    /// The expiration to set on the keys, see `msetex`.
+    type msetex-ttl = set-ttl;
+
+    /// The condition for setting a key, see `set`.
+    variant set-precondition {
+        /// Only set the key if it does not already exist.
+        nx,
+        /// Only set the key if it already exists.
+        xx,
+        /// Set the key if the comparison value matches the existing value.
+        ifeq(string),
+        /// Set the key if the comparison value does not match the existing value.
+        ifne(string),
+    }
+
+    /// The expiration to set on a key, see `set`.
+    variant set-ttl {
+        /// Set the specified expire time, in seconds.
+        ex(duration-seconds),
+        /// Set the specified expire time, in milliseconds.
+        px(duration-milliseconds),
+        /// Set the specified Unix time at which the key will expire, in seconds.
+        exat(unix-time-seconds),
+        /// Set the specified Unix time at which the key will expire, in milliseconds.
+        pxat(unix-time-milliseconds),
+        /// Retain the time to live associated with the keys.
+        keepttl,
+    }
+}

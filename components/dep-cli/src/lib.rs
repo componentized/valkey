@@ -410,7 +410,7 @@ wit_bindgen::generate!({
     world: "cli",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/resp@0.3.0-dev": resp_codec::bindings::componentized::valkey::resp,
+        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
     },
     generate_all,
 });

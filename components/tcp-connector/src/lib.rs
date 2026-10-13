@@ -3,7 +3,7 @@
 // the test harness provides a main
 #![cfg_attr(not(test), no_main)]
 
-use componentized::valkey::connection::{ConnectOpts, Connection, Error};
+use componentized::valkey::connection::{ConnectOpts, Connection, DurationMilliseconds, Error};
 use componentized::valkey::tcp;
 use exports::componentized::valkey::connector::Guest;
 use wasi::config::store as config;
@@ -36,13 +36,12 @@ impl Guest for Component {
         };
         let keep_alive_interval = match get(KEEP_ALIVE_INTERVAL_MS_KEY)? {
             Some(interval) => {
-                let interval: u64 = interval.parse().map_err(|_| {
+                let px = interval.parse().map_err(|_| {
                     Error::Client(format!(
                         "{KEEP_ALIVE_INTERVAL_MS_KEY} must be a number of milliseconds: {interval}"
                     ))
                 })?;
-                // a duration is in nanoseconds
-                Some(interval.saturating_mul(1_000_000))
+                Some(DurationMilliseconds { px })
             }
             None => None,
         };
@@ -68,7 +67,7 @@ wit_bindgen::generate!({
     world: "tcp-connector",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/resp@0.3.0-dev": resp_codec::bindings::componentized::valkey::resp,
+        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
     },
     generate_all,
 });

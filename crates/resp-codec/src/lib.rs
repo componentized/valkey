@@ -1,10 +1,11 @@
-//! The RESP codec, and the `componentized:valkey/resp` types it works with.
+//! The RESP codec, and the `componentized:valkey/types` it works with.
 //!
-//! A component that imports `resp` uses these types for it, so every component shares them, e.g.
+//! A component that imports an interface of the package uses these types for it, so every
+//! component shares them, e.g.
 //!
 //! ```text
 //! wit_bindgen::generate!({
-//!     with: { "componentized:valkey/resp@0.3.0-dev": resp_codec::bindings::componentized::valkey::resp },
+//!     with: { "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types },
 //!     ...
 //! });
 //! ```
@@ -20,7 +21,7 @@ pub mod bindings {
             package componentized:resp-codec;
 
             world types {
-                import componentized:valkey/resp@0.3.0-dev;
+                import componentized:valkey/types@0.3.0-dev;
             }
         ",
         world: "componentized:resp-codec/types",
@@ -31,5 +32,5 @@ pub mod bindings {
 
 mod codec;
 
-pub use bindings::componentized::valkey::resp::{Error, NestedValue, Value};
+pub use bindings::componentized::valkey::types::{NestedValue, RespError as Error, Value};
 pub use codec::{decode, encode, frame_len};

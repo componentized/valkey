@@ -6,4 +6,5 @@ world imports {
     import connector;
     import resp;
     import tcp;
+    import types;
 }
