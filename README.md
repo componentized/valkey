@@ -21,7 +21,6 @@ The `componentized:valkey` WIT package, in [`wit`](./wit), separates the connect
 
 | Component                                      |                                                                                                                                                                                          |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`resp`](./components/resp/)                   | encodes and decodes RESP values, the types every other component shares                                                                                                                  |
 | [`connection`](./components/connection/)       | the mechanics of a connection: pairs commands with replies, keeps push messages apart, establishes it with `HELLO 3`, optionally keeps it alive                                          |
 | [`tcp`](./components/tcp/)                     | connections over wasi:sockets TCP                                                                                                                                                        |
 | [`tcp-connector`](./components/tcp-connector/) | connections over TCP to the server configured with wasi:config, for components that need a connection without a say in how it is made                                                    |

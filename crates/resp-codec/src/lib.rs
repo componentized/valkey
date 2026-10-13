@@ -1,4 +1,5 @@
-//! The RESP codec, and the `componentized:valkey/types` it works with.
+//! The RESP codec, the `componentized:valkey/types` it works with, and the conversions between
+//! those types and commands: `IntoCommand` for a command's words, `FromValue` for its reply.
 //!
 //! A component that imports an interface of the package uses these types for it, so every
 //! component shares them, e.g.
@@ -9,9 +10,6 @@
 //!     ...
 //! });
 //! ```
-//!
-//! The `resp` component exports the interface, converting between its own generated types and
-//! these.
 
 pub mod bindings {
     wit_bindgen::generate!({
@@ -31,6 +29,10 @@ pub mod bindings {
 }
 
 mod codec;
+pub mod command;
+pub mod value;
 
 pub use bindings::componentized::valkey::types::{NestedValue, RespError as Error, Value};
 pub use codec::{decode, encode, frame_len};
+pub use command::IntoCommand;
+pub use value::FromValue;

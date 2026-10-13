@@ -1200,17 +1200,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "resp"
-version = "0.1.0"
-dependencies = [
- "resp-codec",
- "test-harness",
- "tokio",
- "wasmtime",
- "wit-bindgen",
-]
-
-[[package]]
 name = "resp-codec"
 version = "0.1.0"
 dependencies = [

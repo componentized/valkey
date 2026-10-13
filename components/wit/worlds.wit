@@ -1,10 +1,5 @@
 package componentized:valkey-components;
 
-/// The RESP codec, for the components that import the resp types.
-world resp {
-    export componentized:valkey/resp@0.3.0-dev;
-}
-
 /// The mechanics of a connection, independent of the transport.
 world connection {
     import wasi:clocks/monotonic-clock@0.3.0;

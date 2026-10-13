@@ -1,40 +1,17 @@
-use crate::exports::componentized::valkey::commands::{
+use crate::bindings::componentized::valkey::types::{
     Aggregate, BgsaveOperation, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby,
     BitfieldOffset, BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, ClientFilter,
     ClientPauseMode, ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientType,
     ClientUnblockType, ClusterFailoverMode, ClusterResetMode, ClusterSetslotState,
-    CommandListFilter, CommandRule, CommandlogType, Connection, Cursor, DbRule,
-    DurationMilliseconds, DurationSeconds, Error, FailoverTarget, FlushMode, GeoCoordinates,
-    GeoCount, GeoFrom, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition,
-    HsetexFieldCondition, KeyRule, KeyType, LexBound, Limit, LinsertPosition, ListSide,
-    MigrateAuth, MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition,
-    SetTtl, ShutdownSave, SlotMigrationGroup, SortOpts, SortOrder, StreamTrim,
-    StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value,
-    XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
+    CommandListFilter, CommandRule, CommandlogType, Cursor, DbRule, DurationMilliseconds,
+    DurationSeconds, Error, FailoverTarget, FlushMode, GeoCoordinates, GeoCount, GeoFrom, GeoShape,
+    GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyRule, KeyType,
+    LexBound, Limit, LinsertPosition, ListSide, MigrateAuth, MsetexPrecondition, PopEnd, Rule,
+    RuleSelector, ScoreBound, SetPrecondition, SetTtl, ShutdownSave, SlotMigrationGroup, SortOpts,
+    SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds,
+    UserRule, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
 };
-use crate::value::{FromValue, OrZeroId, ZERO_ID};
-
-/// Send a command, its words as bulk strings, and wait for the reply.
-///
-/// An error reply fails the command, see `connection.exchange`.
-async fn exchange(connection: &Connection, command: impl IntoCommand) -> Result<Value, Error> {
-    connection.exchange(command.into_command()?).await
-}
-
-/// Send a command, its words as bulk strings, without waiting for a reply.
-///
-/// An error reply fails the command, see `connection.emit`.
-pub(crate) async fn emit(connection: &Connection, command: impl IntoCommand) -> Result<(), Error> {
-    connection.emit(command.into_command()?).await
-}
-
-/// Send a command, see `exchange`, and convert its reply.
-pub(crate) async fn query<T: FromValue>(
-    connection: &Connection,
-    command: impl IntoCommand,
-) -> Result<T, Error> {
-    T::from_value(exchange(connection, command).await?)
-}
+use crate::value::{OrZeroId, ZERO_ID};
 
 /// Converts a Rust type into the words of a command, e.g. `Option<String>` into no word, or one.
 ///

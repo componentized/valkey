@@ -1,6 +1,0 @@
-/// Encodes and decodes RESP values.
-interface resp {
-    use types.{resp-error as error, nested-value, value};
-    decode: func(data: list<u8>) -> result<value, error>;
-    encode: func(value: value) -> result<list<u8>, error>;
-}

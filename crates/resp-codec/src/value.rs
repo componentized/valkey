@@ -1,4 +1,4 @@
-use crate::exports::componentized::valkey::commands::{
+use crate::bindings::componentized::valkey::types::{
     AclDryrunResult, AclListEntry, AclLogEntry, ChannelRule, ClientTrackinginfoReply,
     ClusterBumpepochResult, CommandArgument, CommandArgumentType, CommandDocsReply,
     CommandInfoReply, CommandRule, Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds,
@@ -13,7 +13,7 @@ use crate::exports::componentized::valkey::commands::{
     XinfoStreamReplyFullGroup, XpendingExtendedEntry, XpendingSummary,
 };
 
-use resp_codec::NestedValue;
+use crate::NestedValue;
 use wit_bindgen::rt::Map;
 
 /// Converts a reply into a Rust type, e.g. `Option<String>` for a bulk string or null.
@@ -1274,7 +1274,7 @@ fn unexpected(reply: &Value) -> Error {
 }
 
 fn decode(value: NestedValue) -> Result<Value, Error> {
-    resp_codec::decode(value).map_err(Error::Resp)
+    crate::codec::decode(value).map_err(Error::Resp)
 }
 
 /// The nested values of an array, or a set.

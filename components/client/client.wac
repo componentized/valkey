@@ -1,6 +1,5 @@
 package componentized:valkey;
 
-let resp = new local:resp { ... };
 let connection = new local:connection {
     ...
 };
@@ -24,7 +23,6 @@ let keyvalue = new local:as-keyvalue {
     ...
 };
 
-export resp.resp;
 export connection.connection;
 export tcp.tcp;
 export connector.connector;
