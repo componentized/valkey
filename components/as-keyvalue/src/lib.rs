@@ -1,4 +1,4 @@
-use componentized::valkey::commands::{self, DurationMilliseconds};
+use componentized::valkey::commands::{self, Cursor, DurationMilliseconds};
 use componentized::valkey::connection::{Connection, Error as ValkeyError};
 use componentized::valkey::connector;
 use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
@@ -107,6 +107,8 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         let match_ = prefix.map(|prefix| format!("{}*", escape_glob(&prefix)));
         let count = None;
 
+        // the keyvalue cursor is none to start, and none once the keys are listed, like a scan's
+        let cursor = cursor.map_or(Cursor::Start, Cursor::Resume);
         let (cursor, keys) = commands::hscan_novalues(
             &self.connection,
             self.hash_key.clone(),
@@ -116,10 +118,12 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         )
         .await?;
 
-        Ok(KeyResponse {
-            keys,
-            cursor: Some(cursor.to_string()),
-        })
+        // a returned cursor is always one to resume from
+        let cursor = cursor.map(|cursor| match cursor {
+            Cursor::Resume(cursor) => cursor,
+            Cursor::Start => unreachable!("a scan never returns start"),
+        });
+        Ok(KeyResponse { keys, cursor })
     }
 }
 

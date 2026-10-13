@@ -1,9 +1,9 @@
 use crate::exports::componentized::valkey::commands::{
-    Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime, FieldPersistResult,
-    FieldPexpiretime, FieldPttl, FieldTtl, Integer, LcsIdxMatch, LcsIdxReply, StreamId, TtlResult,
-    UnixTimeMilliseconds, UnixTimeSeconds, Value, XinfoConsumer, XinfoGroup, XinfoStreamReply,
-    XinfoStreamReplyFull, XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup,
-    XpendingExtendedEntry, XpendingSummary,
+    Cursor, Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime,
+    FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, Integer, LcsIdxMatch, LcsIdxReply,
+    StreamId, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XinfoConsumer, XinfoGroup,
+    XinfoStreamReply, XinfoStreamReplyFull, XinfoStreamReplyFullConsumer,
+    XinfoStreamReplyFullGroup, XpendingExtendedEntry, XpendingSummary,
 };
 
 use resp_codec::NestedValue;
@@ -322,6 +322,18 @@ impl FromValue for FieldPersistResult {
             1 => Ok(Self::Removed),
             code => Err(Error::Client(format!("unexpected reply: {code}"))),
         }
+    }
+}
+
+/// The cursor a scan returns to resume from, none once the scan is complete, `0`.
+pub struct NextCursor(pub Option<Cursor>);
+
+impl FromValue for NextCursor {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let cursor = String::from_value(value)?;
+        Ok(NextCursor(
+            (cursor != "0").then_some(Cursor::Resume(cursor)),
+        ))
     }
 }
 

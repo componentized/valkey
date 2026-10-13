@@ -27,6 +27,18 @@ interface commands {
         pxat: s64,
     }
 
+    /// Where an incremental iteration continues from, e.g. with HSCAN.
+    ///
+    /// A scan returns the cursor to resume from, always `resume`, none once the scan is complete.
+    /// Pass it to the next call until then.
+    variant cursor {
+        /// Starts a new scan, the cursor `0`.
+        start,
+        /// Continues a scan from the opaque cursor the previous call returned, `0` fails with a client
+        /// error, use `start`.
+        resume(string),
+    }
+
     /// XXXXXX
     ///
     /// XXXXXX
@@ -555,18 +567,13 @@ interface commands {
     /// https://valkey.io/commands/hrandfield/
     hrandfield-withvalues: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<tuple<string, string>>, error>;
 
-    /// The position of an incremental iteration, e.g. with HSCAN.
-    ///
-    /// None starts a new iteration, the iteration is complete once the cursor returned is `0`.
-    type cursor = string;
-
     /// Incrementally iterate over a collection of elements.
     ///
     /// See also `hscan-novalues`.
     ///
     /// HSCAN key cursor [ MATCH pattern ] [ COUNT count ]
     /// https://valkey.io/commands/hscan/
-    hscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, map<string, string>>, error>;
+    hscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, map<string, string>>, error>;
 
     /// Incrementally iterate over a collection of keys.
     ///
@@ -574,7 +581,7 @@ interface commands {
     ///
     /// HSCAN key cursor [ MATCH pattern ] [ COUNT count ] NOVALUES
     /// https://valkey.io/commands/hscan/
-    hscan-novalues: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
+    hscan-novalues: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<string>>, error>;
 
     /// Sets the specified fields to their respective values in the hash stored at key.
     ///
@@ -947,7 +954,7 @@ interface commands {
     ///
     /// SSCAN key cursor [ MATCH pattern ] [ COUNT count ]
     /// https://valkey.io/commands/sscan/
-    sscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
+    sscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<string>>, error>;
 
     /// The members in any of the sets.
     ///
@@ -1374,7 +1381,7 @@ interface commands {
     ///
     /// ZSCAN key cursor [ MATCH pattern ] [ COUNT count ]
     /// https://valkey.io/commands/zscan/
-    zscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<tuple<string, double>>>, error>;
+    zscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<tuple<string, double>>>, error>;
 
     /// Incrementally iterate over the members of the sorted set stored at key.
     ///
@@ -1382,7 +1389,7 @@ interface commands {
     ///
     /// ZSCAN key cursor [ MATCH pattern ] [ COUNT count ] NOSCORES
     /// https://valkey.io/commands/zscan/
-    zscan-noscores: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
+    zscan-noscores: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<string>>, error>;
 
     /// The score of the member in the sorted set stored at key, none when it is not a member.
     ///

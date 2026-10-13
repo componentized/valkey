@@ -1,17 +1,18 @@
 use crate::command::{
-    DecimalSeconds, Flag, LexRange, NamedOption, NonEmpty, NumKeys, ScoreRange, Zrange, emit, query,
+    DecimalSeconds, Fields, Flag, LexRange, NamedOption, NonEmpty, NumKeys, ScoreRange, Zrange,
+    emit, query,
 };
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, Connection, Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds, Error,
+    Aggregate, Connection, Cursor, Double, DurationMilliseconds, DurationSeconds, Error,
     FieldExpiretime, FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, GetexTtl, Guest,
     HsetexCondition, HsetexFieldCondition, Integer, LcsIdxReply, LexBound, Limit,
-    MsetexPrecondition, MsetexTtl, PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl,
-    SortOpts, StreamId, StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds,
-    UserRule, Value, XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
+    MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound, SetPrecondition, SetTtl, SortOpts,
+    StreamId, StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
+    XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
     XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition, ZrangeBy,
     ZrangeWithscoresBy,
 };
-use crate::value::{FlatPairs, OrNever, OrZeroId, ScoredMembers};
+use crate::value::{FlatPairs, NextCursor, OrNever, OrZeroId, ScoredMembers};
 
 use wit_bindgen::rt::Map;
 
@@ -27,32 +28,6 @@ fn sort_row_len(opts: &Option<SortOpts>) -> usize {
         .map_or(1, Vec::len)
 }
 
-/// The GET patterns of SORT, when given, at least one.
-fn check_sort_opts(opts: &Option<SortOpts>) -> Result<(), Error> {
-    match opts.as_ref().and_then(|opts| opts.get.as_ref()) {
-        Some(get) if get.is_empty() => {
-            Err(Error::Client("get requires at least one item".to_string()))
-        }
-        _ => Ok(()),
-    }
-}
-
-/// The databases of a `db=` rule, at least one, including those of selectors.
-fn check_rules(rules: &[Rule]) -> Result<(), Error> {
-    let empty = |rule: &DbRule| matches!(rule, DbRule::Db(dbs) if dbs.is_empty());
-    let invalid = rules.iter().any(|rule| match rule {
-        Rule::Db(rule) => empty(rule),
-        Rule::User(UserRule::Selector(selectors)) => selectors
-            .iter()
-            .any(|selector| matches!(selector, RuleSelector::Db(rule) if empty(rule))),
-        _ => false,
-    });
-    if invalid {
-        return Err(Error::Client("db requires at least one item".to_string()));
-    }
-    Ok(())
-}
-
 impl Guest for Commands {
     #[doc = " admin commands"]
     #[doc = " Delete all the specified ACL users and terminate all the connections that are authenticated with such users."]
@@ -64,8 +39,11 @@ impl Guest for Commands {
         connection: &Connection,
         usernames: Vec<String>,
     ) -> Result<Integer, Error> {
-        let usernames = NonEmpty::new("usernames", usernames)?;
-        query(connection, ("ACL", "DELUSER", usernames)).await
+        query(
+            connection,
+            ("ACL", "DELUSER", NonEmpty::new("usernames", usernames)),
+        )
+        .await
     }
 
     #[doc = " Generates a random password."]
@@ -87,11 +65,16 @@ impl Guest for Commands {
         username: String,
         rules: Option<Vec<Rule>>,
     ) -> Result<(), Error> {
-        if let Some(rules) = &rules {
-            check_rules(rules)?;
-        }
-        let rules = NonEmpty::optional("rules", rules)?;
-        query(connection, ("ACL", "SETUSER", username, rules)).await
+        query(
+            connection,
+            (
+                "ACL",
+                "SETUSER",
+                username,
+                NonEmpty::optional("rules", rules),
+            ),
+        )
+        .await
     }
 
     #[doc = " Authenticates the current connection."]
@@ -155,8 +138,7 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Integer, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
-        query(connection, ("HDEL", key, fields)).await
+        query(connection, ("HDEL", key, NonEmpty::new("fields", fields))).await
     }
 
     #[doc = " Returns if field is an existing field in the hash stored at key."]
@@ -180,10 +162,9 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<FieldExpiretime>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
-            ("HEXPIRETIME", key, "FIELDS", fields.len(), fields),
+            ("HEXPIRETIME", key, Fields(NonEmpty::new("fields", fields))),
         )
         .await
     }
@@ -198,8 +179,11 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<Option<String>>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
-        query(connection, ("HGETDEL", key, "FIELDS", fields.len(), fields)).await
+        query(
+            connection,
+            ("HGETDEL", key, Fields(NonEmpty::new("fields", fields))),
+        )
+        .await
     }
 
     #[doc = " The values of the hash fields, none for a field that does not exist, optionally setting or"]
@@ -214,10 +198,9 @@ impl Guest for Commands {
         ttl: Option<GetexTtl>,
         fields: Vec<String>,
     ) -> Result<Vec<Option<String>>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
-            ("HGETEX", key, ttl, "FIELDS", fields.len(), fields),
+            ("HGETEX", key, ttl, Fields(NonEmpty::new("fields", fields))),
         )
         .await
     }
@@ -232,10 +215,9 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<FieldPersistResult>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
-            ("HPERSIST", key, "FIELDS", fields.len(), fields),
+            ("HPERSIST", key, Fields(NonEmpty::new("fields", fields))),
         )
         .await
     }
@@ -252,15 +234,12 @@ impl Guest for Commands {
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         let command = (
             "HPEXPIRE",
             key,
             milliseconds,
             mode,
-            "FIELDS",
-            fields.len(),
-            fields,
+            Fields(NonEmpty::new("fields", fields)),
         );
         query(connection, command).await
     }
@@ -277,15 +256,12 @@ impl Guest for Commands {
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         let command = (
             "HPEXPIREAT",
             key,
             milliseconds,
             mode,
-            "FIELDS",
-            fields.len(),
-            fields,
+            Fields(NonEmpty::new("fields", fields)),
         );
         query(connection, command).await
     }
@@ -302,10 +278,9 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<FieldPexpiretime>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
-            ("HPEXPIRETIME", key, "FIELDS", fields.len(), fields),
+            ("HPEXPIRETIME", key, Fields(NonEmpty::new("fields", fields))),
         )
         .await
     }
@@ -322,8 +297,11 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<FieldPttl>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
-        query(connection, ("HPTTL", key, "FIELDS", fields.len(), fields)).await
+        query(
+            connection,
+            ("HPTTL", key, Fields(NonEmpty::new("fields", fields))),
+        )
+        .await
     }
 
     #[doc = " Sets the fields to their values in the hash stored at key, optionally setting their"]
@@ -340,16 +318,13 @@ impl Guest for Commands {
         ttl: Option<SetTtl>,
         field_and_values: Vec<(String, String)>,
     ) -> Result<bool, Error> {
-        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
         let command = (
             "HSETEX",
             key,
             condition,
             field_condition,
             ttl,
-            "FIELDS",
-            field_and_values.len(),
-            field_and_values,
+            Fields(NonEmpty::new("field-and-values", field_and_values)),
         );
         query(connection, command).await
     }
@@ -366,8 +341,11 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<FieldTtl>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
-        query(connection, ("HTTL", key, "FIELDS", fields.len(), fields)).await
+        query(
+            connection,
+            ("HTTL", key, Fields(NonEmpty::new("fields", fields))),
+        )
+        .await
     }
 
     #[doc = " Manipulate the expiration time for existing hash fields."]
@@ -382,7 +360,6 @@ impl Guest for Commands {
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
             (
@@ -390,9 +367,7 @@ impl Guest for Commands {
                 key,
                 seconds,
                 mode,
-                "FIELDS",
-                fields.len(),
-                fields,
+                Fields(NonEmpty::new("fields", fields)),
             ),
         )
         .await
@@ -410,7 +385,6 @@ impl Guest for Commands {
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
             (
@@ -418,9 +392,7 @@ impl Guest for Commands {
                 key,
                 seconds,
                 mode,
-                "FIELDS",
-                fields.len(),
-                fields,
+                Fields(NonEmpty::new("fields", fields)),
             ),
         )
         .await
@@ -504,8 +476,7 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<Option<String>>, Error> {
-        let fields = NonEmpty::new("fields", fields)?;
-        query(connection, ("HMGET", key, fields)).await
+        query(connection, ("HMGET", key, NonEmpty::new("fields", fields))).await
     }
 
     #[doc = " Sets the specified fields to their respective values in the hash stored at key."]
@@ -518,8 +489,15 @@ impl Guest for Commands {
         key: String,
         field_and_values: Vec<(String, String)>,
     ) -> Result<(), Error> {
-        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
-        query(connection, ("HMSET", key, field_and_values)).await
+        query(
+            connection,
+            (
+                "HMSET",
+                key,
+                NonEmpty::new("field-and-values", field_and_values),
+            ),
+        )
+        .await
     }
 
     #[doc = " Random fields from the hash value stored at key, up to the count."]
@@ -573,21 +551,22 @@ impl Guest for Commands {
     async fn hscan(
         connection: &Connection,
         key: String,
-        cursor: Option<Cursor>,
+        cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Cursor, Map<String, String>), Error> {
-        query(
+    ) -> Result<(Option<Cursor>, Map<String, String>), Error> {
+        let (cursor, items): (NextCursor, Map<String, String>) = query(
             connection,
             (
                 "HSCAN",
                 key,
-                cursor.unwrap_or(Cursor::from("0")),
+                cursor,
                 match_.map(|m| ("MATCH", m)),
                 count.map(|c| ("COUNT", c)),
             ),
         )
-        .await
+        .await?;
+        Ok((cursor.0, items))
     }
 
     #[doc = " Incrementally iterate over a collection of keys."]
@@ -600,22 +579,23 @@ impl Guest for Commands {
     async fn hscan_novalues(
         connection: &Connection,
         key: String,
-        cursor: Option<Cursor>,
+        cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Cursor, Vec<String>), Error> {
-        query(
+    ) -> Result<(Option<Cursor>, Vec<String>), Error> {
+        let (cursor, items): (NextCursor, Vec<String>) = query(
             connection,
             (
                 "HSCAN",
                 key,
-                cursor.unwrap_or(Cursor::from("0")),
+                cursor,
                 match_.map(|m| ("MATCH", m)),
                 count.map(|c| ("COUNT", c)),
                 "NOVALUES",
             ),
         )
-        .await
+        .await?;
+        Ok((cursor.0, items))
     }
 
     #[doc = " Sets the specified fields to their respective values in the hash stored at key."]
@@ -628,8 +608,15 @@ impl Guest for Commands {
         key: String,
         field_and_values: Vec<(String, String)>,
     ) -> Result<Integer, Error> {
-        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
-        query(connection, ("HSET", key, field_and_values)).await
+        query(
+            connection,
+            (
+                "HSET",
+                key,
+                NonEmpty::new("field-and-values", field_and_values),
+            ),
+        )
+        .await
     }
 
     #[doc = " Sets field in the hash stored at key to value, only if field does not yet exist."]
@@ -674,8 +661,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/del/"]
     #[allow(async_fn_in_trait)]
     async fn del(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("DEL", keys)).await
+        query(connection, ("DEL", NonEmpty::new("keys", keys))).await
     }
 
     #[doc = " If key exists."]
@@ -684,8 +670,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/exists/"]
     #[allow(async_fn_in_trait)]
     async fn exists(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("EXISTS", keys)).await
+        query(connection, ("EXISTS", NonEmpty::new("keys", keys))).await
     }
 
     #[doc = " Set a timeout on key."]
@@ -731,8 +716,11 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/psubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn psubscribe(connection: &Connection, patterns: Vec<String>) -> Result<(), Error> {
-        let patterns = NonEmpty::new("patterns", patterns)?;
-        emit(connection, ("PSUBSCRIBE", patterns)).await
+        emit(
+            connection,
+            ("PSUBSCRIBE", NonEmpty::new("patterns", patterns)),
+        )
+        .await
     }
 
     #[doc = " Posts a message to the given channel."]
@@ -778,8 +766,11 @@ impl Guest for Commands {
         connection: &Connection,
         channels: Option<Vec<String>>,
     ) -> Result<Map<String, Integer>, Error> {
-        let channels = NonEmpty::optional("channels", channels)?;
-        query(connection, ("PUBSUB", "NUMSUB", channels)).await
+        query(
+            connection,
+            ("PUBSUB", "NUMSUB", NonEmpty::optional("channels", channels)),
+        )
+        .await
     }
 
     #[doc = " Lists the currently active shard channels."]
@@ -803,8 +794,15 @@ impl Guest for Commands {
         connection: &Connection,
         shardchannels: Option<Vec<String>>,
     ) -> Result<Map<String, Integer>, Error> {
-        let shardchannels = NonEmpty::optional("shardchannels", shardchannels)?;
-        query(connection, ("PUBSUB", "SHARDNUMSUB", shardchannels)).await
+        query(
+            connection,
+            (
+                "PUBSUB",
+                "SHARDNUMSUB",
+                NonEmpty::optional("shardchannels", shardchannels),
+            ),
+        )
+        .await
     }
 
     #[doc = " Unsubscribes the client from the given patterns, or from all of them if none is given."]
@@ -816,8 +814,11 @@ impl Guest for Commands {
         connection: &Connection,
         patterns: Option<Vec<String>>,
     ) -> Result<(), Error> {
-        let patterns = NonEmpty::optional("patterns", patterns)?;
-        emit(connection, ("PUNSUBSCRIBE", patterns)).await
+        emit(
+            connection,
+            ("PUNSUBSCRIBE", NonEmpty::optional("patterns", patterns)),
+        )
+        .await
     }
 
     #[doc = " Posts a message to the given shard channel."]
@@ -839,8 +840,11 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/ssubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn ssubscribe(connection: &Connection, shardchannels: Vec<String>) -> Result<(), Error> {
-        let shardchannels = NonEmpty::new("shardchannels", shardchannels)?;
-        emit(connection, ("SSUBSCRIBE", shardchannels)).await
+        emit(
+            connection,
+            ("SSUBSCRIBE", NonEmpty::new("shardchannels", shardchannels)),
+        )
+        .await
     }
 
     #[doc = " Subscribes the client to the specified channels."]
@@ -849,8 +853,11 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/subscribe/"]
     #[allow(async_fn_in_trait)]
     async fn subscribe(connection: &Connection, channels: Vec<String>) -> Result<(), Error> {
-        let channels = NonEmpty::new("channels", channels)?;
-        emit(connection, ("SUBSCRIBE", channels)).await
+        emit(
+            connection,
+            ("SUBSCRIBE", NonEmpty::new("channels", channels)),
+        )
+        .await
     }
 
     #[doc = " Unsubscribes the client from the given shard channels, or from all of them if none is given."]
@@ -862,8 +869,14 @@ impl Guest for Commands {
         connection: &Connection,
         shardchannels: Option<Vec<String>>,
     ) -> Result<(), Error> {
-        let shardchannels = NonEmpty::optional("shardchannels", shardchannels)?;
-        emit(connection, ("SUNSUBSCRIBE", shardchannels)).await
+        emit(
+            connection,
+            (
+                "SUNSUBSCRIBE",
+                NonEmpty::optional("shardchannels", shardchannels),
+            ),
+        )
+        .await
     }
 
     #[doc = " Unsubscribes the client from the given channels, or from all of them if none is given."]
@@ -875,8 +888,11 @@ impl Guest for Commands {
         connection: &Connection,
         channels: Option<Vec<String>>,
     ) -> Result<(), Error> {
-        let channels = NonEmpty::optional("channels", channels)?;
-        emit(connection, ("UNSUBSCRIBE", channels)).await
+        emit(
+            connection,
+            ("UNSUBSCRIBE", NonEmpty::optional("channels", channels)),
+        )
+        .await
     }
 
     #[doc = " Appends the value at the end of the string."]
@@ -1075,8 +1091,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
     ) -> Result<Vec<Option<String>>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("MGET", keys)).await
+        query(connection, ("MGET", NonEmpty::new("keys", keys))).await
     }
 
     #[doc = " Sets the given keys to their respective values."]
@@ -1088,8 +1103,11 @@ impl Guest for Commands {
         connection: &Connection,
         keys_and_values: Vec<(String, String)>,
     ) -> Result<(), Error> {
-        let keys_and_values = NonEmpty::new("keys-and-values", keys_and_values)?;
-        query(connection, ("MSET", keys_and_values)).await
+        query(
+            connection,
+            ("MSET", NonEmpty::new("keys-and-values", keys_and_values)),
+        )
+        .await
     }
 
     #[doc = " Sets multiple key-value pairs while also assigning a shared expiration time to all the keys atomically."]
@@ -1103,13 +1121,11 @@ impl Guest for Commands {
         precondition: Option<MsetexPrecondition>,
         ttl: Option<MsetexTtl>,
     ) -> Result<bool, Error> {
-        let keys_and_values = NonEmpty::new("keys-and-values", keys_and_values)?;
         query(
             connection,
             (
                 "MSETEX",
-                keys_and_values.len(),
-                keys_and_values,
+                NumKeys(NonEmpty::new("keys-and-values", keys_and_values)),
                 precondition,
                 ttl,
             ),
@@ -1126,8 +1142,11 @@ impl Guest for Commands {
         connection: &Connection,
         keys_and_values: Vec<(String, String)>,
     ) -> Result<bool, Error> {
-        let keys_and_values = NonEmpty::new("keys-and-values", keys_and_values)?;
-        query(connection, ("MSETNX", keys_and_values)).await
+        query(
+            connection,
+            ("MSETNX", NonEmpty::new("keys-and-values", keys_and_values)),
+        )
+        .await
     }
 
     #[doc = " Set key to hold the string value with expiration in milliseconds."]
@@ -1249,8 +1268,7 @@ impl Guest for Commands {
         group: String,
         ids: Vec<StreamId>,
     ) -> Result<Integer, Error> {
-        let ids = NonEmpty::new("ids", ids)?;
-        query(connection, ("XACK", key, group, ids)).await
+        query(connection, ("XACK", key, group, NonEmpty::new("ids", ids))).await
     }
 
     #[doc = " Appends the specified stream entry to the stream at the specified key."]
@@ -1266,7 +1284,6 @@ impl Guest for Commands {
         id: StreamId,
         field_and_values: Vec<(String, String)>,
     ) -> Result<Option<StreamId>, Error> {
-        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
         query(
             connection,
             (
@@ -1275,7 +1292,7 @@ impl Guest for Commands {
                 Flag("NOMKSTREAM", nomkstream),
                 trim,
                 id,
-                field_and_values,
+                NonEmpty::new("field-and-values", field_and_values),
             ),
         )
         .await
@@ -1369,10 +1386,17 @@ impl Guest for Commands {
         ids: Vec<StreamId>,
         opts: Option<XclaimOpts>,
     ) -> Result<Vec<(StreamId, Map<String, String>)>, Error> {
-        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
-            ("XCLAIM", key, group, consumer, min_idle_time, ids, opts),
+            (
+                "XCLAIM",
+                key,
+                group,
+                consumer,
+                min_idle_time,
+                NonEmpty::new("ids", ids),
+                opts,
+            ),
         )
         .await
     }
@@ -1393,10 +1417,17 @@ impl Guest for Commands {
         ids: Vec<StreamId>,
         opts: Option<XclaimOpts>,
     ) -> Result<Vec<StreamId>, Error> {
-        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
-            ("XCLAIM", key, group, consumer, min_idle_time, ids, opts),
+            (
+                "XCLAIM",
+                key,
+                group,
+                consumer,
+                min_idle_time,
+                NonEmpty::new("ids", ids),
+                opts,
+            ),
         )
         .await
     }
@@ -1411,8 +1442,7 @@ impl Guest for Commands {
         key: String,
         ids: Vec<StreamId>,
     ) -> Result<Integer, Error> {
-        let ids = NonEmpty::new("ids", ids)?;
-        query(connection, ("XDEL", key, ids)).await
+        query(connection, ("XDEL", key, NonEmpty::new("ids", ids))).await
     }
 
     #[doc = " Create a new consumer group uniquely identified by <groupname> for the stream stored at <key>."]
@@ -1654,8 +1684,6 @@ impl Guest for Commands {
         keys: Vec<String>,
         ids: Vec<StreamId>,
     ) -> Result<Option<Map<String, Vec<(StreamId, Map<String, String>)>>>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
             (
@@ -1663,8 +1691,8 @@ impl Guest for Commands {
                 NamedOption("COUNT", count),
                 NamedOption("BLOCK", block),
                 "STREAMS",
-                keys,
-                ids,
+                NonEmpty::new("keys", keys),
+                NonEmpty::new("ids", ids),
             ),
         )
         .await
@@ -1688,8 +1716,6 @@ impl Guest for Commands {
         keys: Vec<String>,
         ids: Vec<StreamId>,
     ) -> Result<Option<Map<String, Vec<(StreamId, Option<Map<String, String>>)>>>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
             (
@@ -1701,8 +1727,8 @@ impl Guest for Commands {
                 NamedOption("BLOCK", block),
                 Flag("NOACK", noack),
                 "STREAMS",
-                keys,
-                ids,
+                NonEmpty::new("keys", keys),
+                NonEmpty::new("ids", ids),
             ),
         )
         .await
@@ -1775,8 +1801,7 @@ impl Guest for Commands {
         key: String,
         members: Vec<String>,
     ) -> Result<Integer, Error> {
-        let members = NonEmpty::new("members", members)?;
-        query(connection, ("SADD", key, members)).await
+        query(connection, ("SADD", key, NonEmpty::new("members", members))).await
     }
 
     #[doc = " The number of members in the set stored at key."]
@@ -1794,8 +1819,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/sdiff/"]
     #[allow(async_fn_in_trait)]
     async fn sdiff(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("SDIFF", keys)).await
+        query(connection, ("SDIFF", NonEmpty::new("keys", keys))).await
     }
 
     #[doc = " Stores the members of the first set that are not in any of the others, returning how many."]
@@ -1808,8 +1832,11 @@ impl Guest for Commands {
         destination: String,
         keys: Vec<String>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("SDIFFSTORE", destination, keys)).await
+        query(
+            connection,
+            ("SDIFFSTORE", destination, NonEmpty::new("keys", keys)),
+        )
+        .await
     }
 
     #[doc = " The members in all of the sets."]
@@ -1818,8 +1845,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/sinter/"]
     #[allow(async_fn_in_trait)]
     async fn sinter(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("SINTER", keys)).await
+        query(connection, ("SINTER", NonEmpty::new("keys", keys))).await
     }
 
     #[doc = " The number of members in all of the sets, counting stops at the limit."]
@@ -1832,10 +1858,13 @@ impl Guest for Commands {
         keys: Vec<String>,
         limit: Option<Integer>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
         query(
             connection,
-            ("SINTERCARD", NumKeys(keys), NamedOption("LIMIT", limit)),
+            (
+                "SINTERCARD",
+                NumKeys(NonEmpty::new("keys", keys)),
+                NamedOption("LIMIT", limit),
+            ),
         )
         .await
     }
@@ -1850,8 +1879,11 @@ impl Guest for Commands {
         destination: String,
         keys: Vec<String>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("SINTERSTORE", destination, keys)).await
+        query(
+            connection,
+            ("SINTERSTORE", destination, NonEmpty::new("keys", keys)),
+        )
+        .await
     }
 
     #[doc = " Whether the member is in the set stored at key, false when the key does not exist."]
@@ -1905,8 +1937,11 @@ impl Guest for Commands {
         key: String,
         members: Vec<String>,
     ) -> Result<Vec<bool>, Error> {
-        let members = NonEmpty::new("members", members)?;
-        query(connection, ("SMISMEMBER", key, members)).await
+        query(
+            connection,
+            ("SMISMEMBER", key, NonEmpty::new("members", members)),
+        )
+        .await
     }
 
     #[doc = " Moves the member from one set to another, false when it was not in the source set."]
@@ -1974,8 +2009,7 @@ impl Guest for Commands {
         key: String,
         members: Vec<String>,
     ) -> Result<Integer, Error> {
-        let members = NonEmpty::new("members", members)?;
-        query(connection, ("SREM", key, members)).await
+        query(connection, ("SREM", key, NonEmpty::new("members", members))).await
     }
 
     #[doc = " Incrementally iterate over the members of the set stored at key."]
@@ -1986,21 +2020,22 @@ impl Guest for Commands {
     async fn sscan(
         connection: &Connection,
         key: String,
-        cursor: Option<Cursor>,
+        cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Cursor, Vec<String>), Error> {
-        query(
+    ) -> Result<(Option<Cursor>, Vec<String>), Error> {
+        let (cursor, items): (NextCursor, Vec<String>) = query(
             connection,
             (
                 "SSCAN",
                 key,
-                cursor.unwrap_or(Cursor::from("0")),
+                cursor,
                 NamedOption("MATCH", match_),
                 NamedOption("COUNT", count),
             ),
         )
-        .await
+        .await?;
+        Ok((cursor.0, items))
     }
 
     #[doc = " The members in any of the sets."]
@@ -2009,8 +2044,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/sunion/"]
     #[allow(async_fn_in_trait)]
     async fn sunion(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("SUNION", keys)).await
+        query(connection, ("SUNION", NonEmpty::new("keys", keys))).await
     }
 
     #[doc = " Stores the members in any of the sets, returning how many."]
@@ -2023,8 +2057,11 @@ impl Guest for Commands {
         destination: String,
         keys: Vec<String>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("SUNIONSTORE", destination, keys)).await
+        query(
+            connection,
+            ("SUNIONSTORE", destination, NonEmpty::new("keys", keys)),
+        )
+        .await
     }
 
     #[doc = " Sorts the elements of the list, set or sorted set stored at key."]
@@ -2040,7 +2077,6 @@ impl Guest for Commands {
         key: String,
         opts: Option<SortOpts>,
     ) -> Result<Vec<Vec<Option<String>>>, Error> {
-        check_sort_opts(&opts)?;
         let row = sort_row_len(&opts);
         let values: Vec<Option<String>> = query(connection, ("SORT", key, opts)).await?;
         Ok(values.chunks(row).map(<[_]>::to_vec).collect())
@@ -2058,7 +2094,6 @@ impl Guest for Commands {
         opts: Option<SortOpts>,
         destination: String,
     ) -> Result<Integer, Error> {
-        check_sort_opts(&opts)?;
         query(connection, ("SORT", key, opts, "STORE", destination)).await
     }
 
@@ -2072,7 +2107,6 @@ impl Guest for Commands {
         key: String,
         opts: Option<SortOpts>,
     ) -> Result<Vec<Vec<Option<String>>>, Error> {
-        check_sort_opts(&opts)?;
         let row = sort_row_len(&opts);
         let values: Vec<Option<String>> = query(connection, ("SORT_RO", key, opts)).await?;
         Ok(values.chunks(row).map(<[_]>::to_vec).collect())
@@ -2096,11 +2130,10 @@ impl Guest for Commands {
         end: PopEnd,
         count: Option<Integer>,
     ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
         let command = (
             "BZMPOP",
             DecimalSeconds(timeout),
-            NumKeys(keys),
+            NumKeys(NonEmpty::new("keys", keys)),
             end,
             NamedOption("COUNT", count),
         );
@@ -2123,8 +2156,15 @@ impl Guest for Commands {
         keys: Vec<String>,
         timeout: DurationMilliseconds,
     ) -> Result<Option<(String, String, Double)>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("BZPOPMAX", keys, DecimalSeconds(timeout))).await
+        query(
+            connection,
+            (
+                "BZPOPMAX",
+                NonEmpty::new("keys", keys),
+                DecimalSeconds(timeout),
+            ),
+        )
+        .await
     }
 
     #[doc = " Removes the member with the lowest score from the first non-empty sorted set, waiting up to"]
@@ -2143,8 +2183,15 @@ impl Guest for Commands {
         keys: Vec<String>,
         timeout: DurationMilliseconds,
     ) -> Result<Option<(String, String, Double)>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("BZPOPMIN", keys, DecimalSeconds(timeout))).await
+        query(
+            connection,
+            (
+                "BZPOPMIN",
+                NonEmpty::new("keys", keys),
+                DecimalSeconds(timeout),
+            ),
+        )
+        .await
     }
 
     #[doc = " Adds the members with their scores to the sorted set stored at key, or updates their scores,"]
@@ -2163,14 +2210,13 @@ impl Guest for Commands {
         changed: bool,
         score_and_members: Vec<(Double, String)>,
     ) -> Result<Option<Integer>, Error> {
-        let score_and_members = NonEmpty::new("score-and-members", score_and_members)?;
         let command = (
             "ZADD",
             key,
             condition,
             comparison,
             Flag("CH", changed),
-            score_and_members,
+            NonEmpty::new("score-and-members", score_and_members),
         );
         query(connection, command).await
     }
@@ -2240,8 +2286,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/zdiff/"]
     #[allow(async_fn_in_trait)]
     async fn zdiff(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("ZDIFF", NumKeys(keys))).await
+        query(connection, ("ZDIFF", NumKeys(NonEmpty::new("keys", keys)))).await
     }
 
     #[doc = " The members, and their scores, of the first sorted set that are not in any of the others."]
@@ -2255,8 +2300,11 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
     ) -> Result<Vec<(String, Double)>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("ZDIFF", NumKeys(keys), "WITHSCORES")).await
+        query(
+            connection,
+            ("ZDIFF", NumKeys(NonEmpty::new("keys", keys)), "WITHSCORES"),
+        )
+        .await
     }
 
     #[doc = " Stores the members of the first sorted set that are not in any of the others, returning how"]
@@ -2270,8 +2318,15 @@ impl Guest for Commands {
         destination: String,
         keys: Vec<String>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        query(connection, ("ZDIFFSTORE", destination, NumKeys(keys))).await
+        query(
+            connection,
+            (
+                "ZDIFFSTORE",
+                destination,
+                NumKeys(NonEmpty::new("keys", keys)),
+            ),
+        )
+        .await
     }
 
     #[doc = " Increments the score of the member in the sorted set stored at key, returning the new score."]
@@ -2303,14 +2358,12 @@ impl Guest for Commands {
         weights: Option<Vec<Double>>,
         aggregate: Option<Aggregate>,
     ) -> Result<Vec<String>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let weights = NonEmpty::optional("weights", weights)?;
         query(
             connection,
             (
                 "ZINTER",
-                NumKeys(keys),
-                NamedOption("WEIGHTS", weights),
+                NumKeys(NonEmpty::new("keys", keys)),
+                NamedOption("WEIGHTS", NonEmpty::optional("weights", weights)),
                 aggregate,
             ),
         )
@@ -2330,12 +2383,10 @@ impl Guest for Commands {
         weights: Option<Vec<Double>>,
         aggregate: Option<Aggregate>,
     ) -> Result<Vec<(String, Double)>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let weights = NonEmpty::optional("weights", weights)?;
         let command = (
             "ZINTER",
-            NumKeys(keys),
-            NamedOption("WEIGHTS", weights),
+            NumKeys(NonEmpty::new("keys", keys)),
+            NamedOption("WEIGHTS", NonEmpty::optional("weights", weights)),
             aggregate,
             "WITHSCORES",
         );
@@ -2352,10 +2403,13 @@ impl Guest for Commands {
         keys: Vec<String>,
         limit: Option<Integer>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
         query(
             connection,
-            ("ZINTERCARD", NumKeys(keys), NamedOption("LIMIT", limit)),
+            (
+                "ZINTERCARD",
+                NumKeys(NonEmpty::new("keys", keys)),
+                NamedOption("LIMIT", limit),
+            ),
         )
         .await
     }
@@ -2372,13 +2426,11 @@ impl Guest for Commands {
         weights: Option<Vec<Double>>,
         aggregate: Option<Aggregate>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let weights = NonEmpty::optional("weights", weights)?;
         let command = (
             "ZINTERSTORE",
             destination,
-            NumKeys(keys),
-            NamedOption("WEIGHTS", weights),
+            NumKeys(NonEmpty::new("keys", keys)),
+            NamedOption("WEIGHTS", NonEmpty::optional("weights", weights)),
             aggregate,
         );
         query(connection, command).await
@@ -2423,10 +2475,14 @@ impl Guest for Commands {
         end: PopEnd,
         count: Option<Integer>,
     ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
         query(
             connection,
-            ("ZMPOP", NumKeys(keys), end, NamedOption("COUNT", count)),
+            (
+                "ZMPOP",
+                NumKeys(NonEmpty::new("keys", keys)),
+                end,
+                NamedOption("COUNT", count),
+            ),
         )
         .await
     }
@@ -2442,8 +2498,11 @@ impl Guest for Commands {
         key: String,
         members: Vec<String>,
     ) -> Result<Vec<Option<Double>>, Error> {
-        let members = NonEmpty::new("members", members)?;
-        query(connection, ("ZMSCORE", key, members)).await
+        query(
+            connection,
+            ("ZMSCORE", key, NonEmpty::new("members", members)),
+        )
+        .await
     }
 
     #[doc = " Removes and returns the members with the highest scores, and their scores, up to the count,"]
@@ -2630,8 +2689,7 @@ impl Guest for Commands {
         key: String,
         members: Vec<String>,
     ) -> Result<Integer, Error> {
-        let members = NonEmpty::new("members", members)?;
-        query(connection, ("ZREM", key, members)).await
+        query(connection, ("ZREM", key, NonEmpty::new("members", members))).await
     }
 
     #[doc = " Removes the members of the sorted set stored at key in the range, for members of equal score,"]
@@ -2745,23 +2803,23 @@ impl Guest for Commands {
     async fn zscan(
         connection: &Connection,
         key: String,
-        cursor: Option<Cursor>,
+        cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Cursor, Vec<(String, Double)>), Error> {
+    ) -> Result<(Option<Cursor>, Vec<(String, Double)>), Error> {
         // the members and scores are a flat array, the scores bulk strings
-        let (cursor, members): (Cursor, FlatPairs<String, Double>) = query(
+        let (cursor, members): (NextCursor, FlatPairs<String, Double>) = query(
             connection,
             (
                 "ZSCAN",
                 key,
-                cursor.unwrap_or(Cursor::from("0")),
+                cursor,
                 NamedOption("MATCH", match_),
                 NamedOption("COUNT", count),
             ),
         )
         .await?;
-        Ok((cursor, members.0))
+        Ok((cursor.0, members.0))
     }
 
     #[doc = " Incrementally iterate over the members of the sorted set stored at key."]
@@ -2774,22 +2832,23 @@ impl Guest for Commands {
     async fn zscan_noscores(
         connection: &Connection,
         key: String,
-        cursor: Option<Cursor>,
+        cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Cursor, Vec<String>), Error> {
-        query(
+    ) -> Result<(Option<Cursor>, Vec<String>), Error> {
+        let (cursor, items): (NextCursor, Vec<String>) = query(
             connection,
             (
                 "ZSCAN",
                 key,
-                cursor.unwrap_or(Cursor::from("0")),
+                cursor,
                 NamedOption("MATCH", match_),
                 NamedOption("COUNT", count),
                 "NOSCORES",
             ),
         )
-        .await
+        .await?;
+        Ok((cursor.0, items))
     }
 
     #[doc = " The score of the member in the sorted set stored at key, none when it is not a member."]
@@ -2820,14 +2879,12 @@ impl Guest for Commands {
         weights: Option<Vec<Double>>,
         aggregate: Option<Aggregate>,
     ) -> Result<Vec<String>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let weights = NonEmpty::optional("weights", weights)?;
         query(
             connection,
             (
                 "ZUNION",
-                NumKeys(keys),
-                NamedOption("WEIGHTS", weights),
+                NumKeys(NonEmpty::new("keys", keys)),
+                NamedOption("WEIGHTS", NonEmpty::optional("weights", weights)),
                 aggregate,
             ),
         )
@@ -2847,12 +2904,10 @@ impl Guest for Commands {
         weights: Option<Vec<Double>>,
         aggregate: Option<Aggregate>,
     ) -> Result<Vec<(String, Double)>, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let weights = NonEmpty::optional("weights", weights)?;
         let command = (
             "ZUNION",
-            NumKeys(keys),
-            NamedOption("WEIGHTS", weights),
+            NumKeys(NonEmpty::new("keys", keys)),
+            NamedOption("WEIGHTS", NonEmpty::optional("weights", weights)),
             aggregate,
             "WITHSCORES",
         );
@@ -2871,13 +2926,11 @@ impl Guest for Commands {
         weights: Option<Vec<Double>>,
         aggregate: Option<Aggregate>,
     ) -> Result<Integer, Error> {
-        let keys = NonEmpty::new("keys", keys)?;
-        let weights = NonEmpty::optional("weights", weights)?;
         let command = (
             "ZUNIONSTORE",
             destination,
-            NumKeys(keys),
-            NamedOption("WEIGHTS", weights),
+            NumKeys(NonEmpty::new("keys", keys)),
+            NamedOption("WEIGHTS", NonEmpty::optional("weights", weights)),
             aggregate,
         );
         query(connection, command).await
