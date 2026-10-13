@@ -948,7 +948,7 @@ interface commands {
     //   CLUSTER FLUSHSLOT
     //   COPY
     //   DBSIZE
-    //   DUMP
+    //   DUMP, needs binary support, the payload is not a string
     //   EXPIRETIME
     //   FLUSHALL
     //   FLUSHDB
@@ -966,8 +966,8 @@ interface commands {
     //   RANDOMKEY
     //   RENAME
     //   RENAMENX
-    //   RESTORE
-    //   RESTORE-ASKING
+    //   RESTORE, needs binary support, the payload is not a string
+    //   RESTORE-ASKING, needs binary support, the payload is not a string
     //   SCAN
     //   SWAPDB
     //   TOUCH
@@ -1274,27 +1274,171 @@ interface commands {
 
     // scripting commands
 
-    // not yet implemented, from the @scripting category:
-    //   EVAL
-    //   EVAL_RO
-    //   EVALSHA
-    //   EVALSHA_RO
-    //   FCALL
-    //   FCALL_RO
-    //   FUNCTION DELETE
-    //   FUNCTION DUMP
-    //   FUNCTION FLUSH
-    //   FUNCTION KILL
-    //   FUNCTION LIST
-    //   FUNCTION LOAD
-    //   FUNCTION RESTORE
-    //   FUNCTION STATS
-    //   SCRIPT DEBUG
-    //   SCRIPT EXISTS
-    //   SCRIPT FLUSH
-    //   SCRIPT KILL
-    //   SCRIPT LOAD
-    //   SCRIPT SHOW
+    /// Runs the Lua script, returning its result, the keys it accesses and its arguments are
+    /// `KEYS` and `ARGV` in the script.
+    ///
+    /// An error the script returns fails the call.
+    ///
+    /// EVAL script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/eval/
+    eval: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+
+    /// Runs the Lua script, which may not write, returning its result, see `eval`.
+    ///
+    /// EVAL_RO script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/eval_ro/
+    eval-ro: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+
+    /// Runs the Lua script cached with the SHA1 digest, see `script-load`, returning its result, see
+    /// `eval`.
+    ///
+    /// EVALSHA sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/evalsha/
+    evalsha: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+
+    /// Runs the Lua script cached with the SHA1 digest, which may not write, returning its result,
+    /// see `eval`.
+    ///
+    /// EVALSHA_RO sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/evalsha_ro/
+    evalsha-ro: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+
+    /// Calls the function, see `function-load`, returning its result, the keys it accesses and its
+    /// arguments are passed to it.
+    ///
+    /// An error the function returns fails the call.
+    ///
+    /// FCALL function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/fcall/
+    fcall: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+
+    /// Calls the function, which must be flagged `no-writes`, returning its result, see `fcall`.
+    ///
+    /// FCALL_RO function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/fcall_ro/
+    fcall-ro: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+
+    /// Deletes the library and its functions.
+    ///
+    /// FUNCTION DELETE library-name
+    /// https://valkey.io/commands/function-delete/
+    function-delete: async func(connection: borrow<connection>, library-name: string) -> result<_, error>;
+
+    /// Whether a flush happens in the background, `ASYNC`, or before replying, `SYNC`.
+    enum flush-mode {
+        /// `ASYNC`
+        %async,
+        /// `SYNC`
+        sync,
+    }
+
+    /// Deletes all the libraries, in the mode, the server's `lazyfree-lazy-user-flush` without one.
+    ///
+    /// FUNCTION FLUSH [ ASYNC | SYNC ]
+    /// https://valkey.io/commands/function-flush/
+    function-flush: async func(connection: borrow<connection>, mode: option<flush-mode>) -> result<_, error>;
+
+    /// Kills the function that is running, as long as it has not written.
+    ///
+    /// FUNCTION KILL
+    /// https://valkey.io/commands/function-kill/
+    function-kill: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// A function of a library.
+    record library-function {
+        name: string,
+        description: option<string>,
+        /// The function's flags, e.g. `no-writes`.
+        %flags: list<string>,
+    }
+
+    /// A library of functions.
+    record library {
+        library-name: string,
+        /// The engine that runs the library, e.g. `LUA`.
+        engine: string,
+        functions: list<library-function>,
+        /// The library's source code, with `withcode`.
+        library-code: option<string>,
+    }
+
+    /// The libraries, those with names matching the glob-style pattern with one.
+    ///
+    /// FUNCTION LIST [ LIBRARYNAME library-name-pattern ] [ WITHCODE ]
+    /// https://valkey.io/commands/function-list/
+    function-list: async func(connection: borrow<connection>, library-name-pattern: option<string>, withcode: bool) -> result<list<library>, error>;
+
+    /// Loads the library from its source code, replacing a library of the same name with
+    /// `replace`, returning its name.
+    ///
+    /// FUNCTION LOAD [ REPLACE ] function-code
+    /// https://valkey.io/commands/function-load/
+    function-load: async func(connection: borrow<connection>, replace: bool, function-code: string) -> result<string, error>;
+
+    /// The function that is running.
+    record running-function {
+        name: string,
+        /// The command and its arguments that called the function.
+        command: list<string>,
+        /// How long the function has been running.
+        duration: duration-milliseconds,
+    }
+
+    /// The libraries and functions of an engine.
+    record engine-stats {
+        libraries-count: integer,
+        functions-count: integer,
+    }
+
+    /// The function that is running, and the libraries and functions of each engine.
+    record function-stats-reply {
+        /// None when no function is running.
+        running-script: option<running-function>,
+        /// The statistics of each engine, by name.
+        engines: map<string, engine-stats>,
+    }
+
+    /// The function that is running, and the libraries and functions of each engine.
+    ///
+    /// FUNCTION STATS
+    /// https://valkey.io/commands/function-stats/
+    function-stats: async func(connection: borrow<connection>) -> result<function-stats-reply, error>;
+
+    /// Whether each of the scripts is cached, by SHA1 digest.
+    ///
+    /// SCRIPT EXISTS sha1 [ sha1 ... ]
+    /// https://valkey.io/commands/script-exists/
+    script-exists: async func(connection: borrow<connection>, sha1s: list<string>) -> result<list<bool>, error>;
+
+    /// Removes all the scripts from the cache, in the mode, the server's `lazyfree-lazy-user-flush`
+    /// without one.
+    ///
+    /// SCRIPT FLUSH [ ASYNC | SYNC ]
+    /// https://valkey.io/commands/script-flush/
+    script-flush: async func(connection: borrow<connection>, mode: option<flush-mode>) -> result<_, error>;
+
+    /// Kills the script that is running, as long as it has not written.
+    ///
+    /// SCRIPT KILL
+    /// https://valkey.io/commands/script-kill/
+    script-kill: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Caches the script without running it, returning its SHA1 digest, see `evalsha`.
+    ///
+    /// SCRIPT LOAD script
+    /// https://valkey.io/commands/script-load/
+    script-load: async func(connection: borrow<connection>, script: string) -> result<string, error>;
+
+    /// The source of the cached script with the SHA1 digest.
+    ///
+    /// SCRIPT SHOW sha1
+    /// https://valkey.io/commands/script-show/
+    script-show: async func(connection: borrow<connection>, sha1: string) -> result<string, error>;
+
+    // not implemented, from the @scripting category:
+    //   FUNCTION DUMP and FUNCTION RESTORE, the payload is binary, not a string
+    //   SCRIPT DEBUG, the debugger is interactive, with a protocol of its own
+
 
 
     // set commands

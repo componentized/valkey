@@ -1,12 +1,12 @@
 use crate::exports::componentized::valkey::commands::{
     Aggregate, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby, BitfieldOffset,
     BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, CommandRule, Connection, Cursor,
-    DbRule, DurationMilliseconds, DurationSeconds, Error, GeoCoordinates, GeoCount, GeoFrom,
-    GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyRule,
-    LexBound, Limit, LinsertPosition, ListSide, MsetexPrecondition, PopEnd, Rule, RuleSelector,
-    ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency,
-    TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value, XclaimOpts, ZaddComparison,
-    ZaddCondition, ZrangeBy,
+    DbRule, DurationMilliseconds, DurationSeconds, Error, FlushMode, GeoCoordinates, GeoCount,
+    GeoFrom, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition, HsetexFieldCondition,
+    KeyRule, LexBound, Limit, LinsertPosition, ListSide, MsetexPrecondition, PopEnd, Rule,
+    RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim,
+    StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value,
+    XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -799,5 +799,31 @@ impl IntoCommand for GeoShape {
 impl IntoCommand for GeoCount {
     fn into_command(self) -> Result<Vec<String>, Error> {
         ("COUNT", self.count, Flag("ANY", self.any)).into_command()
+    }
+}
+
+impl IntoCommand for FlushMode {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            FlushMode::Async => "ASYNC",
+            FlushMode::Sync => "SYNC",
+        }
+        .into_command()
+    }
+}
+
+/// `numkeys [ key ... ] [ arg ... ]`, e.g. for EVAL, `0` without keys.
+pub struct KeysAndArgs(pub Option<Vec<String>>, pub Option<Vec<String>>);
+
+impl IntoCommand for KeysAndArgs {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        let KeysAndArgs(keys, args) = self;
+        let numkeys = keys.as_ref().map_or(0, Vec::len);
+        (
+            numkeys,
+            NonEmpty::optional("keys", keys),
+            NonEmpty::optional("args", args),
+        )
+            .into_command()
     }
 }

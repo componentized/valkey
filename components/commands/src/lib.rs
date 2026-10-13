@@ -1,17 +1,18 @@
 use crate::command::{
-    Bit, DecimalSeconds, Fields, Flag, LexRange, NamedOption, NonEmpty, NumKeys, ScoreRange,
-    Zrange, emit, query,
+    Bit, DecimalSeconds, Fields, Flag, KeysAndArgs, LexRange, NamedOption, NonEmpty, NumKeys,
+    ScoreRange, Zrange, emit, query,
 };
 use crate::exports::componentized::valkey::commands::{
     Aggregate, BitRange, BitfieldGet, BitfieldOperation, BitopOperation, Connection, Cursor,
     Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime, FieldPersistResult,
-    FieldPexpiretime, FieldPttl, FieldTtl, GeoCoordinates, GeoCount, GeoSearchResult, GeoShape,
-    GeoUnit, GeoaddCondition, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Integer,
-    LcsIdxReply, LexBound, Limit, LinsertPosition, LinsertResult, ListSide, MsetexPrecondition,
-    MsetexTtl, PopEnd, Rule, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder, StreamId,
-    StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts,
-    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry,
-    XpendingSummary, ZaddComparison, ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
+    FieldPexpiretime, FieldPttl, FieldTtl, FlushMode, FunctionStatsReply, GeoCoordinates, GeoCount,
+    GeoSearchResult, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, Guest, HsetexCondition,
+    HsetexFieldCondition, Integer, LcsIdxReply, LexBound, Library, Limit, LinsertPosition,
+    LinsertResult, ListSide, MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound,
+    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode, TtlResult,
+    UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
+    XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison,
+    ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
 use crate::value::{FlatPairs, NextCursor, OrNever, OrZeroId, ScoredMembers};
 
@@ -1596,6 +1597,227 @@ impl Guest for Commands {
             ),
         )
         .await
+    }
+
+    #[doc = " Runs the Lua script, returning its result, the keys it accesses and its arguments are"]
+    #[doc = " `KEYS` and `ARGV` in the script."]
+    #[doc = ""]
+    #[doc = " An error the script returns fails the call."]
+    #[doc = ""]
+    #[doc = " EVAL script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/eval/"]
+    #[allow(async_fn_in_trait)]
+    async fn eval(
+        connection: &Connection,
+        script: String,
+        keys: Option<Vec<String>>,
+        args: Option<Vec<String>>,
+    ) -> Result<Value, Error> {
+        query(connection, ("EVAL", script, KeysAndArgs(keys, args))).await
+    }
+
+    #[doc = " Runs the Lua script, which may not write, returning its result, see `eval`."]
+    #[doc = ""]
+    #[doc = " EVAL_RO script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/eval_ro/"]
+    #[allow(async_fn_in_trait)]
+    async fn eval_ro(
+        connection: &Connection,
+        script: String,
+        keys: Option<Vec<String>>,
+        args: Option<Vec<String>>,
+    ) -> Result<Value, Error> {
+        query(connection, ("EVAL_RO", script, KeysAndArgs(keys, args))).await
+    }
+
+    #[doc = " Runs the Lua script cached with the SHA1 digest, see `script-load`, returning its result, see"]
+    #[doc = " `eval`."]
+    #[doc = ""]
+    #[doc = " EVALSHA sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/evalsha/"]
+    #[allow(async_fn_in_trait)]
+    async fn evalsha(
+        connection: &Connection,
+        sha1: String,
+        keys: Option<Vec<String>>,
+        args: Option<Vec<String>>,
+    ) -> Result<Value, Error> {
+        query(connection, ("EVALSHA", sha1, KeysAndArgs(keys, args))).await
+    }
+
+    #[doc = " Runs the Lua script cached with the SHA1 digest, which may not write, returning its result,"]
+    #[doc = " see `eval`."]
+    #[doc = ""]
+    #[doc = " EVALSHA_RO sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/evalsha_ro/"]
+    #[allow(async_fn_in_trait)]
+    async fn evalsha_ro(
+        connection: &Connection,
+        sha1: String,
+        keys: Option<Vec<String>>,
+        args: Option<Vec<String>>,
+    ) -> Result<Value, Error> {
+        query(connection, ("EVALSHA_RO", sha1, KeysAndArgs(keys, args))).await
+    }
+
+    #[doc = " Calls the function, see `function-load`, returning its result, the keys it accesses and its"]
+    #[doc = " arguments are passed to it."]
+    #[doc = ""]
+    #[doc = " An error the function returns fails the call."]
+    #[doc = ""]
+    #[doc = " FCALL function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/fcall/"]
+    #[allow(async_fn_in_trait)]
+    async fn fcall(
+        connection: &Connection,
+        function: String,
+        keys: Option<Vec<String>>,
+        args: Option<Vec<String>>,
+    ) -> Result<Value, Error> {
+        query(connection, ("FCALL", function, KeysAndArgs(keys, args))).await
+    }
+
+    #[doc = " Calls the function, which must be flagged `no-writes`, returning its result, see `fcall`."]
+    #[doc = ""]
+    #[doc = " FCALL_RO function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/fcall_ro/"]
+    #[allow(async_fn_in_trait)]
+    async fn fcall_ro(
+        connection: &Connection,
+        function: String,
+        keys: Option<Vec<String>>,
+        args: Option<Vec<String>>,
+    ) -> Result<Value, Error> {
+        query(connection, ("FCALL_RO", function, KeysAndArgs(keys, args))).await
+    }
+
+    #[doc = " Deletes the library and its functions."]
+    #[doc = ""]
+    #[doc = " FUNCTION DELETE library-name"]
+    #[doc = " https://valkey.io/commands/function-delete/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_delete(connection: &Connection, library_name: String) -> Result<(), Error> {
+        query(connection, ("FUNCTION", "DELETE", library_name)).await
+    }
+
+    #[doc = " Deletes all the libraries, in the mode, the server's `lazyfree-lazy-user-flush` without one."]
+    #[doc = ""]
+    #[doc = " FUNCTION FLUSH [ ASYNC | SYNC ]"]
+    #[doc = " https://valkey.io/commands/function-flush/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_flush(connection: &Connection, mode: Option<FlushMode>) -> Result<(), Error> {
+        query(connection, ("FUNCTION", "FLUSH", mode)).await
+    }
+
+    #[doc = " Kills the function that is running, as long as it has not written."]
+    #[doc = ""]
+    #[doc = " FUNCTION KILL"]
+    #[doc = " https://valkey.io/commands/function-kill/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_kill(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("FUNCTION", "KILL")).await
+    }
+
+    #[doc = " The libraries, those with names matching the glob-style pattern with one."]
+    #[doc = ""]
+    #[doc = " FUNCTION LIST [ LIBRARYNAME library-name-pattern ] [ WITHCODE ]"]
+    #[doc = " https://valkey.io/commands/function-list/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_list(
+        connection: &Connection,
+        library_name_pattern: Option<String>,
+        withcode: bool,
+    ) -> Result<Vec<Library>, Error> {
+        query(
+            connection,
+            (
+                "FUNCTION",
+                "LIST",
+                NamedOption("LIBRARYNAME", library_name_pattern),
+                Flag("WITHCODE", withcode),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Loads the library from its source code, replacing a library of the same name with"]
+    #[doc = " `replace`, returning its name."]
+    #[doc = ""]
+    #[doc = " FUNCTION LOAD [ REPLACE ] function-code"]
+    #[doc = " https://valkey.io/commands/function-load/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_load(
+        connection: &Connection,
+        replace: bool,
+        function_code: String,
+    ) -> Result<String, Error> {
+        query(
+            connection,
+            ("FUNCTION", "LOAD", Flag("REPLACE", replace), function_code),
+        )
+        .await
+    }
+
+    #[doc = " The function that is running, and the libraries and functions of each engine."]
+    #[doc = ""]
+    #[doc = " FUNCTION STATS"]
+    #[doc = " https://valkey.io/commands/function-stats/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_stats(connection: &Connection) -> Result<FunctionStatsReply, Error> {
+        query(connection, ("FUNCTION", "STATS")).await
+    }
+
+    #[doc = " Whether each of the scripts is cached, by SHA1 digest."]
+    #[doc = ""]
+    #[doc = " SCRIPT EXISTS sha1 [ sha1 ... ]"]
+    #[doc = " https://valkey.io/commands/script-exists/"]
+    #[allow(async_fn_in_trait)]
+    async fn script_exists(
+        connection: &Connection,
+        sha1s: Vec<String>,
+    ) -> Result<Vec<bool>, Error> {
+        query(
+            connection,
+            ("SCRIPT", "EXISTS", NonEmpty::new("sha1s", sha1s)),
+        )
+        .await
+    }
+
+    #[doc = " Removes all the scripts from the cache, in the mode, the server's `lazyfree-lazy-user-flush`"]
+    #[doc = " without one."]
+    #[doc = ""]
+    #[doc = " SCRIPT FLUSH [ ASYNC | SYNC ]"]
+    #[doc = " https://valkey.io/commands/script-flush/"]
+    #[allow(async_fn_in_trait)]
+    async fn script_flush(connection: &Connection, mode: Option<FlushMode>) -> Result<(), Error> {
+        query(connection, ("SCRIPT", "FLUSH", mode)).await
+    }
+
+    #[doc = " Kills the script that is running, as long as it has not written."]
+    #[doc = ""]
+    #[doc = " SCRIPT KILL"]
+    #[doc = " https://valkey.io/commands/script-kill/"]
+    #[allow(async_fn_in_trait)]
+    async fn script_kill(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("SCRIPT", "KILL")).await
+    }
+
+    #[doc = " Caches the script without running it, returning its SHA1 digest, see `evalsha`."]
+    #[doc = ""]
+    #[doc = " SCRIPT LOAD script"]
+    #[doc = " https://valkey.io/commands/script-load/"]
+    #[allow(async_fn_in_trait)]
+    async fn script_load(connection: &Connection, script: String) -> Result<String, Error> {
+        query(connection, ("SCRIPT", "LOAD", script)).await
+    }
+
+    #[doc = " The source of the cached script with the SHA1 digest."]
+    #[doc = ""]
+    #[doc = " SCRIPT SHOW sha1"]
+    #[doc = " https://valkey.io/commands/script-show/"]
+    #[allow(async_fn_in_trait)]
+    async fn script_show(connection: &Connection, sha1: String) -> Result<String, Error> {
+        query(connection, ("SCRIPT", "SHOW", sha1)).await
     }
 
     #[doc = " Unsubscribes the client from the given patterns, or from all of them if none is given."]

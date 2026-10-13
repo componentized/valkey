@@ -1,8 +1,9 @@
 use crate::exports::componentized::valkey::commands::{
-    Cursor, Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime,
-    FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, GeoCoordinates, GeoSearchResult,
-    Integer, LcsIdxMatch, LcsIdxReply, LinsertResult, StreamId, TtlResult, UnixTimeMilliseconds,
-    UnixTimeSeconds, Value, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
+    Cursor, Double, DurationMilliseconds, DurationSeconds, EngineStats, Error, FieldExpiretime,
+    FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, FunctionStatsReply, GeoCoordinates,
+    GeoSearchResult, Integer, LcsIdxMatch, LcsIdxReply, Library, LibraryFunction, LinsertResult,
+    RunningFunction, StreamId, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
+    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
     XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
     XpendingSummary,
 };
@@ -389,6 +390,61 @@ impl FromValue for GeoSearchResult {
             }
         }
         Ok(result)
+    }
+}
+
+impl FromValue for LibraryFunction {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            name: fields.required("name")?,
+            description: fields.required("description")?,
+            flags: fields.required("flags")?,
+        })
+    }
+}
+
+impl FromValue for Library {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            library_name: fields.required("library_name")?,
+            engine: fields.required("engine")?,
+            functions: fields.required("functions")?,
+            // only with WITHCODE
+            library_code: fields.optional("library_code")?,
+        })
+    }
+}
+
+impl FromValue for RunningFunction {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            name: fields.required("name")?,
+            command: fields.required("command")?,
+            duration: fields.required("duration_ms")?,
+        })
+    }
+}
+
+impl FromValue for EngineStats {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            libraries_count: fields.required("libraries_count")?,
+            functions_count: fields.required("functions_count")?,
+        })
+    }
+}
+
+impl FromValue for FunctionStatsReply {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            running_script: fields.required("running_script")?,
+            engines: fields.required("engines")?,
+        })
     }
 }
 
