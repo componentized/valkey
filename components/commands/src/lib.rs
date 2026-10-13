@@ -655,6 +655,60 @@ impl Guest for Commands {
         query(connection, ("HVALS", key)).await
     }
 
+    #[doc = " Adds the elements to the HyperLogLog stored at key, creating it when it does not exist,"]
+    #[doc = " returning whether its estimate may have changed."]
+    #[doc = ""]
+    #[doc = " Without elements, creates an empty HyperLogLog, true only when the key did not exist."]
+    #[doc = ""]
+    #[doc = " PFADD key [ element [ element ... ] ]"]
+    #[doc = " https://valkey.io/commands/pfadd/"]
+    #[allow(async_fn_in_trait)]
+    async fn pfadd(
+        connection: &Connection,
+        key: String,
+        elements: Option<Vec<String>>,
+    ) -> Result<bool, Error> {
+        query(
+            connection,
+            ("PFADD", key, NonEmpty::optional("elements", elements)),
+        )
+        .await
+    }
+
+    #[doc = " The approximate number of unique elements added to the HyperLogLogs, of their union for"]
+    #[doc = " more than one, 0 for a key that does not exist."]
+    #[doc = ""]
+    #[doc = " PFCOUNT key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/pfcount/"]
+    #[allow(async_fn_in_trait)]
+    async fn pfcount(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
+        query(connection, ("PFCOUNT", NonEmpty::new("keys", keys))).await
+    }
+
+    #[doc = " Merges the HyperLogLogs stored at the source keys into the one stored at destination,"]
+    #[doc = " creating it when it does not exist."]
+    #[doc = ""]
+    #[doc = " Without source keys, creates an empty HyperLogLog when destination does not exist."]
+    #[doc = ""]
+    #[doc = " PFMERGE destkey [ sourcekey [ sourcekey ... ] ]"]
+    #[doc = " https://valkey.io/commands/pfmerge/"]
+    #[allow(async_fn_in_trait)]
+    async fn pfmerge(
+        connection: &Connection,
+        destination: String,
+        sources: Option<Vec<String>>,
+    ) -> Result<(), Error> {
+        query(
+            connection,
+            (
+                "PFMERGE",
+                destination,
+                NonEmpty::optional("sources", sources),
+            ),
+        )
+        .await
+    }
+
     #[doc = " Removes the specified keys."]
     #[doc = ""]
     #[doc = " DEL key [ key ... ]"]

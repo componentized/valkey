@@ -639,14 +639,35 @@ interface commands {
     hvals: async func(connection: borrow<connection>, key: string) -> result<list<string>, error>;
 
 
-    // hyperlog commands
+    // hyperloglog commands
 
-    // not yet implemented, from the @hyperloglog category:
-    //   PFADD
-    //   PFCOUNT
-    //   PFDEBUG
-    //   PFMERGE
-    //   PFSELFTEST
+    /// Adds the elements to the HyperLogLog stored at key, creating it when it does not exist,
+    /// returning whether its estimate may have changed.
+    ///
+    /// Without elements, creates an empty HyperLogLog, true only when the key did not exist.
+    ///
+    /// PFADD key [ element [ element ... ] ]
+    /// https://valkey.io/commands/pfadd/
+    pfadd: async func(connection: borrow<connection>, key: string, elements: option<list<string>>) -> result<bool, error>;
+
+    /// The approximate number of unique elements added to the HyperLogLogs, of their union for
+    /// more than one, 0 for a key that does not exist.
+    ///
+    /// PFCOUNT key [ key ... ]
+    /// https://valkey.io/commands/pfcount/
+    pfcount: async func(connection: borrow<connection>, keys: list<string>) -> result<integer, error>;
+
+    /// Merges the HyperLogLogs stored at the source keys into the one stored at destination,
+    /// creating it when it does not exist.
+    ///
+    /// Without source keys, creates an empty HyperLogLog when destination does not exist.
+    ///
+    /// PFMERGE destkey [ sourcekey [ sourcekey ... ] ]
+    /// https://valkey.io/commands/pfmerge/
+    pfmerge: async func(connection: borrow<connection>, destination: string, sources: option<list<string>>) -> result<_, error>;
+
+    // PFDEBUG and PFSELFTEST are internal commands, for debugging and testing Valkey itself, and
+    // are not implemented
 
 
     // keyspace commands
