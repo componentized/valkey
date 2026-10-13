@@ -5,13 +5,13 @@ use crate::command::{
 use crate::exports::componentized::valkey::commands::{
     Aggregate, BitRange, BitfieldGet, BitfieldOperation, BitopOperation, Connection, Cursor,
     Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime, FieldPersistResult,
-    FieldPexpiretime, FieldPttl, FieldTtl, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition,
-    Integer, LcsIdxReply, LexBound, Limit, LinsertPosition, LinsertResult, ListSide,
-    MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound, SetPrecondition, SetTtl, SortOpts,
-    StreamId, StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
-    XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
-    XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition, ZrangeBy,
-    ZrangeWithscoresBy,
+    FieldPexpiretime, FieldPttl, FieldTtl, GeoCoordinates, GeoCount, GeoSearchResult, GeoShape,
+    GeoUnit, GeoaddCondition, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Integer,
+    LcsIdxReply, LexBound, Limit, LinsertPosition, LinsertResult, ListSide, MsetexPrecondition,
+    MsetexTtl, PopEnd, Rule, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder, StreamId,
+    StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts,
+    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry,
+    XpendingSummary, ZaddComparison, ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
 use crate::value::{FlatPairs, NextCursor, OrNever, OrZeroId, ScoredMembers};
 
@@ -250,6 +250,162 @@ impl Guest for Commands {
         } else {
             Err(Error::Client(format!("unexpected reply: {reply:?}")))
         }
+    }
+
+    #[doc = " Adds the members at their positions to the geospatial index stored at key, or updates their"]
+    #[doc = " positions, returning how many were added, or with `changed`, added or updated."]
+    #[doc = ""]
+    #[doc = " GEOADD key [ NX | XX ] [ CH ] longitude latitude member [ longitude latitude member ... ]"]
+    #[doc = " https://valkey.io/commands/geoadd/"]
+    #[allow(async_fn_in_trait)]
+    async fn geoadd(
+        connection: &Connection,
+        key: String,
+        condition: Option<GeoaddCondition>,
+        changed: bool,
+        coordinates_and_members: Vec<(GeoCoordinates, String)>,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            (
+                "GEOADD",
+                key,
+                condition,
+                Flag("CH", changed),
+                NonEmpty::new("coordinates-and-members", coordinates_and_members),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The distance between the members, in meters or the unit, none when either is not a member."]
+    #[doc = ""]
+    #[doc = " GEODIST key member1 member2 [ m | km | ft | mi ]"]
+    #[doc = " https://valkey.io/commands/geodist/"]
+    #[allow(async_fn_in_trait)]
+    async fn geodist(
+        connection: &Connection,
+        key: String,
+        member1: String,
+        member2: String,
+        unit: Option<GeoUnit>,
+    ) -> Result<Option<Double>, Error> {
+        query(connection, ("GEODIST", key, member1, member2, unit)).await
+    }
+
+    #[doc = " The geohash of each of the members, none for a member that is not in the index."]
+    #[doc = ""]
+    #[doc = " GEOHASH key [ member [ member ... ] ]"]
+    #[doc = " https://valkey.io/commands/geohash/"]
+    #[allow(async_fn_in_trait)]
+    async fn geohash(
+        connection: &Connection,
+        key: String,
+        members: Option<Vec<String>>,
+    ) -> Result<Vec<Option<String>>, Error> {
+        query(
+            connection,
+            ("GEOHASH", key, NonEmpty::optional("members", members)),
+        )
+        .await
+    }
+
+    #[doc = " The position of each of the members, none for a member that is not in the index."]
+    #[doc = ""]
+    #[doc = " GEOPOS key [ member [ member ... ] ]"]
+    #[doc = " https://valkey.io/commands/geopos/"]
+    #[allow(async_fn_in_trait)]
+    async fn geopos(
+        connection: &Connection,
+        key: String,
+        members: Option<Vec<String>>,
+    ) -> Result<Vec<Option<GeoCoordinates>>, Error> {
+        query(
+            connection,
+            ("GEOPOS", key, NonEmpty::optional("members", members)),
+        )
+        .await
+    }
+
+    #[doc = " The members of the geospatial index stored at key in the shape."]
+    #[doc = ""]
+    #[doc = " See also `geosearch-with`."]
+    #[doc = ""]
+    #[doc = " GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ]"]
+    #[doc = " https://valkey.io/commands/geosearch/"]
+    #[allow(async_fn_in_trait)]
+    async fn geosearch(
+        connection: &Connection,
+        key: String,
+        shape: GeoShape,
+        order: Option<SortOrder>,
+        count: Option<GeoCount>,
+    ) -> Result<Vec<String>, Error> {
+        query(connection, ("GEOSEARCH", key, shape, order, count)).await
+    }
+
+    #[doc = " The members of the geospatial index stored at key in the shape, with the details asked for."]
+    #[doc = ""]
+    #[doc = " See also `geosearch`."]
+    #[doc = ""]
+    #[doc = " GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ WITHCOORD ] [ WITHDIST ] [ WITHHASH ]"]
+    #[doc = " https://valkey.io/commands/geosearch/"]
+    #[allow(async_fn_in_trait)]
+    async fn geosearch_with(
+        connection: &Connection,
+        key: String,
+        shape: GeoShape,
+        order: Option<SortOrder>,
+        count: Option<GeoCount>,
+        withcoord: bool,
+        withdist: bool,
+        withhash: bool,
+    ) -> Result<Vec<GeoSearchResult>, Error> {
+        query(
+            connection,
+            (
+                "GEOSEARCH",
+                key,
+                shape,
+                order,
+                count,
+                Flag("WITHCOORD", withcoord),
+                Flag("WITHDIST", withdist),
+                Flag("WITHHASH", withhash),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Stores the members of the geospatial index stored at source in the shape, returning how"]
+    #[doc = " many, with their positions, or with `storedist`, their distance from the center as the"]
+    #[doc = " score."]
+    #[doc = ""]
+    #[doc = " GEOSEARCHSTORE destination source [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ STOREDIST ]"]
+    #[doc = " https://valkey.io/commands/geosearchstore/"]
+    #[allow(async_fn_in_trait)]
+    async fn geosearchstore(
+        connection: &Connection,
+        destination: String,
+        source: String,
+        shape: GeoShape,
+        order: Option<SortOrder>,
+        count: Option<GeoCount>,
+        storedist: bool,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            (
+                "GEOSEARCHSTORE",
+                destination,
+                source,
+                shape,
+                order,
+                count,
+                Flag("STOREDIST", storedist),
+            ),
+        )
+        .await
     }
 
     #[doc = " Removes the specified fields from the hash stored at key."]

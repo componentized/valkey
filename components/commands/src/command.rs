@@ -1,11 +1,12 @@
 use crate::exports::componentized::valkey::commands::{
     Aggregate, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby, BitfieldOffset,
     BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, CommandRule, Connection, Cursor,
-    DbRule, DurationMilliseconds, DurationSeconds, Error, GetexTtl, HsetexCondition,
-    HsetexFieldCondition, KeyRule, LexBound, Limit, LinsertPosition, ListSide, MsetexPrecondition,
-    PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder,
-    StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule,
-    Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
+    DbRule, DurationMilliseconds, DurationSeconds, Error, GeoCoordinates, GeoCount, GeoFrom,
+    GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyRule,
+    LexBound, Limit, LinsertPosition, ListSide, MsetexPrecondition, PopEnd, Rule, RuleSelector,
+    ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency,
+    TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value, XclaimOpts, ZaddComparison,
+    ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -731,5 +732,72 @@ pub struct Bit(pub bool);
 impl IntoCommand for Bit {
     fn into_command(self) -> Result<Vec<String>, Error> {
         if self.0 { "1" } else { "0" }.into_command()
+    }
+}
+
+/// `longitude latitude`
+impl IntoCommand for GeoCoordinates {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        (self.longitude, self.latitude).into_command()
+    }
+}
+
+impl IntoCommand for GeoUnit {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            GeoUnit::M => "m",
+            GeoUnit::Km => "km",
+            GeoUnit::Ft => "ft",
+            GeoUnit::Mi => "mi",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for GeoaddCondition {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            GeoaddCondition::Nx => "NX",
+            GeoaddCondition::Xx => "XX",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for GeoFrom {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            GeoFrom::Member(member) => ("FROMMEMBER", member).into_command(),
+            GeoFrom::Lonlat(coordinates) => ("FROMLONLAT", coordinates).into_command(),
+        }
+    }
+}
+
+/// The center, when the shape has one, then the shape.
+impl IntoCommand for GeoShape {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            GeoShape::Radius(circle) => {
+                (circle.from, "BYRADIUS", circle.radius, circle.unit).into_command()
+            }
+            GeoShape::Box(rectangle) => (
+                rectangle.from,
+                "BYBOX",
+                rectangle.width,
+                rectangle.height,
+                rectangle.unit,
+            )
+                .into_command(),
+            GeoShape::Polygon(vertices) => {
+                ("BYPOLYGON", NumKeys(NonEmpty::new("vertices", vertices))).into_command()
+            }
+        }
+    }
+}
+
+/// `COUNT count [ ANY ]`
+impl IntoCommand for GeoCount {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        ("COUNT", self.count, Flag("ANY", self.any)).into_command()
     }
 }

@@ -475,17 +475,136 @@ interface commands {
 
     // geo commands
 
-    // not yet implemented, from the @geo category:
-    //   GEOADD
-    //   GEODIST
-    //   GEOHASH
-    //   GEOPOS
-    //   GEORADIUS
-    //   GEORADIUS_RO
-    //   GEORADIUSBYMEMBER
-    //   GEORADIUSBYMEMBER_RO
-    //   GEOSEARCH
-    //   GEOSEARCHSTORE
+    /// A position on the Earth.
+    ///
+    /// The exact limits, as specified by EPSG:900913 / EPSG:3785 / OSGEO:41001
+    record geo-coordinates {
+        /// The longitude, from -180 to 180 degrees.
+        longitude: double,
+        /// The latitude, from -85.05112878 to 85.05112878 degrees.
+        latitude: double,
+    }
+
+    /// A unit of distance.
+    enum geo-unit {
+        /// `m`: meters.
+        m,
+        /// `km`: kilometers.
+        km,
+        /// `ft`: feet.
+        ft,
+        /// `mi`: miles.
+        mi,
+    }
+
+    /// Only add or only update members, GEOADD's `NX` and `XX`.
+    enum geoadd-condition {
+        /// Only add new members, never update existing ones.
+        nx,
+        /// Only update existing members, never add new ones.
+        xx,
+    }
+
+    /// Adds the members at their positions to the geospatial index stored at key, or updates their
+    /// positions, returning how many were added, or with `changed`, added or updated.
+    ///
+    /// GEOADD key [ NX | XX ] [ CH ] longitude latitude member [ longitude latitude member ... ]
+    /// https://valkey.io/commands/geoadd/
+    geoadd: async func(connection: borrow<connection>, key: string, condition: option<geoadd-condition>, changed: bool, coordinates-and-members: list<tuple<geo-coordinates, string>>) -> result<integer, error>;
+
+    /// The distance between the members, in meters or the unit, none when either is not a member.
+    ///
+    /// GEODIST key member1 member2 [ m | km | ft | mi ]
+    /// https://valkey.io/commands/geodist/
+    geodist: async func(connection: borrow<connection>, key: string, member1: string, member2: string, unit: option<geo-unit>) -> result<option<double>, error>;
+
+    /// The geohash of each of the members, none for a member that is not in the index.
+    ///
+    /// GEOHASH key [ member [ member ... ] ]
+    /// https://valkey.io/commands/geohash/
+    geohash: async func(connection: borrow<connection>, key: string, members: option<list<string>>) -> result<list<option<string>>, error>;
+
+    /// The position of each of the members, none for a member that is not in the index.
+    ///
+    /// GEOPOS key [ member [ member ... ] ]
+    /// https://valkey.io/commands/geopos/
+    geopos: async func(connection: borrow<connection>, key: string, members: option<list<string>>) -> result<list<option<geo-coordinates>>, error>;
+
+    /// The center of a search, `FROMMEMBER` or `FROMLONLAT`.
+    variant geo-from {
+        /// `FROMMEMBER member`: the position of a member of the index.
+        member(string),
+        /// `FROMLONLAT longitude latitude`
+        lonlat(geo-coordinates),
+    }
+
+    /// `BYRADIUS`: a circle around the center.
+    record geo-radius {
+        %from: geo-from,
+        radius: double,
+        unit: geo-unit,
+    }
+
+    /// `BYBOX`: a rectangle around the center.
+    record geo-box {
+        %from: geo-from,
+        width: double,
+        height: double,
+        unit: geo-unit,
+    }
+
+    /// The area of a search.
+    variant geo-shape {
+        /// `[ FROMMEMBER member | FROMLONLAT longitude latitude ] BYRADIUS radius unit`
+        radius(geo-radius),
+        /// `[ FROMMEMBER member | FROMLONLAT longitude latitude ] BYBOX width height unit`
+        box(geo-box),
+        /// `BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ]`: the polygon with
+        /// the vertices, in order, which has no center.
+        polygon(list<geo-coordinates>),
+    }
+
+    /// At most a count of the members, `COUNT count [ ANY ]`.
+    record geo-count {
+        count: integer,
+        /// `ANY`: returns as soon as enough members are found, rather than the nearest ones.
+        any: bool,
+    }
+
+    /// A member a search found, with the details asked for.
+    record geo-search-result {
+        member: string,
+        /// `WITHDIST`: the distance from the center, in the unit of the shape.
+        distance: option<double>,
+        /// `WITHHASH`: the geohash, as an integer.
+        hash: option<integer>,
+        /// `WITHCOORD`: the position.
+        coordinates: option<geo-coordinates>,
+    }
+
+    /// The members of the geospatial index stored at key in the shape.
+    ///
+    /// See also `geosearch-with`.
+    ///
+    /// GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ]
+    /// https://valkey.io/commands/geosearch/
+    geosearch: async func(connection: borrow<connection>, key: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>) -> result<list<string>, error>;
+
+    /// The members of the geospatial index stored at key in the shape, with the details asked for.
+    ///
+    /// See also `geosearch`.
+    ///
+    /// GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ WITHCOORD ] [ WITHDIST ] [ WITHHASH ]
+    /// https://valkey.io/commands/geosearch/
+    geosearch-with: async func(connection: borrow<connection>, key: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>, withcoord: bool, withdist: bool, withhash: bool) -> result<list<geo-search-result>, error>;
+
+    /// Stores the members of the geospatial index stored at source in the shape, returning how
+    /// many, with their positions, or with `storedist`, their distance from the center as the
+    /// score.
+    ///
+    /// GEOSEARCHSTORE destination source [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ STOREDIST ]
+    /// https://valkey.io/commands/geosearchstore/
+    geosearchstore: async func(connection: borrow<connection>, destination: string, source: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>, storedist: bool) -> result<integer, error>;
 
 
     // hash commands

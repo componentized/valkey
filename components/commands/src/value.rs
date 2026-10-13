@@ -1,8 +1,8 @@
 use crate::exports::componentized::valkey::commands::{
     Cursor, Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime,
-    FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, Integer, LcsIdxMatch, LcsIdxReply,
-    LinsertResult, StreamId, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
-    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
+    FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, GeoCoordinates, GeoSearchResult,
+    Integer, LcsIdxMatch, LcsIdxReply, LinsertResult, StreamId, TtlResult, UnixTimeMilliseconds,
+    UnixTimeSeconds, Value, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
     XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
     XpendingSummary,
 };
@@ -348,6 +348,47 @@ impl FromValue for LinsertResult {
             length if length > 0 => Ok(Self::Inserted(length)),
             code => Err(Error::Client(format!("unexpected reply: {code}"))),
         }
+    }
+}
+
+/// `[longitude, latitude]`
+impl FromValue for GeoCoordinates {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let (longitude, latitude) = FromValue::from_value(value)?;
+        Ok(GeoCoordinates {
+            longitude,
+            latitude,
+        })
+    }
+}
+
+/// The member, or with any of WITHDIST, WITHHASH and WITHCOORD, an array of the member then the
+/// details, in that order, told apart by their types.
+impl FromValue for GeoSearchResult {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut result = GeoSearchResult {
+            member: String::new(),
+            distance: None,
+            hash: None,
+            coordinates: None,
+        };
+        let items = match value {
+            Value::Array(_) => items(value)?,
+            // without details, the member alone
+            value => vec![value],
+        };
+        let mut items = items.into_iter();
+        result.member = String::from_value(items.next().unwrap_or(Value::Null))?;
+        for item in items {
+            match item {
+                // a bulk string, as RESP3 has no other way to send a fixed precision double
+                Value::BulkString(_) => result.distance = Some(Double::from_value(item)?),
+                Value::Integer(hash) => result.hash = Some(hash),
+                Value::Array(_) => result.coordinates = Some(GeoCoordinates::from_value(item)?),
+                item => return Err(unexpected(&item)),
+            }
+        }
+        Ok(result)
     }
 }
 
