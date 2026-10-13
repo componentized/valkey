@@ -3,7 +3,7 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::{Value, decode, encode};
+use crate::{RespValue, decode, encode};
 
 /// Listens on localhost for the component's connections.
 pub struct Server {
@@ -40,14 +40,14 @@ pub struct Client {
 
 impl Client {
     /// The next command the client sent, as its words, `None` once it closed its side.
-    pub async fn request(&mut self) -> Option<Vec<Value>> {
+    pub async fn request(&mut self) -> Option<Vec<RespValue>> {
         loop {
             if let Some(len) =
                 componentized_valkey::codec::frame_len(&self.buffered).expect("valid RESP")
             {
                 let rest = self.buffered.split_off(len);
                 let frame = std::mem::replace(&mut self.buffered, rest);
-                let Value::Array(words) = decode(frame).expect("valid RESP") else {
+                let RespValue::Array(words) = decode(frame).expect("valid RESP") else {
                     panic!("a command is an array");
                 };
                 return Some(
@@ -67,7 +67,7 @@ impl Client {
     }
 
     /// Send a value to the client.
-    pub async fn reply(&mut self, value: Value) {
+    pub async fn reply(&mut self, value: RespValue) {
         self.write(&encode(value)).await;
     }
 

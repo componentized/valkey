@@ -12,7 +12,7 @@ use std::task::Poll;
 
 use componentized::valkey::connection::{Connection, Error};
 use componentized::valkey::connector;
-use componentized_valkey::types::{NestedValue, Value};
+use componentized_valkey::types::{RespNestedValue, RespValue};
 use exports::wasi::cli::run::Guest;
 use futures_channel::mpsc;
 use futures_core::Stream;
@@ -93,14 +93,14 @@ async fn exec(command: Vec<String>, out: &mut Output) -> Result<(), Error> {
 
 /// Prints push messages, up to `limit` of them, failing once they stop.
 async fn print_pushes(
-    pushes: &mut StreamReader<Value>,
+    pushes: &mut StreamReader<RespValue>,
     out: &mut Output,
     limit: Option<usize>,
 ) -> Result<(), Error> {
     for _ in 0..limit.unwrap_or(usize::MAX) {
         match pushes.next().await {
             // sent unprompted, e.g. for a SUBSCRIBE missing its channels
-            Some(Value::Error(message) | Value::BulkError(message)) => {
+            Some(RespValue::Error(message) | RespValue::BulkError(message)) => {
                 return Err(Error::Valkey(message));
             }
             Some(push) => out.line(&render(push)).await,
@@ -183,7 +183,7 @@ async fn send_lines(
     Ok(())
 }
 
-async fn forward_pushes(mut pushes: StreamReader<Value>, lines: mpsc::UnboundedSender<String>) {
+async fn forward_pushes(mut pushes: StreamReader<RespValue>, lines: mpsc::UnboundedSender<String>) {
     while let Some(push) = pushes.next().await {
         let _ = lines.unbounded_send(render(push));
     }
@@ -343,24 +343,26 @@ fn render_error(error: Error) -> String {
 }
 
 /// Renders a value for people to read, in the style of valkey-cli.
-fn render(value: Value) -> String {
+fn render(value: RespValue) -> String {
     match value {
-        Value::String(text) => text,
-        Value::Error(message) | Value::BulkError(message) => format!("(error) {message}"),
-        Value::Integer(value) => format!("(integer) {value}"),
+        RespValue::String(text) => text,
+        RespValue::Error(message) | RespValue::BulkError(message) => format!("(error) {message}"),
+        RespValue::Integer(value) => format!("(integer) {value}"),
         // quoted, with special characters escaped
-        Value::BulkString(text) => format!("{text:?}"),
-        Value::Null => "(nil)".to_string(),
-        Value::Boolean(value) => format!("({value})"),
-        Value::Double(value) => format!("(double) {value}"),
-        Value::BigNumber(value) => format!("(big number) {value}"),
+        RespValue::BulkString(text) => format!("{text:?}"),
+        RespValue::Null => "(nil)".to_string(),
+        RespValue::Boolean(value) => format!("({value})"),
+        RespValue::Double(value) => format!("(double) {value}"),
+        RespValue::BigNumber(value) => format!("(big number) {value}"),
         // text to show as is, e.g. from INFO, the format is `txt` or `mkd`
-        Value::VerbatimString((_format, text)) => text,
-        Value::Array(items) | Value::Push(items) => {
+        RespValue::VerbatimString((_format, text)) => text,
+        RespValue::Array(items) | RespValue::Push(items) => {
             numbered(items.into_iter().map(render_nested).collect(), ')', "array")
         }
-        Value::Set(items) => numbered(items.into_iter().map(render_nested).collect(), '~', "set"),
-        Value::Map(entries) => numbered(
+        RespValue::Set(items) => {
+            numbered(items.into_iter().map(render_nested).collect(), '~', "set")
+        }
+        RespValue::Map(entries) => numbered(
             entries
                 .into_iter()
                 .map(|(key, value)| {
@@ -376,7 +378,7 @@ fn render(value: Value) -> String {
     }
 }
 
-fn render_nested(value: NestedValue) -> String {
+fn render_nested(value: RespNestedValue) -> String {
     match componentized_valkey::codec::decode(value) {
         Ok(value) => render(value),
         Err(error) => format!("(invalid) {error}"),

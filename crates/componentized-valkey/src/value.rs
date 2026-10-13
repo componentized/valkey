@@ -1,47 +1,49 @@
 use crate::types::{
-    AclDryrunResult, AclListEntry, AclLogEntry, ChannelRule, ClientTrackinginfoReply,
-    ClusterBumpepochResult, CommandArgument, CommandArgumentType, CommandDocsReply,
-    CommandInfoReply, CommandRule, Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds,
-    EngineStats, Error, ExpiretimeReply, FieldPersistResult, FunctionStatsReply, GeoCoordinates,
-    GeoSearchResult, Integer, KeyRule, KeySpec, KeySpecBeginSearch, KeySpecFindKeys, KeySpecKeynum,
-    KeySpecKeyword, KeySpecRange, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxMatch,
-    LcsIdxReply, Library, LibraryFunction, LinsertResult, LogEntry, ModuleInfo, NestedValue,
-    PexpiretimeReply, PttlReply, RolePrimary, RoleReplica, RoleReplicaInfo, RoleReply, Rule,
-    RuleSelector, RunningFunction, SlotMigration, SlotMigrationOperation, StreamId,
-    TrackingRedirect, TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value,
-    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
-    XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
-    XpendingSummary,
+    AclChannelRule, AclCommandRule, AclDbRule, AclDryrunResult, AclKeyRule, AclListEntry,
+    AclLogEntry, AclRule, AclSelectorRule, AclUserRule, ClientTrackingRedirect,
+    ClientTrackinginfoReply, ClusterBumpepochResult, ClusterGetslotmigrationsEntry,
+    ClusterGetslotmigrationsOperation, CommandDocsArgument, CommandDocsArgumentType,
+    CommandDocsReply, CommandInfoReply, CommandKeySpec, CommandKeySpecBeginSearch,
+    CommandKeySpecFindKeys, CommandKeySpecKeynum, CommandKeySpecKeyword, CommandKeySpecRange,
+    CommandlogEntry, Cursor, Double, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply,
+    FunctionListFunction, FunctionListLibrary, FunctionStatsEngine, FunctionStatsReply,
+    FunctionStatsRunning, GeoCoordinates, GeosearchWithResult, HexpireResult, HpersistResult,
+    Integer, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxMatch, LcsIdxReply,
+    LinsertResult, ModuleListEntry, PexpiretimeReply, PttlReply, RespNestedValue, RespValue,
+    RolePrimary, RolePrimaryReplica, RoleReplica, RoleReply, StreamId, TtlReply,
+    UnixTimeMilliseconds, UnixTimeSeconds, XinfoConsumersEntry, XinfoGroupsEntry, XinfoStreamReply,
+    XinfoStreamReplyFull, XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup,
+    XpendingExtendedEntry, XpendingSummary,
 };
 
 use wit_bindgen::rt::Map;
 
 /// Converts a reply into a Rust type, e.g. `Option<String>` for a bulk string or null.
 pub trait FromValue: Sized {
-    fn from_value(value: Value) -> Result<Self, Error>;
+    fn from_value(value: RespValue) -> Result<Self, Error>;
 }
 
 /// The reply itself, e.g. for a field of mixed types.
-impl FromValue for Value {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for RespValue {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         Ok(value)
     }
 }
 
 /// A simple string `OK`.
 impl FromValue for () {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match &value {
-            Value::String(reply) if reply == "OK" => Ok(()),
+            RespValue::String(reply) if reply == "OK" => Ok(()),
             _ => Err(unexpected(&value)),
         }
     }
 }
 
 impl FromValue for Integer {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            Value::Integer(value) => Ok(value),
+            RespValue::Integer(value) => Ok(value),
             value => Err(unexpected(&value)),
         }
     }
@@ -49,10 +51,10 @@ impl FromValue for Integer {
 
 /// A double, or a bulk string holding one, e.g. the reply of INCRBYFLOAT, even with RESP3.
 impl FromValue for Double {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            Value::Double(value) => Ok(value),
-            Value::BulkString(text) => text
+            RespValue::Double(value) => Ok(value),
+            RespValue::BulkString(text) => text
                 .parse()
                 .map_err(|_| Error::Client(format!("unexpected reply, not a double: {text:?}"))),
             value => Err(unexpected(&value)),
@@ -62,7 +64,7 @@ impl FromValue for Double {
 
 /// A non-negative integer.
 impl FromValue for u64 {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let value = Integer::from_value(value)?;
         u64::try_from(value)
             .map_err(|_| Error::Client(format!("unexpected negative reply: {value}")))
@@ -71,11 +73,11 @@ impl FromValue for u64 {
 
 /// An integer `0` or `1`, or a boolean.
 impl FromValue for bool {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            Value::Integer(0) => Ok(false),
-            Value::Integer(1) => Ok(true),
-            Value::Boolean(value) => Ok(value),
+            RespValue::Integer(0) => Ok(false),
+            RespValue::Integer(1) => Ok(true),
+            RespValue::Boolean(value) => Ok(value),
             value => Err(unexpected(&value)),
         }
     }
@@ -83,10 +85,10 @@ impl FromValue for bool {
 
 /// A bulk, simple or verbatim string.
 impl FromValue for String {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            Value::BulkString(value) | Value::String(value) => Ok(value),
-            Value::VerbatimString((_, value)) => Ok(value),
+            RespValue::BulkString(value) | RespValue::String(value) => Ok(value),
+            RespValue::VerbatimString((_, value)) => Ok(value),
             value => Err(unexpected(&value)),
         }
     }
@@ -94,9 +96,9 @@ impl FromValue for String {
 
 /// Null, or a value.
 impl<T: FromValue> FromValue for Option<T> {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            Value::Null => Ok(None),
+            RespValue::Null => Ok(None),
             value => T::from_value(value).map(Some),
         }
     }
@@ -104,7 +106,7 @@ impl<T: FromValue> FromValue for Option<T> {
 
 /// An array, or a set.
 impl<T: FromValue> FromValue for Vec<T> {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         items(value)?.into_iter().map(T::from_value).collect()
     }
 }
@@ -115,8 +117,8 @@ macro_rules! from_value_tuples {
         $(
             impl<$($item: FromValue),+> FromValue for ($($item,)+) {
                 #[allow(non_snake_case)]
-                fn from_value(value: Value) -> Result<Self, Error> {
-                    match <[Value; $len]>::try_from(items(value)?) {
+                fn from_value(value: RespValue) -> Result<Self, Error> {
+                    match <[RespValue; $len]>::try_from(items(value)?) {
                         Ok([$($item),+]) => Ok(($($item::from_value($item)?,)+)),
                         Err(items) => Err(Error::Client(format!(
                             "unexpected number of items, expected {}: {}",
@@ -134,7 +136,7 @@ from_value_tuples!((2; A, B), (3; A, B, C), (4; A, B, C, D));
 
 /// A map, or a flat array of keys and values.
 impl<K: FromValue + Ord, V: FromValue> FromValue for Map<K, V> {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         Ok(entries(value)?.into_iter().collect())
     }
 }
@@ -142,10 +144,10 @@ impl<K: FromValue + Ord, V: FromValue> FromValue for Map<K, V> {
 /// The fields of a map, by name, e.g. to build a record.
 ///
 /// Fields that are not taken are ignored, so newer servers may add fields.
-pub struct Fields(Vec<(String, Value)>);
+pub struct Fields(Vec<(String, RespValue)>);
 
 impl FromValue for Fields {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         entries(value).map(Fields)
     }
 }
@@ -168,28 +170,28 @@ impl Fields {
 
 /// Whole seconds, never negative.
 impl FromValue for DurationSeconds {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         u64::from_value(value).map(|ex| DurationSeconds { ex })
     }
 }
 
 /// Whole milliseconds, never negative.
 impl FromValue for DurationMilliseconds {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         u64::from_value(value).map(|px| DurationMilliseconds { px })
     }
 }
 
 /// Whole seconds since the Unix epoch.
 impl FromValue for UnixTimeSeconds {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         Integer::from_value(value).map(|exat| UnixTimeSeconds { exat })
     }
 }
 
 /// Whole milliseconds since the Unix epoch.
 impl FromValue for UnixTimeMilliseconds {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         Integer::from_value(value).map(|pxat| UnixTimeMilliseconds { pxat })
     }
 }
@@ -198,9 +200,9 @@ impl FromValue for UnixTimeMilliseconds {
 pub struct OrNever<T>(pub Option<T>);
 
 impl<T: FromValue> FromValue for OrNever<T> {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            Value::Integer(-1) => Ok(OrNever(None)),
+            RespValue::Integer(-1) => Ok(OrNever(None)),
             value => T::from_value(value).map(|value| OrNever(Some(value))),
         }
     }
@@ -213,7 +215,7 @@ pub struct OrZeroId(pub Option<StreamId>);
 pub const ZERO_ID: &str = "0-0";
 
 impl FromValue for OrZeroId {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let id = StreamId::from_value(value)?;
         Ok(OrZeroId((id != ZERO_ID).then_some(id)))
     }
@@ -222,7 +224,7 @@ impl FromValue for OrZeroId {
 /// `[count, lowest-id, highest-id, [[consumer, count]...]]`, the IDs and consumers are null when
 /// nothing is pending, and each consumer's count is a bulk string.
 impl FromValue for XpendingSummary {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let (count, lowest_id, highest_id, consumers): (_, _, _, Option<Vec<(String, String)>>) =
             FromValue::from_value(value)?;
         let consumers = consumers
@@ -248,7 +250,7 @@ impl FromValue for XpendingSummary {
 
 /// `[id, consumer, milliseconds-since-delivery, delivery-count]`.
 impl FromValue for XpendingExtendedEntry {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let (id, name, since_delivery, delivery_count) = FromValue::from_value(value)?;
         Ok(Self {
             id,
@@ -264,16 +266,16 @@ impl FromValue for XpendingExtendedEntry {
 pub struct ScoredMembers(pub Vec<(String, Double)>);
 
 impl FromValue for ScoredMembers {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let items = items(value)?;
         match items.first() {
             None => Ok(ScoredMembers(vec![])),
-            Some(Value::Array(_)) => items
+            Some(RespValue::Array(_)) => items
                 .into_iter()
                 .map(FromValue::from_value)
                 .collect::<Result<_, _>>()
                 .map(ScoredMembers),
-            Some(_) => match <[Value; 2]>::try_from(items) {
+            Some(_) => match <[RespValue; 2]>::try_from(items) {
                 Ok([member, score]) => Ok(ScoredMembers(vec![(
                     String::from_value(member)?,
                     Double::from_value(score)?,
@@ -291,7 +293,7 @@ impl FromValue for ScoredMembers {
 pub struct FlatPairs<K, V>(pub Vec<(K, V)>);
 
 impl<K: FromValue, V: FromValue> FromValue for FlatPairs<K, V> {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         entries(value).map(FlatPairs)
     }
 }
@@ -302,10 +304,10 @@ macro_rules! from_value_field_times {
     ($($variant:ident($time:ident) => $case:ident),*) => {
         $(
             impl FromValue for $variant {
-                fn from_value(value: Value) -> Result<Self, Error> {
+                fn from_value(value: RespValue) -> Result<Self, Error> {
                     match value {
-                        Value::Integer(-2) => Ok($variant::DoesNotExist),
-                        Value::Integer(-1) => Ok($variant::NoExpiration),
+                        RespValue::Integer(-2) => Ok($variant::DoesNotExist),
+                        RespValue::Integer(-1) => Ok($variant::NoExpiration),
                         value => $time::from_value(value).map($variant::$case),
                     }
                 }
@@ -321,8 +323,8 @@ from_value_field_times!(
     PexpiretimeReply(UnixTimeMilliseconds) => ExpiresAt
 );
 
-impl FromValue for FieldPersistResult {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for HpersistResult {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match Integer::from_value(value)? {
             -2 => Ok(Self::DoesNotExist),
             -1 => Ok(Self::NoExpiration),
@@ -336,7 +338,7 @@ impl FromValue for FieldPersistResult {
 pub struct NextCursor(pub Option<Cursor>);
 
 impl FromValue for NextCursor {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let cursor = String::from_value(value)?;
         Ok(NextCursor(
             (cursor != "0").then_some(Cursor::Resume(cursor)),
@@ -347,7 +349,7 @@ impl FromValue for NextCursor {
 /// The length of the list after the insert, `0` when the key does not exist, `-1` when the pivot
 /// was not found.
 impl FromValue for LinsertResult {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match Integer::from_value(value)? {
             -1 => Ok(Self::PivotNotFound),
             0 => Ok(Self::NoSuchKey),
@@ -359,7 +361,7 @@ impl FromValue for LinsertResult {
 
 /// `[longitude, latitude]`
 impl FromValue for GeoCoordinates {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let (longitude, latitude) = FromValue::from_value(value)?;
         Ok(GeoCoordinates {
             longitude,
@@ -370,27 +372,27 @@ impl FromValue for GeoCoordinates {
 
 /// The member, or with any of WITHDIST, WITHHASH and WITHCOORD, an array of the member then the
 /// details, in that order, told apart by their types.
-impl FromValue for GeoSearchResult {
-    fn from_value(value: Value) -> Result<Self, Error> {
-        let mut result = GeoSearchResult {
+impl FromValue for GeosearchWithResult {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
+        let mut result = GeosearchWithResult {
             member: String::new(),
             distance: None,
             hash: None,
             coordinates: None,
         };
         let items = match value {
-            Value::Array(_) => items(value)?,
+            RespValue::Array(_) => items(value)?,
             // without details, the member alone
             value => vec![value],
         };
         let mut items = items.into_iter();
-        result.member = String::from_value(items.next().unwrap_or(Value::Null))?;
+        result.member = String::from_value(items.next().unwrap_or(RespValue::Null))?;
         for item in items {
             match item {
                 // a bulk string, as RESP3 has no other way to send a fixed precision double
-                Value::BulkString(_) => result.distance = Some(Double::from_value(item)?),
-                Value::Integer(hash) => result.hash = Some(hash),
-                Value::Array(_) => result.coordinates = Some(GeoCoordinates::from_value(item)?),
+                RespValue::BulkString(_) => result.distance = Some(Double::from_value(item)?),
+                RespValue::Integer(hash) => result.hash = Some(hash),
+                RespValue::Array(_) => result.coordinates = Some(GeoCoordinates::from_value(item)?),
                 item => return Err(unexpected(&item)),
             }
         }
@@ -398,8 +400,8 @@ impl FromValue for GeoSearchResult {
     }
 }
 
-impl FromValue for LibraryFunction {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for FunctionListFunction {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -409,8 +411,8 @@ impl FromValue for LibraryFunction {
     }
 }
 
-impl FromValue for Library {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for FunctionListLibrary {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             library_name: fields.required("library_name")?,
@@ -422,8 +424,8 @@ impl FromValue for Library {
     }
 }
 
-impl FromValue for RunningFunction {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for FunctionStatsRunning {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -433,8 +435,8 @@ impl FromValue for RunningFunction {
     }
 }
 
-impl FromValue for EngineStats {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for FunctionStatsEngine {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             libraries_count: fields.required("libraries_count")?,
@@ -444,7 +446,7 @@ impl FromValue for EngineStats {
 }
 
 impl FromValue for FunctionStatsReply {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             running_script: fields.required("running_script")?,
@@ -457,7 +459,7 @@ impl FromValue for FunctionStatsReply {
 pub struct OptionalKeyType(pub Option<KeyType>);
 
 impl FromValue for OptionalKeyType {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         // `none` rather than null, though the reply schema has null
         let name: Option<String> = FromValue::from_value(value)?;
         Ok(OptionalKeyType(match name.as_deref() {
@@ -477,10 +479,10 @@ impl FromValue for OptionalKeyType {
 pub struct Migrated(pub bool);
 
 impl FromValue for Migrated {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match &value {
-            Value::String(reply) if reply == "OK" => Ok(Migrated(true)),
-            Value::String(reply) if reply == "NOKEY" => Ok(Migrated(false)),
+            RespValue::String(reply) if reply == "OK" => Ok(Migrated(true)),
+            RespValue::String(reply) if reply == "NOKEY" => Ok(Migrated(false)),
             _ => Err(unexpected(&value)),
         }
     }
@@ -488,9 +490,9 @@ impl FromValue for Migrated {
 
 /// `OK` when the user may run the command, otherwise why not.
 impl FromValue for AclDryrunResult {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            Value::String(reply) if reply == "OK" => Ok(AclDryrunResult::Allowed),
+            RespValue::String(reply) if reply == "OK" => Ok(AclDryrunResult::Allowed),
             value => String::from_value(value).map(AclDryrunResult::Denied),
         }
     }
@@ -498,24 +500,24 @@ impl FromValue for AclDryrunResult {
 
 /// The rules of ACL GETUSER: the flags, the hashed passwords, the root selector's rules, then the
 /// selectors.
-pub struct AclUserRules(pub Vec<Rule>);
+pub struct AclUserRules(pub Vec<AclRule>);
 
 impl FromValue for AclUserRules {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         let flags: Vec<String> = fields.required("flags")?;
         let passwords: Vec<String> = fields.required("passwords")?;
-        let mut rules: Vec<Rule> = flags.iter().map(|flag| rule(flag)).collect();
+        let mut rules: Vec<AclRule> = flags.iter().map(|flag| rule(flag)).collect();
         rules.extend(
             passwords
                 .into_iter()
-                .map(|hash| Rule::User(UserRule::HashedPassword(hash))),
+                .map(|hash| AclRule::User(AclUserRule::HashedPassword(hash))),
         );
         rules.extend(selector_rules(&mut fields)?.into_iter().map(root_rule));
         let selectors: Vec<Fields> = fields.required("selectors")?;
         for mut selector in selectors {
             let selector = selector_rules(&mut selector)?;
-            rules.push(Rule::User(UserRule::Selector(selector)));
+            rules.push(AclRule::User(AclUserRule::Selector(selector)));
         }
         Ok(AclUserRules(rules))
     }
@@ -526,14 +528,14 @@ impl FromValue for AclUserRules {
 ///
 /// The channels are preceded by `resetchannels`, as ACL LIST writes them, so the server's
 /// `acl-pubsub-default` does not add to them.
-fn selector_rules(fields: &mut Fields) -> Result<Vec<RuleSelector>, Error> {
+fn selector_rules(fields: &mut Fields) -> Result<Vec<AclSelectorRule>, Error> {
     let keys: String = fields.required("keys")?;
     let channels: String = fields.required("channels")?;
     // since Valkey 9.1
     let databases: Option<String> = fields.optional("databases")?;
     let commands: String = fields.required("commands")?;
-    let mut rules: Vec<RuleSelector> = keys.split_whitespace().map(key_rule).collect();
-    rules.push(RuleSelector::Channel(ChannelRule::Reset));
+    let mut rules: Vec<AclSelectorRule> = keys.split_whitespace().map(key_rule).collect();
+    rules.push(AclSelectorRule::Channel(AclChannelRule::Reset));
     rules.extend(channels.split_whitespace().map(channel_rule));
     rules.extend(
         databases
@@ -544,83 +546,83 @@ fn selector_rules(fields: &mut Fields) -> Result<Vec<RuleSelector>, Error> {
     Ok(rules)
 }
 
-fn key_rule(rule: &str) -> RuleSelector {
+fn key_rule(rule: &str) -> AclSelectorRule {
     let key_rule = match rule {
-        "allkeys" => KeyRule::All,
-        "resetkeys" => KeyRule::Reset,
+        "allkeys" => AclKeyRule::All,
+        "resetkeys" => AclKeyRule::Reset,
         _ => {
             if let Some(pattern) = rule.strip_prefix("%RW~") {
-                KeyRule::AddReadWrite(pattern.to_string())
+                AclKeyRule::AddReadWrite(pattern.to_string())
             } else if let Some(pattern) = rule.strip_prefix("%R~") {
-                KeyRule::AddRead(pattern.to_string())
+                AclKeyRule::AddRead(pattern.to_string())
             } else if let Some(pattern) = rule.strip_prefix("%W~") {
-                KeyRule::AddWrite(pattern.to_string())
+                AclKeyRule::AddWrite(pattern.to_string())
             } else if let Some(pattern) = rule.strip_prefix('~') {
-                KeyRule::Add(pattern.to_string())
+                AclKeyRule::Add(pattern.to_string())
             } else {
-                return RuleSelector::Other(rule.to_string());
+                return AclSelectorRule::Other(rule.to_string());
             }
         }
     };
-    RuleSelector::Keys(key_rule)
+    AclSelectorRule::Keys(key_rule)
 }
 
-fn channel_rule(rule: &str) -> RuleSelector {
+fn channel_rule(rule: &str) -> AclSelectorRule {
     let channel_rule = match rule {
-        "allchannels" => ChannelRule::All,
-        "resetchannels" => ChannelRule::Reset,
+        "allchannels" => AclChannelRule::All,
+        "resetchannels" => AclChannelRule::Reset,
         _ => match rule.strip_prefix('&') {
-            Some(pattern) => ChannelRule::Add(pattern.to_string()),
-            None => return RuleSelector::Other(rule.to_string()),
+            Some(pattern) => AclChannelRule::Add(pattern.to_string()),
+            None => return AclSelectorRule::Other(rule.to_string()),
         },
     };
-    RuleSelector::Channel(channel_rule)
+    AclSelectorRule::Channel(channel_rule)
 }
 
-fn db_rule(rule: &str) -> RuleSelector {
+fn db_rule(rule: &str) -> AclSelectorRule {
     let db_rule = match rule {
-        "alldbs" => DbRule::All,
-        "resetdbs" => DbRule::Reset,
+        "alldbs" => AclDbRule::All,
+        "resetdbs" => AclDbRule::Reset,
         _ => {
             let dbs = rule
                 .strip_prefix("db=")
                 .map(|dbs| dbs.split(',').map(str::parse).collect::<Result<_, _>>());
             match dbs {
-                Some(Ok(dbs)) => DbRule::Db(dbs),
-                _ => return RuleSelector::Other(rule.to_string()),
+                Some(Ok(dbs)) => AclDbRule::Db(dbs),
+                _ => return AclSelectorRule::Other(rule.to_string()),
             }
         }
     };
-    RuleSelector::Db(db_rule)
+    AclSelectorRule::Db(db_rule)
 }
 
 /// `+config|get` is a subcommand, or a first argument, either way it is sent back as is.
-fn command_rule(rule: &str) -> RuleSelector {
+fn command_rule(rule: &str) -> AclSelectorRule {
     let command_rule = match rule {
-        "allcommands" | "+@all" => CommandRule::All,
-        "nocommands" | "-@all" => CommandRule::Reset,
+        "allcommands" | "+@all" => AclCommandRule::All,
+        "nocommands" | "-@all" => AclCommandRule::Reset,
         _ => {
             if let Some(category) = rule.strip_prefix("+@") {
-                CommandRule::AddCategory(category.to_string())
+                AclCommandRule::AddCategory(category.to_string())
             } else if let Some(category) = rule.strip_prefix("-@") {
-                CommandRule::RemoveCategory(category.to_string())
+                AclCommandRule::RemoveCategory(category.to_string())
             } else if let Some(command) = rule.strip_prefix('+') {
-                CommandRule::Add(command.to_string())
+                AclCommandRule::Add(command.to_string())
             } else if let Some(command) = rule.strip_prefix('-') {
-                CommandRule::Remove(command.to_string())
+                AclCommandRule::Remove(command.to_string())
             } else {
-                return RuleSelector::Other(rule.to_string());
+                return AclSelectorRule::Other(rule.to_string());
             }
         }
     };
-    RuleSelector::Command(command_rule)
+    AclSelectorRule::Command(command_rule)
 }
 
 /// The lines of ACL LIST, each `user <username> <rule> ...`, with selectors as `(<rule> ...)`.
 pub struct AclList(pub Vec<AclListEntry>);
 
 impl FromValue for AclList {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let lines: Vec<String> = FromValue::from_value(value)?;
         lines
             .iter()
@@ -654,40 +656,40 @@ fn acl_list_entry(line: &str) -> Result<AclListEntry, Error> {
             .and_then(|selector| selector.strip_suffix(')'))
             .ok_or_else(invalid)?;
         let selector = selector.split_whitespace().map(selector_rule).collect();
-        rules.push(Rule::User(UserRule::Selector(selector)));
+        rules.push(AclRule::User(AclUserRule::Selector(selector)));
     }
     Ok(AclListEntry { username, rules })
 }
 
 /// A rule of the user or its root selector, e.g. `on`, `#<hash>` or `~app:*`.
-fn rule(word: &str) -> Rule {
+fn rule(word: &str) -> AclRule {
     let user_rule = match word {
-        "on" => UserRule::On,
-        "off" => UserRule::Off,
-        "nopass" => UserRule::Nopass,
-        "sanitize-payload" => UserRule::SanitizePayload,
-        "skip-sanitize-payload" => UserRule::SkipSanitizePayload,
-        "clearselectors" => UserRule::Clearselectors,
-        "reset" => UserRule::Reset,
+        "on" => AclUserRule::On,
+        "off" => AclUserRule::Off,
+        "nopass" => AclUserRule::Nopass,
+        "sanitize-payload" => AclUserRule::SanitizePayload,
+        "skip-sanitize-payload" => AclUserRule::SkipSanitizePayload,
+        "clearselectors" => AclUserRule::Clearselectors,
+        "reset" => AclUserRule::Reset,
         _ => {
             if let Some(hash) = word.strip_prefix('#') {
-                UserRule::HashedPassword(hash.to_string())
+                AclUserRule::HashedPassword(hash.to_string())
             } else if let Some(hash) = word.strip_prefix('!') {
-                UserRule::RemoveHashedPassword(hash.to_string())
+                AclUserRule::RemoveHashedPassword(hash.to_string())
             } else if let Some(password) = word.strip_prefix('>') {
-                UserRule::Password(password.to_string())
+                AclUserRule::Password(password.to_string())
             } else if let Some(password) = word.strip_prefix('<') {
-                UserRule::RemovePassword(password.to_string())
+                AclUserRule::RemovePassword(password.to_string())
             } else {
                 return root_rule(selector_rule(word));
             }
         }
     };
-    Rule::User(user_rule)
+    AclRule::User(user_rule)
 }
 
 /// A rule of a selector, e.g. `~app:*`, `&news:*`, `db=0` or `+get`.
-fn selector_rule(word: &str) -> RuleSelector {
+fn selector_rule(word: &str) -> AclSelectorRule {
     match word {
         "allkeys" | "resetkeys" => key_rule(word),
         "allchannels" | "resetchannels" => channel_rule(word),
@@ -697,23 +699,23 @@ fn selector_rule(word: &str) -> RuleSelector {
         _ if word.starts_with('&') => channel_rule(word),
         _ if word.starts_with("db=") => db_rule(word),
         _ if word.starts_with('+') || word.starts_with('-') => command_rule(word),
-        _ => RuleSelector::Other(word.to_string()),
+        _ => AclSelectorRule::Other(word.to_string()),
     }
 }
 
 /// A rule of the root selector.
-fn root_rule(rule: RuleSelector) -> Rule {
+fn root_rule(rule: AclSelectorRule) -> AclRule {
     match rule {
-        RuleSelector::Keys(rule) => Rule::Keys(rule),
-        RuleSelector::Channel(rule) => Rule::Channel(rule),
-        RuleSelector::Command(rule) => Rule::Command(rule),
-        RuleSelector::Db(rule) => Rule::Db(rule),
-        RuleSelector::Other(rule) => Rule::Other(rule),
+        AclSelectorRule::Keys(rule) => AclRule::Keys(rule),
+        AclSelectorRule::Channel(rule) => AclRule::Channel(rule),
+        AclSelectorRule::Command(rule) => AclRule::Command(rule),
+        AclSelectorRule::Db(rule) => AclRule::Db(rule),
+        AclSelectorRule::Other(rule) => AclRule::Other(rule),
     }
 }
 
 impl FromValue for AclLogEntry {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             count: fields.required("count")?,
@@ -733,7 +735,7 @@ impl FromValue for AclLogEntry {
 
 /// `BUMPED epoch` or `STILL epoch`.
 impl FromValue for ClusterBumpepochResult {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let reply = String::from_value(value)?;
         let invalid = || Error::Client(format!("unexpected reply: {reply:?}"));
         let (outcome, epoch) = reply.split_once(' ').ok_or_else(invalid)?;
@@ -746,11 +748,11 @@ impl FromValue for ClusterBumpepochResult {
     }
 }
 
-impl FromValue for SlotMigrationOperation {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for ClusterGetslotmigrationsOperation {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match String::from_value(value)?.as_str() {
-            "IMPORT" => Ok(SlotMigrationOperation::Import),
-            "EXPORT" => Ok(SlotMigrationOperation::Export),
+            "IMPORT" => Ok(ClusterGetslotmigrationsOperation::Import),
+            "EXPORT" => Ok(ClusterGetslotmigrationsOperation::Export),
             operation => Err(Error::Client(format!(
                 "unexpected operation: {operation:?}"
             ))),
@@ -762,7 +764,7 @@ impl FromValue for SlotMigrationOperation {
 pub struct SlotRanges(pub Vec<(u16, u16)>);
 
 impl FromValue for SlotRanges {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let ranges = String::from_value(value)?;
         let invalid = || Error::Client(format!("unexpected slot ranges: {ranges:?}"));
         ranges
@@ -779,8 +781,8 @@ impl FromValue for SlotRanges {
     }
 }
 
-impl FromValue for SlotMigration {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for ClusterGetslotmigrationsEntry {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         let slot_ranges: SlotRanges = fields.required("slot_ranges")?;
         Ok(Self {
@@ -801,9 +803,9 @@ impl FromValue for SlotMigration {
 
 /// `[id, timestamp, value, [argument ...], client-address, client-name]`, of SLOWLOG GET and
 /// COMMANDLOG GET.
-impl FromValue for LogEntry {
-    fn from_value(value: Value) -> Result<Self, Error> {
-        match <[Value; 6]>::try_from(items(value)?) {
+impl FromValue for CommandlogEntry {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
+        match <[RespValue; 6]>::try_from(items(value)?) {
             Ok([id, timestamp, value, arguments, client_address, client_name]) => Ok(Self {
                 id: FromValue::from_value(id)?,
                 timestamp: FromValue::from_value(timestamp)?,
@@ -821,7 +823,7 @@ impl FromValue for LogEntry {
 }
 
 impl FromValue for LatencyHistogramEntry {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         // a map of each bucket to its cumulative count
         let histogram: FlatPairs<Integer, Integer> = fields.required("histogram_usec")?;
@@ -834,8 +836,8 @@ impl FromValue for LatencyHistogramEntry {
 
 /// `[event, timestamp, latest, max, sum, count]`
 impl FromValue for LatencyLatestEntry {
-    fn from_value(value: Value) -> Result<Self, Error> {
-        match <[Value; 6]>::try_from(items(value)?) {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
+        match <[RespValue; 6]>::try_from(items(value)?) {
             Ok([event, timestamp, latest, max, sum, count]) => Ok(Self {
                 event: FromValue::from_value(event)?,
                 timestamp: FromValue::from_value(timestamp)?,
@@ -852,8 +854,8 @@ impl FromValue for LatencyLatestEntry {
     }
 }
 
-impl FromValue for ModuleInfo {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for ModuleListEntry {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -865,15 +867,15 @@ impl FromValue for ModuleInfo {
 }
 
 /// A number sent as a string, e.g. the port of a replica in ROLE.
-fn parse_string<T: std::str::FromStr>(value: Value) -> Result<T, Error> {
+fn parse_string<T: std::str::FromStr>(value: RespValue) -> Result<T, Error> {
     let text = String::from_value(value)?;
     text.parse()
         .map_err(|_| Error::Client(format!("unexpected number: {text:?}")))
 }
 
 /// `[ip, port, offset]`, the port and offset are strings.
-impl FromValue for RoleReplicaInfo {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for RolePrimaryReplica {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let (ip, port, offset) = FromValue::from_value(value)?;
         Ok(Self {
             ip,
@@ -886,9 +888,9 @@ impl FromValue for RoleReplicaInfo {
 /// `["master", offset, [replica ...]]`, `["slave", host, port, state, offset]` or
 /// `["sentinel", [primary ...]]`.
 impl FromValue for RoleReply {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut items = items(value)?.into_iter();
-        let role = String::from_value(items.next().unwrap_or(Value::Null))?;
+        let role = String::from_value(items.next().unwrap_or(RespValue::Null))?;
         let mut next = || {
             items
                 .next()
@@ -918,7 +920,7 @@ impl FromValue for RoleReply {
 pub struct ClientList(pub Vec<Map<String, String>>);
 
 impl FromValue for ClientList {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let text = String::from_value(value)?;
         let clients = text
             .lines()
@@ -935,19 +937,19 @@ impl FromValue for ClientList {
 }
 
 /// `-1` when tracking is off, `0` when not redirected, otherwise the ID of the connection.
-impl FromValue for TrackingRedirect {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for ClientTrackingRedirect {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match Integer::from_value(value)? {
-            -1 => Ok(TrackingRedirect::NotTracking),
-            0 => Ok(TrackingRedirect::NotRedirected),
-            id if id > 0 => Ok(TrackingRedirect::Redirected(id)),
+            -1 => Ok(ClientTrackingRedirect::NotTracking),
+            0 => Ok(ClientTrackingRedirect::NotRedirected),
+            id if id > 0 => Ok(ClientTrackingRedirect::Redirected(id)),
             code => Err(Error::Client(format!("unexpected reply: {code}"))),
         }
     }
 }
 
 impl FromValue for ClientTrackinginfoReply {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             flags: fields.required("flags")?,
@@ -962,7 +964,7 @@ impl FromValue for ClientTrackinginfoReply {
 pub struct CommandInfoList(pub Vec<CommandInfoReply>);
 
 impl FromValue for CommandInfoList {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut commands = vec![];
         for command in items(value)? {
             command_info(command, &mut commands)?;
@@ -973,8 +975,8 @@ impl FromValue for CommandInfoList {
 
 /// `[name, arity, flags, first-key, last-key, step, acl-categories, tips, key-specs, subcommands]`,
 /// the ACL categories since 6.0, the rest since 7.0.
-fn command_info(value: Value, commands: &mut Vec<CommandInfoReply>) -> Result<(), Error> {
-    if value == Value::Null {
+fn command_info(value: RespValue, commands: &mut Vec<CommandInfoReply>) -> Result<(), Error> {
+    if value == RespValue::Null {
         return Ok(());
     }
     let mut items = items(value)?.into_iter();
@@ -994,7 +996,7 @@ fn command_info(value: Value, commands: &mut Vec<CommandInfoReply>) -> Result<()
         tips: next().map_or(Ok(vec![]), FromValue::from_value)?,
         key_specs: next().map_or(Ok(vec![]), FromValue::from_value)?,
     };
-    let subcommands: Vec<Value> = next().map_or(Ok(vec![]), FromValue::from_value)?;
+    let subcommands: Vec<RespValue> = next().map_or(Ok(vec![]), FromValue::from_value)?;
     commands.push(info);
     for subcommand in subcommands {
         command_info(subcommand, commands)?;
@@ -1002,8 +1004,8 @@ fn command_info(value: Value, commands: &mut Vec<CommandInfoReply>) -> Result<()
     Ok(())
 }
 
-impl FromValue for KeySpec {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for CommandKeySpec {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         let mut begin_search: Fields = fields.required("begin_search")?;
         let mut find_keys: Fields = fields.required("find_keys")?;
@@ -1017,35 +1019,35 @@ impl FromValue for KeySpec {
 }
 
 /// `{type, spec}`, a type this interface does not know is `unknown`.
-fn begin_search_spec(fields: &mut Fields) -> Result<KeySpecBeginSearch, Error> {
+fn begin_search_spec(fields: &mut Fields) -> Result<CommandKeySpecBeginSearch, Error> {
     let kind: String = fields.required("type")?;
     let mut spec: Fields = fields.required("spec")?;
     Ok(match kind.as_str() {
-        "index" => KeySpecBeginSearch::Index(spec.required("index")?),
-        "keyword" => KeySpecBeginSearch::Keyword(KeySpecKeyword {
+        "index" => CommandKeySpecBeginSearch::Index(spec.required("index")?),
+        "keyword" => CommandKeySpecBeginSearch::Keyword(CommandKeySpecKeyword {
             keyword: spec.required("keyword")?,
             startfrom: spec.required("startfrom")?,
         }),
-        _ => KeySpecBeginSearch::Unknown,
+        _ => CommandKeySpecBeginSearch::Unknown,
     })
 }
 
 /// `{type, spec}`, a type this interface does not know is `unknown`.
-fn find_keys_spec(fields: &mut Fields) -> Result<KeySpecFindKeys, Error> {
+fn find_keys_spec(fields: &mut Fields) -> Result<CommandKeySpecFindKeys, Error> {
     let kind: String = fields.required("type")?;
     let mut spec: Fields = fields.required("spec")?;
     Ok(match kind.as_str() {
-        "range" => KeySpecFindKeys::Range(KeySpecRange {
+        "range" => CommandKeySpecFindKeys::Range(CommandKeySpecRange {
             lastkey: spec.required("lastkey")?,
             keystep: spec.required("keystep")?,
             limit: spec.required("limit")?,
         }),
-        "keynum" => KeySpecFindKeys::Keynum(KeySpecKeynum {
+        "keynum" => CommandKeySpecFindKeys::Keynum(CommandKeySpecKeynum {
             keynumidx: spec.required("keynumidx")?,
             firstkey: spec.required("firstkey")?,
             keystep: spec.required("keystep")?,
         }),
-        _ => KeySpecFindKeys::Unknown,
+        _ => CommandKeySpecFindKeys::Unknown,
     })
 }
 
@@ -1053,7 +1055,7 @@ fn find_keys_spec(fields: &mut Fields) -> Result<KeySpecFindKeys, Error> {
 pub struct CommandDocsList(pub Vec<CommandDocsReply>);
 
 impl FromValue for CommandDocsList {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut commands = vec![];
         for (name, doc) in entries::<String, Fields>(value)? {
             command_doc(name, doc, &mut commands)?;
@@ -1097,13 +1099,13 @@ fn command_doc(
 fn command_arguments(
     nested: Vec<Fields>,
     parent: Option<u32>,
-    arguments: &mut Vec<CommandArgument>,
+    arguments: &mut Vec<CommandDocsArgument>,
 ) -> Result<(), Error> {
     for mut fields in nested {
         let index = u32::try_from(arguments.len())
             .map_err(|_| Error::Client("too many arguments".to_string()))?;
         let kind: String = fields.required("type")?;
-        arguments.push(CommandArgument {
+        arguments.push(CommandDocsArgument {
             parent,
             name: fields.required("name")?,
             type_: argument_type(kind),
@@ -1121,23 +1123,23 @@ fn command_arguments(
     Ok(())
 }
 
-fn argument_type(kind: String) -> CommandArgumentType {
+fn argument_type(kind: String) -> CommandDocsArgumentType {
     match kind.as_str() {
-        "string" => CommandArgumentType::String,
-        "integer" => CommandArgumentType::Integer,
-        "double" => CommandArgumentType::Double,
-        "key" => CommandArgumentType::Key,
-        "pattern" => CommandArgumentType::Pattern,
-        "unix-time" => CommandArgumentType::UnixTime,
-        "pure-token" => CommandArgumentType::PureToken,
-        "oneof" => CommandArgumentType::Oneof,
-        "block" => CommandArgumentType::Block,
-        _ => CommandArgumentType::Other(kind),
+        "string" => CommandDocsArgumentType::String,
+        "integer" => CommandDocsArgumentType::Integer,
+        "double" => CommandDocsArgumentType::Double,
+        "key" => CommandDocsArgumentType::Key,
+        "pattern" => CommandDocsArgumentType::Pattern,
+        "unix-time" => CommandDocsArgumentType::UnixTime,
+        "pure-token" => CommandDocsArgumentType::PureToken,
+        "oneof" => CommandDocsArgumentType::Oneof,
+        "block" => CommandDocsArgumentType::Block,
+        _ => CommandDocsArgumentType::Other(kind),
     }
 }
 
-impl FromValue for TtlResult {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for HexpireResult {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         match Integer::from_value(value)? {
             -2 => Ok(Self::DoesNotExist),
             0 => Ok(Self::ConditionNotMet),
@@ -1150,7 +1152,7 @@ impl FromValue for TtlResult {
 
 /// A map of the matches and the length of the longest common subsequence.
 impl FromValue for LcsIdxReply {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             matches: fields.required("matches")?,
@@ -1161,7 +1163,7 @@ impl FromValue for LcsIdxReply {
 
 /// The inclusive ranges of a match in each key and, with `WITHMATCHLEN`, its length.
 impl FromValue for LcsIdxMatch {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut items = items(value)?.into_iter();
         let (Some(key1_range), Some(key2_range), len, None) =
             (items.next(), items.next(), items.next(), items.next())
@@ -1178,8 +1180,8 @@ impl FromValue for LcsIdxMatch {
     }
 }
 
-impl FromValue for XinfoConsumer {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for XinfoConsumersEntry {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -1192,8 +1194,8 @@ impl FromValue for XinfoConsumer {
     }
 }
 
-impl FromValue for XinfoGroup {
-    fn from_value(value: Value) -> Result<Self, Error> {
+impl FromValue for XinfoGroupsEntry {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -1207,7 +1209,7 @@ impl FromValue for XinfoGroup {
 }
 
 impl FromValue for XinfoStreamReply {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             length: fields.required("length")?,
@@ -1224,7 +1226,7 @@ impl FromValue for XinfoStreamReply {
 }
 
 impl FromValue for XinfoStreamReplyFull {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             length: fields.required("length")?,
@@ -1240,7 +1242,7 @@ impl FromValue for XinfoStreamReplyFull {
 }
 
 impl FromValue for XinfoStreamReplyFullGroup {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -1255,7 +1257,7 @@ impl FromValue for XinfoStreamReplyFullGroup {
 }
 
 impl FromValue for XinfoStreamReplyFullConsumer {
-    fn from_value(value: Value) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -1269,31 +1271,31 @@ impl FromValue for XinfoStreamReplyFullConsumer {
     }
 }
 
-fn unexpected(reply: &Value) -> Error {
+fn unexpected(reply: &RespValue) -> Error {
     Error::Client(format!("unexpected reply: {reply:?}"))
 }
 
-fn decode(value: NestedValue) -> Result<Value, Error> {
+fn decode(value: RespNestedValue) -> Result<RespValue, Error> {
     crate::codec::decode(value).map_err(Error::Resp)
 }
 
 /// The nested values of an array, or a set.
-fn items(reply: Value) -> Result<Vec<Value>, Error> {
+fn items(reply: RespValue) -> Result<Vec<RespValue>, Error> {
     match reply {
-        Value::Array(items) | Value::Set(items) => items.into_iter().map(decode).collect(),
+        RespValue::Array(items) | RespValue::Set(items) => items.into_iter().map(decode).collect(),
         reply => Err(unexpected(&reply)),
     }
 }
 
 /// The entries of a map, or of a flat array of keys and values.
-pub fn entries<K: FromValue, V: FromValue>(reply: Value) -> Result<Vec<(K, V)>, Error> {
+pub fn entries<K: FromValue, V: FromValue>(reply: RespValue) -> Result<Vec<(K, V)>, Error> {
     let entry = |key, value| Ok((K::from_value(decode(key)?)?, V::from_value(decode(value)?)?));
     match reply {
-        Value::Map(entries) => entries
+        RespValue::Map(entries) => entries
             .into_iter()
             .map(|(key, value)| entry(key, value))
             .collect(),
-        Value::Array(items) => {
+        RespValue::Array(items) => {
             if items.len() % 2 != 0 {
                 return Err(Error::Client(format!(
                     "unexpected odd number of keys and values: {}",

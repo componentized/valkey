@@ -21,7 +21,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 use componentized::valkey::connection::{ConnectOpts, Connection, Error};
-use componentized_valkey::types::Value;
+use componentized_valkey::types::RespValue;
 use exports::componentized::valkey::tcp::{Guest, GuestTransport, Transport};
 use futures_channel::{mpsc, oneshot};
 use futures_core::Stream;
@@ -60,11 +60,11 @@ impl Guest for Component {
 pub struct TransportImpl {
     requests: RefCell<
         Option<(
-            oneshot::Sender<StreamReader<Value>>,
+            oneshot::Sender<StreamReader<RespValue>>,
             FutureReader<Result<(), Error>>,
         )>,
     >,
-    replies: RefCell<Option<(StreamReader<Value>, FutureReader<Result<(), Error>>)>>,
+    replies: RefCell<Option<(StreamReader<RespValue>, FutureReader<Result<(), Error>>)>>,
     /// Futures for the resolver to fail, a sync method can't write them itself.
     failures: mpsc::UnboundedSender<(FutureWriter<Result<(), Error>>, &'static str)>,
 }
@@ -84,7 +84,7 @@ impl GuestTransport for TransportImpl {
         Ok(Transport::new(open(&host, port).await?))
     }
 
-    fn send(&self, requests: StreamReader<Value>) -> FutureReader<Result<(), Error>> {
+    fn send(&self, requests: StreamReader<RespValue>) -> FutureReader<Result<(), Error>> {
         match self.requests.borrow_mut().take() {
             Some((pump, sent)) => {
                 // the pump only stops waiting for the requests once the socket is closed
@@ -95,7 +95,7 @@ impl GuestTransport for TransportImpl {
         }
     }
 
-    fn receive(&self) -> (StreamReader<Value>, FutureReader<Result<(), Error>>) {
+    fn receive(&self) -> (StreamReader<RespValue>, FutureReader<Result<(), Error>>) {
         self.replies.borrow_mut().take().unwrap_or_else(|| {
             let (_, replies) = wit_stream::new();
             (replies, self.failed("receive may be called at most once"))
@@ -156,7 +156,7 @@ async fn receive_pump(
     _socket: Rc<TcpSocket>,
     mut bytes: StreamReader<u8>,
     received: FutureReader<Result<(), ErrorCode>>,
-    mut replies: StreamWriter<Value>,
+    mut replies: StreamWriter<RespValue>,
     closed: FutureWriter<Result<(), Error>>,
 ) {
     // bytes read from the socket that are not part of a whole value yet
@@ -199,7 +199,7 @@ async fn receive_pump(
 /// half-closes the socket.
 async fn send_pump(
     _socket: Rc<TcpSocket>,
-    requests: oneshot::Receiver<StreamReader<Value>>,
+    requests: oneshot::Receiver<StreamReader<RespValue>>,
     mut bytes: StreamWriter<u8>,
     socket_sent: FutureReader<Result<(), ErrorCode>>,
     sent: FutureWriter<Result<(), Error>>,

@@ -23,7 +23,7 @@ use wasmtime::error::Context as _;
 use wasmtime::{Config, Engine, Result, Store, StoreContextMut, bail, format_err};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-pub use bindings::componentized::valkey::resp::{NestedValue, Value};
+pub use bindings::componentized::valkey::resp::{RespNestedValue, RespValue};
 pub use bindings::exports::componentized::valkey::connection::{ConnectOpts, Error};
 
 mod server;
@@ -79,53 +79,53 @@ pub mod resp_bindings {
 pub type Resp = resp_bindings::exports::componentized::valkey::resp::Guest;
 
 /// Encode a value as RESP, e.g. to nest it in an aggregate.
-pub fn encode(value: Value) -> NestedValue {
+pub fn encode(value: RespValue) -> RespNestedValue {
     componentized_valkey::codec::encode(to_codec(value))
 }
 
 /// Decode a nested value.
-pub fn decode(value: NestedValue) -> Result<Value, String> {
+pub fn decode(value: RespNestedValue) -> Result<RespValue, String> {
     componentized_valkey::codec::decode(value).map(from_codec)
 }
 
 // a value is not recursive, nested values are encoded RESP, so each conversion is one match
-fn to_codec(value: Value) -> componentized_valkey::types::Value {
-    use componentized_valkey::types::Value as V;
+fn to_codec(value: RespValue) -> componentized_valkey::types::RespValue {
+    use componentized_valkey::types::RespValue as V;
     match value {
-        Value::String(value) => V::String(value),
-        Value::Error(value) => V::Error(value),
-        Value::Integer(value) => V::Integer(value),
-        Value::BulkString(value) => V::BulkString(value),
-        Value::Array(value) => V::Array(value),
-        Value::Null => V::Null,
-        Value::Boolean(value) => V::Boolean(value),
-        Value::Double(value) => V::Double(value),
-        Value::BigNumber(value) => V::BigNumber(value),
-        Value::BulkError(value) => V::BulkError(value),
-        Value::VerbatimString(value) => V::VerbatimString(value),
-        Value::Map(value) => V::Map(value),
-        Value::Set(value) => V::Set(value),
-        Value::Push(value) => V::Push(value),
+        RespValue::String(value) => V::String(value),
+        RespValue::Error(value) => V::Error(value),
+        RespValue::Integer(value) => V::Integer(value),
+        RespValue::BulkString(value) => V::BulkString(value),
+        RespValue::Array(value) => V::Array(value),
+        RespValue::Null => V::Null,
+        RespValue::Boolean(value) => V::Boolean(value),
+        RespValue::Double(value) => V::Double(value),
+        RespValue::BigNumber(value) => V::BigNumber(value),
+        RespValue::BulkError(value) => V::BulkError(value),
+        RespValue::VerbatimString(value) => V::VerbatimString(value),
+        RespValue::Map(value) => V::Map(value),
+        RespValue::Set(value) => V::Set(value),
+        RespValue::Push(value) => V::Push(value),
     }
 }
 
-fn from_codec(value: componentized_valkey::types::Value) -> Value {
-    use componentized_valkey::types::Value as V;
+fn from_codec(value: componentized_valkey::types::RespValue) -> RespValue {
+    use componentized_valkey::types::RespValue as V;
     match value {
-        V::String(value) => Value::String(value),
-        V::Error(value) => Value::Error(value),
-        V::Integer(value) => Value::Integer(value),
-        V::BulkString(value) => Value::BulkString(value),
-        V::Array(value) => Value::Array(value),
-        V::Null => Value::Null,
-        V::Boolean(value) => Value::Boolean(value),
-        V::Double(value) => Value::Double(value),
-        V::BigNumber(value) => Value::BigNumber(value),
-        V::BulkError(value) => Value::BulkError(value),
-        V::VerbatimString(value) => Value::VerbatimString(value),
-        V::Map(value) => Value::Map(value),
-        V::Set(value) => Value::Set(value),
-        V::Push(value) => Value::Push(value),
+        V::String(value) => RespValue::String(value),
+        V::Error(value) => RespValue::Error(value),
+        V::Integer(value) => RespValue::Integer(value),
+        V::BulkString(value) => RespValue::BulkString(value),
+        V::Array(value) => RespValue::Array(value),
+        V::Null => RespValue::Null,
+        V::Boolean(value) => RespValue::Boolean(value),
+        V::Double(value) => RespValue::Double(value),
+        V::BigNumber(value) => RespValue::BigNumber(value),
+        V::BulkError(value) => RespValue::BulkError(value),
+        V::VerbatimString(value) => RespValue::VerbatimString(value),
+        V::Map(value) => RespValue::Map(value),
+        V::Set(value) => RespValue::Set(value),
+        V::Push(value) => RespValue::Push(value),
     }
 }
 
@@ -138,8 +138,8 @@ pub use bindings::exports::componentized::valkey::{
 pub use bindings::exports::wasmcloud::keyvalue;
 
 /// A bulk string, the type commands are sent as.
-pub fn bulk(value: &str) -> Value {
-    Value::BulkString(value.to_string())
+pub fn bulk(value: &str) -> RespValue {
+    RespValue::BulkString(value.to_string())
 }
 
 /// The words of a command to send, e.g. `words(&["GET", "key"])`.
@@ -148,13 +148,13 @@ pub fn words(words: &[&str]) -> Vec<String> {
 }
 
 /// A command as the server receives it, e.g. `command(&["GET", "key"])`.
-pub fn command(words: &[&str]) -> Vec<Value> {
+pub fn command(words: &[&str]) -> Vec<RespValue> {
     words.iter().map(|word| bulk(word)).collect()
 }
 
 /// A map reply, e.g. to HELLO.
-pub fn map(entries: Vec<(Value, Value)>) -> Value {
-    Value::Map(
+pub fn map(entries: Vec<(RespValue, RespValue)>) -> RespValue {
+    RespValue::Map(
         entries
             .into_iter()
             .map(|(key, value)| (encode(key), encode(value)))
@@ -163,32 +163,32 @@ pub fn map(entries: Vec<(Value, Value)>) -> Value {
 }
 
 /// A push message, e.g. a pub/sub message.
-pub fn push(items: Vec<Value>) -> Value {
-    Value::Push(items.into_iter().map(encode).collect())
+pub fn push(items: Vec<RespValue>) -> RespValue {
+    RespValue::Push(items.into_iter().map(encode).collect())
 }
 
 /// The server's properties in the canned reply to HELLO.
-pub fn hello_reply() -> Value {
+pub fn hello_reply() -> RespValue {
     map(vec![
         (bulk("server"), bulk("valkey")),
         (bulk("version"), bulk("9.1.2")),
-        (bulk("proto"), Value::Integer(3)),
+        (bulk("proto"), RespValue::Integer(3)),
     ])
 }
 
 /// The stub transport and server of a connection.
 pub struct Transport {
-    requests: mpsc::UnboundedReceiver<Value>,
-    replies: Option<mpsc::UnboundedSender<Value>>,
+    requests: mpsc::UnboundedReceiver<RespValue>,
+    replies: Option<mpsc::UnboundedSender<RespValue>>,
     closed: Option<oneshot::Sender<Result<(), Error>>>,
 }
 
 impl Transport {
     /// The next command the connection wrote, as its words, `None` once it closed the requests
     /// stream.
-    pub async fn request(&mut self) -> Option<Vec<Value>> {
+    pub async fn request(&mut self) -> Option<Vec<RespValue>> {
         let request = self.requests.recv().await?;
-        let Value::Array(words) = request else {
+        let RespValue::Array(words) = request else {
             panic!("a command is an array, got {request:?}");
         };
         Some(
@@ -200,7 +200,7 @@ impl Transport {
     }
 
     /// Send a value to the connection, a reply or a push message.
-    pub fn reply(&self, value: Value) {
+    pub fn reply(&self, value: RespValue) {
         let replies = self.replies.as_ref().expect("transport is open");
         replies.send(value).expect("connection reads replies");
     }
@@ -429,11 +429,11 @@ impl WasiView for Ctx {
 
 // the components only import the types of `resp`, the functions are here for completeness
 impl bindings::componentized::valkey::resp::Host for Ctx {
-    fn decode(&mut self, data: Vec<u8>) -> Result<Value, String> {
+    fn decode(&mut self, data: Vec<u8>) -> Result<RespValue, String> {
         decode(data)
     }
 
-    fn encode(&mut self, value: Value) -> Result<Vec<u8>, String> {
+    fn encode(&mut self, value: RespValue) -> Result<Vec<u8>, String> {
         Ok(encode(value))
     }
 }

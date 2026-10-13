@@ -1,15 +1,16 @@
 use crate::types::{
-    Aggregate, BgsaveOperation, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby,
-    BitfieldOffset, BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, ClientFilter,
-    ClientPauseMode, ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientType,
-    ClientUnblockType, ClusterFailoverMode, ClusterResetMode, ClusterSetslotState,
-    CommandListFilter, CommandRule, CommandlogType, Cursor, DbRule, DurationMilliseconds,
-    DurationSeconds, Error, FailoverTarget, FlushMode, GeoCoordinates, GeoCount, GeoFrom, GeoShape,
-    GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyRule, KeyType,
-    LexBound, Limit, LinsertPosition, ListSide, MigrateAuth, MsetexPrecondition, PopEnd, Rule,
-    RuleSelector, ScoreBound, SetPrecondition, SetTtl, ShutdownSave, SlotMigrationGroup, SortOpts,
-    SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds,
-    UserRule, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
+    AclChannelRule, AclCommandRule, AclDbRule, AclKeyRule, AclRule, AclSelectorRule, AclUserRule,
+    BgsaveOperation, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby, BitfieldOffset,
+    BitfieldOperation, BitfieldOverflow, BitfieldSet, ClientFilter, ClientPauseMode,
+    ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientType, ClientUnblockType,
+    ClusterFailoverMode, ClusterMigrateslotsGroup, ClusterResetMode, ClusterSetslotState,
+    CommandListFilter, CommandlogType, Cursor, DurationMilliseconds, DurationSeconds, Error,
+    FailoverTarget, FlushMode, GeoCoordinates, GeoUnit, GeoaddCondition, GeosearchCount,
+    GeosearchFrom, GeosearchShape, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyType,
+    LexBound, Limit, LinsertPosition, ListSide, MigrateAuth, MsetexPrecondition, ScoreBound,
+    SetPrecondition, SetTtl, ShutdownSave, SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency,
+    TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, XclaimOpts, ZaddComparison, ZaddCondition,
+    ZmpopEnd, ZrangeBy, ZsetAggregate,
 };
 use crate::value::{OrZeroId, ZERO_ID};
 
@@ -177,103 +178,103 @@ impl IntoCommand for UnixTimeMilliseconds {
     }
 }
 
-impl IntoCommand for Rule {
+impl IntoCommand for AclRule {
     fn into_command(self) -> Result<Vec<String>, Error> {
         match self {
-            Rule::Keys(rule) => rule.into_command(),
-            Rule::Channel(rule) => rule.into_command(),
-            Rule::Command(rule) => rule.into_command(),
-            Rule::Db(rule) => rule.into_command(),
-            Rule::User(rule) => rule.into_command(),
-            Rule::Other(rule) => rule.into_command(),
+            AclRule::Keys(rule) => rule.into_command(),
+            AclRule::Channel(rule) => rule.into_command(),
+            AclRule::Command(rule) => rule.into_command(),
+            AclRule::Db(rule) => rule.into_command(),
+            AclRule::User(rule) => rule.into_command(),
+            AclRule::Other(rule) => rule.into_command(),
         }
     }
 }
 
-impl IntoCommand for RuleSelector {
+impl IntoCommand for AclSelectorRule {
     fn into_command(self) -> Result<Vec<String>, Error> {
         match self {
-            RuleSelector::Keys(rule) => rule.into_command(),
-            RuleSelector::Channel(rule) => rule.into_command(),
-            RuleSelector::Command(rule) => rule.into_command(),
-            RuleSelector::Db(rule) => rule.into_command(),
-            RuleSelector::Other(rule) => rule.into_command(),
+            AclSelectorRule::Keys(rule) => rule.into_command(),
+            AclSelectorRule::Channel(rule) => rule.into_command(),
+            AclSelectorRule::Command(rule) => rule.into_command(),
+            AclSelectorRule::Db(rule) => rule.into_command(),
+            AclSelectorRule::Other(rule) => rule.into_command(),
         }
     }
 }
 
-impl IntoCommand for KeyRule {
+impl IntoCommand for AclKeyRule {
     fn into_command(self) -> Result<Vec<String>, Error> {
         Ok(vec![match self {
-            KeyRule::Add(pattern) => format!("~{pattern}"),
-            KeyRule::AddRead(pattern) => format!("%R~{pattern}"),
-            KeyRule::AddWrite(pattern) => format!("%W~{pattern}"),
-            KeyRule::AddReadWrite(pattern) => format!("%RW~{pattern}"),
-            KeyRule::All => "allkeys".to_string(),
-            KeyRule::Reset => "resetkeys".to_string(),
+            AclKeyRule::Add(pattern) => format!("~{pattern}"),
+            AclKeyRule::AddRead(pattern) => format!("%R~{pattern}"),
+            AclKeyRule::AddWrite(pattern) => format!("%W~{pattern}"),
+            AclKeyRule::AddReadWrite(pattern) => format!("%RW~{pattern}"),
+            AclKeyRule::All => "allkeys".to_string(),
+            AclKeyRule::Reset => "resetkeys".to_string(),
         }])
     }
 }
 
-impl IntoCommand for ChannelRule {
+impl IntoCommand for AclChannelRule {
     fn into_command(self) -> Result<Vec<String>, Error> {
         Ok(vec![match self {
-            ChannelRule::Add(pattern) => format!("&{pattern}"),
-            ChannelRule::All => "allchannels".to_string(),
-            ChannelRule::Reset => "resetchannels".to_string(),
+            AclChannelRule::Add(pattern) => format!("&{pattern}"),
+            AclChannelRule::All => "allchannels".to_string(),
+            AclChannelRule::Reset => "resetchannels".to_string(),
         }])
     }
 }
 
-impl IntoCommand for CommandRule {
+impl IntoCommand for AclCommandRule {
     fn into_command(self) -> Result<Vec<String>, Error> {
         Ok(vec![match self {
-            CommandRule::Add(command) => format!("+{command}"),
-            CommandRule::AddCategory(category) => format!("+@{category}"),
-            CommandRule::AddFirstArg((command, arg)) => format!("+{command}|{arg}"),
-            CommandRule::All => "allcommands".to_string(),
-            CommandRule::Remove(command) => format!("-{command}"),
-            CommandRule::RemoveCategory(category) => format!("-@{category}"),
-            CommandRule::Reset => "nocommands".to_string(),
+            AclCommandRule::Add(command) => format!("+{command}"),
+            AclCommandRule::AddCategory(category) => format!("+@{category}"),
+            AclCommandRule::AddFirstArg((command, arg)) => format!("+{command}|{arg}"),
+            AclCommandRule::All => "allcommands".to_string(),
+            AclCommandRule::Remove(command) => format!("-{command}"),
+            AclCommandRule::RemoveCategory(category) => format!("-@{category}"),
+            AclCommandRule::Reset => "nocommands".to_string(),
         }])
     }
 }
 
 /// `db=` requires at least one database.
-impl IntoCommand for DbRule {
+impl IntoCommand for AclDbRule {
     fn into_command(self) -> Result<Vec<String>, Error> {
         Ok(vec![match self {
-            DbRule::Db(dbs) if dbs.is_empty() => {
+            AclDbRule::Db(dbs) if dbs.is_empty() => {
                 return Err(Error::Client("db requires at least one item".to_string()));
             }
-            DbRule::Db(dbs) => format!(
+            AclDbRule::Db(dbs) => format!(
                 "db={}",
                 dbs.iter()
                     .map(|db| db.to_string())
                     .collect::<Vec<_>>()
                     .join(",")
             ),
-            DbRule::All => "alldbs".to_string(),
-            DbRule::Reset => "resetdbs".to_string(),
+            AclDbRule::All => "alldbs".to_string(),
+            AclDbRule::Reset => "resetdbs".to_string(),
         }])
     }
 }
 
-impl IntoCommand for UserRule {
+impl IntoCommand for AclUserRule {
     fn into_command(self) -> Result<Vec<String>, Error> {
         match self {
-            UserRule::On => "on".into_command(),
-            UserRule::Off => "off".into_command(),
-            UserRule::Nopass => "nopass".into_command(),
-            UserRule::SanitizePayload => "sanitize-payload".into_command(),
-            UserRule::SkipSanitizePayload => "skip-sanitize-payload".into_command(),
-            UserRule::Password(password) => format!(">{password}").into_command(),
-            UserRule::HashedPassword(hash) => format!("#{hash}").into_command(),
-            UserRule::RemovePassword(password) => format!("<{password}").into_command(),
-            UserRule::RemoveHashedPassword(hash) => format!("!{hash}").into_command(),
-            UserRule::Selector(rules) => ("(", rules, ")").into_command(),
-            UserRule::Clearselectors => "clearselectors".into_command(),
-            UserRule::Reset => "reset".into_command(),
+            AclUserRule::On => "on".into_command(),
+            AclUserRule::Off => "off".into_command(),
+            AclUserRule::Nopass => "nopass".into_command(),
+            AclUserRule::SanitizePayload => "sanitize-payload".into_command(),
+            AclUserRule::SkipSanitizePayload => "skip-sanitize-payload".into_command(),
+            AclUserRule::Password(password) => format!(">{password}").into_command(),
+            AclUserRule::HashedPassword(hash) => format!("#{hash}").into_command(),
+            AclUserRule::RemovePassword(password) => format!("<{password}").into_command(),
+            AclUserRule::RemoveHashedPassword(hash) => format!("!{hash}").into_command(),
+            AclUserRule::Selector(rules) => ("(", rules, ")").into_command(),
+            AclUserRule::Clearselectors => "clearselectors".into_command(),
+            AclUserRule::Reset => "reset".into_command(),
         }
     }
 }
@@ -514,22 +515,22 @@ impl IntoCommand for Zrange {
     }
 }
 
-impl IntoCommand for Aggregate {
+impl IntoCommand for ZsetAggregate {
     fn into_command(self) -> Result<Vec<String>, Error> {
         let aggregate = match self {
-            Aggregate::Sum => "SUM",
-            Aggregate::Min => "MIN",
-            Aggregate::Max => "MAX",
+            ZsetAggregate::Sum => "SUM",
+            ZsetAggregate::Min => "MIN",
+            ZsetAggregate::Max => "MAX",
         };
         ("AGGREGATE", aggregate).into_command()
     }
 }
 
-impl IntoCommand for PopEnd {
+impl IntoCommand for ZmpopEnd {
     fn into_command(self) -> Result<Vec<String>, Error> {
         match self {
-            PopEnd::Min => "MIN",
-            PopEnd::Max => "MAX",
+            ZmpopEnd::Min => "MIN",
+            ZmpopEnd::Max => "MAX",
         }
         .into_command()
     }
@@ -749,23 +750,23 @@ impl IntoCommand for GeoaddCondition {
     }
 }
 
-impl IntoCommand for GeoFrom {
+impl IntoCommand for GeosearchFrom {
     fn into_command(self) -> Result<Vec<String>, Error> {
         match self {
-            GeoFrom::Member(member) => ("FROMMEMBER", member).into_command(),
-            GeoFrom::Lonlat(coordinates) => ("FROMLONLAT", coordinates).into_command(),
+            GeosearchFrom::Member(member) => ("FROMMEMBER", member).into_command(),
+            GeosearchFrom::Lonlat(coordinates) => ("FROMLONLAT", coordinates).into_command(),
         }
     }
 }
 
 /// The center, when the shape has one, then the shape.
-impl IntoCommand for GeoShape {
+impl IntoCommand for GeosearchShape {
     fn into_command(self) -> Result<Vec<String>, Error> {
         match self {
-            GeoShape::Radius(circle) => {
+            GeosearchShape::Radius(circle) => {
                 (circle.from, "BYRADIUS", circle.radius, circle.unit).into_command()
             }
-            GeoShape::Box(rectangle) => (
+            GeosearchShape::Box(rectangle) => (
                 rectangle.from,
                 "BYBOX",
                 rectangle.width,
@@ -773,7 +774,7 @@ impl IntoCommand for GeoShape {
                 rectangle.unit,
             )
                 .into_command(),
-            GeoShape::Polygon(vertices) => {
+            GeosearchShape::Polygon(vertices) => {
                 ("BYPOLYGON", NumKeys(NonEmpty::new("vertices", vertices))).into_command()
             }
         }
@@ -781,7 +782,7 @@ impl IntoCommand for GeoShape {
 }
 
 /// `COUNT count [ ANY ]`
-impl IntoCommand for GeoCount {
+impl IntoCommand for GeosearchCount {
     fn into_command(self) -> Result<Vec<String>, Error> {
         ("COUNT", self.count, Flag("ANY", self.any)).into_command()
     }
@@ -979,7 +980,7 @@ impl IntoCommand for FailoverTarget {
 }
 
 /// `SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ]`
-impl IntoCommand for SlotMigrationGroup {
+impl IntoCommand for ClusterMigrateslotsGroup {
     fn into_command(self) -> Result<Vec<String>, Error> {
         (
             "SLOTSRANGE",

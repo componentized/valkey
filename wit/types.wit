@@ -13,26 +13,26 @@ interface types {
 
     type double = f64;
 
-    variant value {
+    variant resp-value {
         %string(string),
         error(string),
         integer(integer),
         bulk-string(string),
-        array(list<nested-value>),
+        array(list<resp-nested-value>),
         null,
         boolean(bool),
         double(double),
         big-number(string),
         bulk-error(string),
         verbatim-string(tuple<string, string>),
-        %map(list<tuple<nested-value, nested-value>>),
-        set(list<nested-value>),
-        push(list<nested-value>),
+        %map(list<tuple<resp-nested-value, resp-nested-value>>),
+        set(list<resp-nested-value>),
+        push(list<resp-nested-value>),
     }
 
     /// Values nested within an aggregate type. Since WIT types are not allowed to depend on
     /// themselves, nested values are stored as encoded RESP.
-    type nested-value = list<u8>;
+    type resp-nested-value = list<u8>;
 
     // connection
 
@@ -106,7 +106,7 @@ interface types {
     }
 
     /// The outcome of setting the expiration of a hash field, e.g. with HEXPIRE.
-    enum ttl-result {
+    enum hexpire-result {
         /// -2: key does not exist, or field does not exist in the HASH.
         does-not-exist,
         /// 0: the specified NX | XX | GT | LT condition has not been met.
@@ -116,6 +116,15 @@ interface types {
         /// 2: when called with 0 seconds.
         zero-seconds,
     }
+
+    /// The result for a field, see `hexpireat`.
+    type hexpireat-result = hexpire-result;
+
+    /// The result for a field, see `hpexpire`.
+    type hpexpire-result = hexpire-result;
+
+    /// The result for a field, see `hpexpireat`.
+    type hpexpireat-result = hexpire-result;
 
     /// The remaining time to live of a key or hash field, to the second, see `ttl` and `httl`.
     variant ttl-reply {
@@ -127,6 +136,9 @@ interface types {
         expires-in(duration-seconds),
     }
 
+    /// The remaining time to live of a field, see `httl`.
+    type httl-reply = ttl-reply;
+
     /// The remaining time to live of a key or hash field, to the millisecond, see `pttl` and `hpttl`.
     variant pttl-reply {
         /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
@@ -136,6 +148,9 @@ interface types {
         /// The time until it expires.
         expires-in(duration-milliseconds),
     }
+
+    /// The remaining time to live of a field, see `hpttl`.
+    type hpttl-reply = pttl-reply;
 
     /// When a key or hash field expires, to the second, see `expiretime` and `hexpiretime`.
     variant expiretime-reply {
@@ -147,6 +162,9 @@ interface types {
         expires-at(unix-time-seconds),
     }
 
+    /// The expiration time of a field, see `hexpiretime`.
+    type hexpiretime-reply = expiretime-reply;
+
     /// When a key or hash field expires, to the millisecond, see `pexpiretime` and `hpexpiretime`.
     variant pexpiretime-reply {
         /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
@@ -156,6 +174,9 @@ interface types {
         /// The time at which it expires.
         expires-at(unix-time-milliseconds),
     }
+
+    /// The expiration time of a field, see `hpexpiretime`.
+    type hpexpiretime-reply = pexpiretime-reply;
 
     // admin commands
 
@@ -301,7 +322,7 @@ interface types {
     }
 
     /// Which way a slot migration moves the slots.
-    enum slot-migration-operation {
+    enum cluster-getslotmigrations-operation {
         /// `IMPORT`: to this node.
         %import,
         /// `EXPORT`: from this node.
@@ -309,10 +330,10 @@ interface types {
     }
 
     /// A slot migration, see `cluster-getslotmigrations`.
-    record slot-migration {
+    record cluster-getslotmigrations-entry {
         /// The ID of the migration.
         link-name: string,
-        operation: slot-migration-operation,
+        operation: cluster-getslotmigrations-operation,
         /// The ranges of slots, start and end both included.
         slot-ranges: list<tuple<u16, u16>>,
         /// The ID of the node the slots move to.
@@ -331,7 +352,7 @@ interface types {
     }
 
     /// Ranges of slots to migrate to a node, see `cluster-migrateslots`.
-    record slot-migration-group {
+    record cluster-migrateslots-group {
         /// The ranges of slots, start and end both included.
         ranges: list<tuple<u16, u16>>,
         /// The ID of the node to migrate the slots to.
@@ -371,7 +392,7 @@ interface types {
     }
 
     /// An entry of the slow log or a command log.
-    record log-entry {
+    record commandlog-entry {
         /// The ID of the entry, unique until the server restarts.
         id: integer,
         /// When the command ran.
@@ -386,6 +407,9 @@ interface types {
         /// The client's name, see CLIENT SETNAME, empty when it has none.
         client-name: string,
     }
+
+    /// An entry of the slow log, see `slowlog-get`.
+    type slowlog-entry = commandlog-entry;
 
     /// Where FAILOVER fails over to.
     record failover-target {
@@ -419,7 +443,7 @@ interface types {
     }
 
     /// A loaded module, see `module-list`.
-    record module-info {
+    record module-list-entry {
         name: string,
         /// The module's version.
         ver: integer,
@@ -430,7 +454,7 @@ interface types {
     }
 
     /// A replica of a primary, see `role`.
-    record role-replica-info {
+    record role-primary-replica {
         ip: string,
         port: u16,
         /// The replication offset the replica last acknowledged.
@@ -441,7 +465,7 @@ interface types {
     record role-primary {
         /// The primary's replication offset.
         offset: integer,
-        replicas: list<role-replica-info>,
+        replicas: list<role-primary-replica>,
     }
 
     /// The replication state of a replica, see `role`.
@@ -489,44 +513,44 @@ interface types {
         username: string,
         /// The user's rules, as the server normalized them, e.g. `allkeys` is `~*`. Applied with
         /// `acl-setuser`, after `reset`, they recreate the user.
-        rules: list<rule>,
+        rules: list<acl-rule>,
     }
 
     /// A rule of an ACL user, see `acl-setuser`.
     ///
     /// https://valkey.io/topics/acl/
-    variant rule {
+    variant acl-rule {
         /// The keys the user may access.
-        keys(key-rule),
+        keys(acl-key-rule),
         /// The Pub/Sub channels the user may access.
-        channel(channel-rule),
+        channel(acl-channel-rule),
         /// The commands the user may call.
-        command(command-rule),
+        command(acl-command-rule),
         /// The databases the user may access.
-        db(db-rule),
+        db(acl-db-rule),
         /// The user itself, e.g. whether it is enabled and its passwords.
-        user(user-rule),
+        user(acl-user-rule),
         /// A rule this interface does not know, e.g. from a newer server, sent as is.
         other(string),
     }
 
     /// A rule of a selector, a set of permissions matched independently of the user's root permissions,
     /// the user may run a command when either permits it.
-    variant rule-selector {
+    variant acl-selector-rule {
         /// The keys the selector permits access to.
-        keys(key-rule),
+        keys(acl-key-rule),
         /// The Pub/Sub channels the selector permits access to.
-        channel(channel-rule),
+        channel(acl-channel-rule),
         /// The commands the selector permits.
-        command(command-rule),
+        command(acl-command-rule),
         /// The databases the selector permits access to.
-        db(db-rule),
+        db(acl-db-rule),
         /// A rule this interface does not know, e.g. from a newer server, sent as is.
         other(string),
     }
 
     /// A rule for the keys a user may access.
-    variant key-rule {
+    variant acl-key-rule {
         /// `~<pattern>`: allows reading and writing the keys matching the glob-style pattern.
         add(string),
         /// `%R~<pattern>`: allows reading the keys matching the glob-style pattern.
@@ -543,7 +567,7 @@ interface types {
     }
 
     /// A rule for the Pub/Sub channels a user may access.
-    variant channel-rule {
+    variant acl-channel-rule {
         /// `&<pattern>`: allows access to the Pub/Sub channels matching the glob-style pattern.
         add(string),
         /// `allchannels`: allows access to all Pub/Sub channels, an alias for `&*`.
@@ -554,7 +578,7 @@ interface types {
     }
 
     /// A rule for the commands a user may call.
-    variant command-rule {
+    variant acl-command-rule {
         /// `+<command>`: allows the command, or a subcommand, e.g. `config|get`.
         add(string),
         /// `+@<category>`: allows all the commands in the category, e.g. `read`, see ACL CAT for the
@@ -574,7 +598,7 @@ interface types {
     }
 
     /// A rule for the databases a user may access.
-    variant db-rule {
+    variant acl-db-rule {
         /// `db=<id>[,<id>...]`: allows access to the databases with the given IDs.
         db(list<u8>),
         /// `alldbs`: allows access to all databases.
@@ -584,7 +608,7 @@ interface types {
     }
 
     /// A rule for the user itself.
-    variant user-rule {
+    variant acl-user-rule {
         /// `on`: enables the user, it is possible to authenticate as this user.
         on,
         /// `off`: disables the user, it is no longer possible to authenticate as this user, connections
@@ -606,7 +630,7 @@ interface types {
         /// `!<hash>`: removes a password, by its SHA-256 hash, from the user's passwords.
         remove-hashed-password(string),
         /// `(<rule> ...)`: adds a selector, with the given rules.
-        selector(list<rule-selector>),
+        selector(list<acl-selector-rule>),
         /// `clearselectors`: removes all the user's selectors.
         clearselectors,
         /// `reset`: resets the user to its state when created, disabled, without passwords, keys,
@@ -659,6 +683,9 @@ interface types {
         offset: bitfield-offset,
     }
 
+    /// A GET operation, see `bitfield-ro`.
+    type bitfield-ro-get = bitfield-get;
+
     /// `SET encoding offset value`: sets the field, the result is its previous value.
     record bitfield-set {
         encoding: bitfield-encoding,
@@ -700,35 +727,35 @@ interface types {
 
     // connection commands
 
-    /// How a key spec finds the first key, see `key-spec`.
-    variant key-spec-begin-search {
+    /// How a key spec finds the first key, see `command-key-spec`.
+    variant command-key-spec-begin-search {
         /// `index`: the argument at the index.
         index(integer),
         /// `keyword`: the argument after the keyword.
-        keyword(key-spec-keyword),
+        keyword(command-key-spec-keyword),
         /// `unknown`: the keys cannot be found from the arguments alone.
         unknown,
     }
 
-    /// The keyword before the first key, see `key-spec-begin-search`.
-    record key-spec-keyword {
+    /// The keyword before the first key, see `command-key-spec-begin-search`.
+    record command-key-spec-keyword {
         keyword: string,
         /// The index of the argument to start searching from, from the end when negative.
         startfrom: integer,
     }
 
-    /// How a key spec finds the keys after the first one, see `key-spec`.
-    variant key-spec-find-keys {
+    /// How a key spec finds the keys after the first one, see `command-key-spec`.
+    variant command-key-spec-find-keys {
         /// `range`: a range of arguments.
-        range(key-spec-range),
+        range(command-key-spec-range),
         /// `keynum`: the number of keys is an argument.
-        keynum(key-spec-keynum),
+        keynum(command-key-spec-keynum),
         /// `unknown`: the keys cannot be found from the arguments alone.
         unknown,
     }
 
-    /// A range of keys, see `key-spec-find-keys`.
-    record key-spec-range {
+    /// A range of keys, see `command-key-spec-find-keys`.
+    record command-key-spec-range {
         /// The index of the last key, relative to the first, from the end when negative.
         lastkey: integer,
         /// The number of arguments from one key to the next.
@@ -737,8 +764,8 @@ interface types {
         limit: integer,
     }
 
-    /// A number of keys, see `key-spec-find-keys`.
-    record key-spec-keynum {
+    /// A number of keys, see `command-key-spec-find-keys`.
+    record command-key-spec-keynum {
         /// The index of the argument with the number of keys, relative to the first.
         keynumidx: integer,
         /// The index of the first key, relative to the first.
@@ -748,12 +775,12 @@ interface types {
     }
 
     /// Where a command's keys are and how it uses them.
-    record key-spec {
+    record command-key-spec {
         notes: option<string>,
         /// How the command uses the keys, e.g. `RW`, `access` and `update`.
         %flags: list<string>,
-        begin-search: key-spec-begin-search,
-        find-keys: key-spec-find-keys,
+        begin-search: command-key-spec-begin-search,
+        find-keys: command-key-spec-find-keys,
     }
 
     /// A command, see `command` and `command-info`.
@@ -774,11 +801,14 @@ interface types {
         acl-categories: list<string>,
         /// Hints for clients, e.g. `nondeterministic_output`.
         tips: list<string>,
-        key-specs: list<key-spec>,
+        key-specs: list<command-key-spec>,
     }
 
-    /// The type of an argument of a command, see `command-argument`.
-    variant command-argument-type {
+    /// The details of a command, see `command`.
+    type command-reply = command-info-reply;
+
+    /// The type of an argument of a command, see `command-docs-argument`.
+    variant command-docs-argument-type {
         /// `string`
         %string,
         /// `integer`
@@ -802,12 +832,12 @@ interface types {
     }
 
     /// An argument of a command, see `command-docs`.
-    record command-argument {
+    record command-docs-argument {
         /// The index of the `oneof` or `block` argument containing this one, in the command's
         /// arguments, none at the top level.
         parent: option<u32>,
         name: string,
-        %type: command-argument-type,
+        %type: command-docs-argument-type,
         /// The name to show for the argument.
         display-text: option<string>,
         /// The index of the argument's key spec, for a key.
@@ -843,12 +873,12 @@ interface types {
         /// The changes to the command, the version of each and what changed.
         history: list<tuple<string, string>>,
         /// The arguments, depth first, those an argument contains after it.
-        arguments: list<command-argument>,
+        arguments: list<command-docs-argument>,
     }
 
     /// Where a connection's tracking notifications are redirected, see `client-getredir` and
     /// `client-trackinginfo`.
-    variant tracking-redirect {
+    variant client-tracking-redirect {
         /// -1: tracking is not on.
         not-tracking,
         /// 0: tracking is on, the notifications are not redirected.
@@ -891,7 +921,7 @@ interface types {
         /// The tracking flags, e.g. `on`, `bcast`, `optin` or `noloop`.
         %flags: list<string>,
         /// Where the notifications are redirected.
-        redirect: tracking-redirect,
+        redirect: client-tracking-redirect,
         /// The prefixes of BCAST.
         prefixes: list<string>,
     }
@@ -939,7 +969,7 @@ interface types {
     }
 
     /// The center of a search, `FROMMEMBER` or `FROMLONLAT`.
-    variant geo-from {
+    variant geosearch-from {
         /// `FROMMEMBER member`: the position of a member of the index.
         member(string),
         /// `FROMLONLAT longitude latitude`
@@ -947,37 +977,43 @@ interface types {
     }
 
     /// `BYRADIUS`: a circle around the center.
-    record geo-radius {
-        %from: geo-from,
+    record geosearch-radius {
+        %from: geosearch-from,
         radius: double,
         unit: geo-unit,
     }
 
     /// `BYBOX`: a rectangle around the center.
-    record geo-box {
-        %from: geo-from,
+    record geosearch-box {
+        %from: geosearch-from,
         width: double,
         height: double,
         unit: geo-unit,
     }
 
     /// The area of a search.
-    variant geo-shape {
+    variant geosearch-shape {
         /// `[ FROMMEMBER member | FROMLONLAT longitude latitude ] BYRADIUS radius unit`
-        radius(geo-radius),
+        radius(geosearch-radius),
         /// `[ FROMMEMBER member | FROMLONLAT longitude latitude ] BYBOX width height unit`
-        box(geo-box),
+        box(geosearch-box),
         /// `BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ]`: the polygon with
         /// the vertices, in order, which has no center.
         polygon(list<geo-coordinates>),
     }
 
+    /// The area to search, see `geosearchstore`.
+    type geosearchstore-shape = geosearch-shape;
+
     /// At most a count of the members, `COUNT count [ ANY ]`.
-    record geo-count {
+    record geosearch-count {
         count: integer,
         /// `ANY`: returns as soon as enough members are found, rather than the nearest ones.
         any: bool,
     }
+
+    /// The number of members to store, see `geosearchstore`.
+    type geosearchstore-count = geosearch-count;
 
     /// The details GEOSEARCH returns of each member it found.
     flags geosearch-with-flags {
@@ -990,7 +1026,7 @@ interface types {
     }
 
     /// A member a search found, with the details asked for.
-    record geo-search-result {
+    record geosearch-with-result {
         member: string,
         /// `WITHDIST`: the distance from the center, in the unit of the shape.
         distance: option<double>,
@@ -1003,7 +1039,7 @@ interface types {
     // hash commands
 
     /// The outcome of removing the expiration of a hash field.
-    enum field-persist-result {
+    enum hpersist-result {
         /// -2: the field does not exist, or the hash does not exist.
         does-not-exist,
         /// -1: the field exists, but has no expiration.
@@ -1103,7 +1139,7 @@ interface types {
     }
 
     /// A function of a library.
-    record library-function {
+    record function-list-function {
         name: string,
         description: option<string>,
         /// The function's flags, e.g. `no-writes`.
@@ -1111,17 +1147,17 @@ interface types {
     }
 
     /// A library of functions.
-    record library {
+    record function-list-library {
         library-name: string,
         /// The engine that runs the library, e.g. `LUA`.
         engine: string,
-        functions: list<library-function>,
+        functions: list<function-list-function>,
         /// The library's source code, with `withcode`.
         library-code: option<string>,
     }
 
     /// The function that is running.
-    record running-function {
+    record function-stats-running {
         name: string,
         /// The command and its arguments that called the function.
         command: list<string>,
@@ -1130,7 +1166,7 @@ interface types {
     }
 
     /// The libraries and functions of an engine.
-    record engine-stats {
+    record function-stats-engine {
         libraries-count: integer,
         functions-count: integer,
     }
@@ -1138,9 +1174,9 @@ interface types {
     /// The function that is running, and the libraries and functions of each engine.
     record function-stats-reply {
         /// None when no function is running.
-        running-script: option<running-function>,
+        running-script: option<function-stats-running>,
         /// The statistics of each engine, by name.
-        engines: map<string, engine-stats>,
+        engines: map<string, function-stats-engine>,
     }
 
     // set commands
@@ -1168,6 +1204,9 @@ interface types {
         /// `ALPHA`: sorts lexicographically, rather than numerically.
         alpha: bool,
     }
+
+    /// The options of the sort, see `sort-ro`.
+    type sort-ro-opts = sort-opts;
 
     enum sort-order {
         /// ascending, smallest to largest.
@@ -1199,15 +1238,18 @@ interface types {
     }
 
     /// Which end of a sorted set to pop from.
-    enum pop-end {
+    enum zmpop-end {
         /// The members with the lowest scores.
         min,
         /// The members with the highest scores.
         max,
     }
 
+    /// The end to pop from, see `bzmpop`.
+    type bzmpop-end = zmpop-end;
+
     /// How scores combine for a member in several sorted sets.
-    enum aggregate {
+    enum zset-aggregate {
         /// The sum of the weighted scores, the default.
         sum,
         /// The lowest weighted score.
@@ -1226,6 +1268,9 @@ interface types {
         /// `BYLEX`: the members in the range, for members of equal score.
         lex(tuple<lex-bound, lex-bound>),
     }
+
+    /// The range of members to store, see `zrangestore`.
+    type zrangestore-by = zrange-by;
 
     /// The range of ZRANGE WITHSCORES, which does not support BYLEX, see `zrange-by`.
     variant zrange-withscores-by {
@@ -1312,7 +1357,7 @@ interface types {
     }
 
     /// A consumer of a group, see `xinfo-consumers`.
-    record xinfo-consumer {
+    record xinfo-consumers-entry {
         /// The consumer's name.
         name: string,
         /// The number of entries pending for the consumer.
@@ -1326,7 +1371,7 @@ interface types {
     }
 
     /// A consumer group of a stream, see `xinfo-groups`.
-    record xinfo-group {
+    record xinfo-groups-entry {
         /// The group's name.
         name: string,
         /// The number of consumers in the group.
@@ -1462,6 +1507,9 @@ interface types {
         persist,
     }
 
+    /// The expiration to set on the fields, see `hgetex`.
+    type hgetex-ttl = getex-ttl;
+
     /// The longest common subsequence of two strings, as the ranges matching in each, see `lcs-idx`.
     record lcs-idx-reply {
         /// The ranges that match, from the end of the strings to their start.
@@ -1516,4 +1564,7 @@ interface types {
         /// Retain the time to live associated with the keys.
         keepttl,
     }
+
+    /// The expiration to set on the fields, see `hsetex`.
+    type hsetex-ttl = set-ttl;
 }

@@ -2,7 +2,7 @@
 //! its interfaces.
 //!
 //! - [`types`]: the package's `types` interface, shared by every component's bindings.
-//! - [`codec`]: RESP serialization of a [`types::Value`], to and from bytes.
+//! - [`codec`]: RESP serialization of a [`types::RespValue`], to and from bytes.
 //! - [`command`]: [`IntoCommand`], converting Rust values into the words of a command.
 //! - [`value`]: [`FromValue`], converting a reply into Rust values.
 //!

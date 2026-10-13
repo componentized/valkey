@@ -1,6 +1,6 @@
 /// A transport for connections over wasi:sockets TCP.
 interface tcp {
-    use types.{connect-opts, error, value};
+    use types.{connect-opts, error, resp-value};
     use connection.{connection};
 
     /// A TCP connection to a Valkey server, framing the bytes it carries into RESP values in each
@@ -15,14 +15,14 @@ interface tcp {
         /// May be called at most once, like `tcp-socket.send`. Closing `requests` half-closes the
         /// socket. The future resolves once every value is written, or with the error that stopped
         /// writing.
-        send: func(requests: stream<value>) -> future<result<_, error>>;
+        send: func(requests: stream<resp-value>) -> future<result<_, error>>;
 
         /// The values the server sends, in order.
         ///
         /// May be called at most once, like `tcp-socket.receive`. The stream closes when the server
         /// closes the socket, the future resolves to `ok` for a graceful close or to the error
         /// otherwise.
-        receive: func() -> tuple<stream<value>, future<result<_, error>>>;
+        receive: func() -> tuple<stream<resp-value>, future<result<_, error>>>;
     }
 
     /// Opens a transport and establishes a connection over it with `opts`, see `connection.new`.

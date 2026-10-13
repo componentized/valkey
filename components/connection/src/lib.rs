@@ -21,7 +21,7 @@ use std::future::poll_fn;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
-use componentized_valkey::types::{NestedValue, Value};
+use componentized_valkey::types::{RespNestedValue, RespValue};
 use exports::componentized::valkey::connection::{
     ConnectOpts, Connection, DurationMilliseconds, Error, Guest, GuestConnection,
 };
@@ -42,21 +42,21 @@ impl Guest for Component {
 /// Where the reply to a command goes.
 enum Reply {
     /// To the caller waiting for it.
-    Call(oneshot::Sender<Result<Value, Error>>),
+    Call(oneshot::Sender<Result<RespValue, Error>>),
     /// Nowhere, the command was sent without waiting for its reply.
     Discard,
 }
 
 /// A command for the writer, with a signal for once it is written.
 struct Request {
-    command: Value,
+    command: RespValue,
     written: Option<oneshot::Sender<()>>,
 }
 
 /// Work for the supervisor to start.
 enum Task {
     /// Forward push messages from the channel to a reader's stream.
-    Pushes(mpsc::Receiver<Value>, StreamWriter<Value>),
+    Pushes(mpsc::Receiver<RespValue>, StreamWriter<RespValue>),
     /// Keep the connection alive, until the keep-alive is set again.
     KeepAlive {
         generation: u64,
@@ -75,9 +75,9 @@ struct State {
     /// idle.
     activity: u64,
     /// The readers of push messages.
-    pushes: Vec<mpsc::Sender<Value>>,
+    pushes: Vec<mpsc::Sender<RespValue>>,
     /// The server's properties from the reply to HELLO.
-    server_properties: Vec<(String, Value)>,
+    server_properties: Vec<(String, RespValue)>,
     /// Bumped each time the keep-alive is set, a keep-alive task stops once it is outdated.
     keep_alive_generation: u64,
 }
@@ -96,10 +96,13 @@ pub struct ConnectionImpl(Rc<Inner>);
 
 impl GuestConnection for ConnectionImpl {
     async fn new(
-        replies: StreamReader<Value>,
+        replies: StreamReader<RespValue>,
         closed: FutureReader<Result<(), Error>>,
         opts: Option<ConnectOpts>,
-    ) -> (StreamReader<Value>, FutureReader<Result<Connection, Error>>) {
+    ) -> (
+        StreamReader<RespValue>,
+        FutureReader<Result<Connection, Error>>,
+    ) {
         let (output, requests) = wit_stream::new();
         // the default is only written if the connection is dropped before it is established
         let (connection_writer, connection) = wit_future::new(|| Err(Error::Closed(None)));
@@ -121,15 +124,15 @@ impl GuestConnection for ConnectionImpl {
         (requests, connection)
     }
 
-    fn server_properties(&self) -> Vec<(String, Value)> {
+    fn server_properties(&self) -> Vec<(String, RespValue)> {
         self.0.state.borrow().server_properties.clone()
     }
 
-    async fn exchange(&self, command: Vec<String>) -> Result<Value, Error> {
+    async fn exchange(&self, command: Vec<String>) -> Result<RespValue, Error> {
         exchange(&self.0, command).await
     }
 
-    async fn exchange_all(&self, commands: Vec<Vec<String>>) -> Vec<Result<Value, Error>> {
+    async fn exchange_all(&self, commands: Vec<Vec<String>>) -> Vec<Result<RespValue, Error>> {
         exchange_all(&self.0, commands).await
     }
 
@@ -149,11 +152,14 @@ impl GuestConnection for ConnectionImpl {
         ok(exchange(&self.0, words(&["UNWATCH"])).await?)
     }
 
-    async fn transaction(&self, commands: Vec<Vec<String>>) -> Result<Option<Vec<Value>>, Error> {
+    async fn transaction(
+        &self,
+        commands: Vec<Vec<String>>,
+    ) -> Result<Option<Vec<RespValue>>, Error> {
         transaction(&self.0, commands).await
     }
 
-    fn pushes(&self) -> StreamReader<Value> {
+    fn pushes(&self) -> StreamReader<RespValue> {
         let (writer, reader) = wit_stream::new();
         let (tx, rx) = mpsc::channel(PUSH_BUFFER);
         let mut state = self.0.state.borrow_mut();
@@ -204,10 +210,10 @@ fn enqueue(
         return Err(error.clone());
     }
     // the words of a command are bulk strings
-    let command = Value::Array(
+    let command = RespValue::Array(
         command
             .into_iter()
-            .map(|word| componentized_valkey::codec::encode(Value::BulkString(word)))
+            .map(|word| componentized_valkey::codec::encode(RespValue::BulkString(word)))
             .collect(),
     );
     inner
@@ -218,9 +224,9 @@ fn enqueue(
     Ok(())
 }
 
-async fn exchange(inner: &Inner, command: Vec<String>) -> Result<Value, Error> {
+async fn exchange(inner: &Inner, command: Vec<String>) -> Result<RespValue, Error> {
     if replies_with_pushes(&command) {
-        return emit(inner, command).await.map(|()| Value::Null);
+        return emit(inner, command).await.map(|()| RespValue::Null);
     }
     let (reply_tx, reply_rx) = oneshot::channel();
     enqueue(inner, command, Some(Reply::Call(reply_tx)), None)?;
@@ -231,7 +237,7 @@ async fn exchange(inner: &Inner, command: Vec<String>) -> Result<Value, Error> {
 }
 
 /// Queue every command before waiting for any reply, so no other command is sent between them.
-async fn exchange_all(inner: &Inner, commands: Vec<Vec<String>>) -> Vec<Result<Value, Error>> {
+async fn exchange_all(inner: &Inner, commands: Vec<Vec<String>>) -> Vec<Result<RespValue, Error>> {
     // no await until every command is queued
     let queued: Vec<Result<Option<oneshot::Receiver<_>>, Error>> = commands
         .into_iter()
@@ -248,7 +254,7 @@ async fn exchange_all(inner: &Inner, commands: Vec<Vec<String>>) -> Vec<Result<V
     for reply in queued {
         replies.push(match reply {
             Err(error) => Err(error),
-            Ok(None) => Ok(Value::Null),
+            Ok(None) => Ok(RespValue::Null),
             // the reply is dropped unsent when the connection closes, the reader fails it first
             Ok(Some(reply)) => reply
                 .await
@@ -262,7 +268,7 @@ async fn exchange_all(inner: &Inner, commands: Vec<Vec<String>>) -> Vec<Result<V
 async fn transaction(
     inner: &Inner,
     commands: Vec<Vec<String>>,
-) -> Result<Option<Vec<Value>>, Error> {
+) -> Result<Option<Vec<RespValue>>, Error> {
     // before MULTI is sent, so an invalid command fails the transaction rather than being left out
     if commands.iter().any(Vec::is_empty) {
         return Err(Error::Client(
@@ -282,8 +288,8 @@ async fn transaction(
     }
     match exec? {
         // a watched key changed
-        Value::Null => Ok(None),
-        Value::Array(replies) => replies
+        RespValue::Null => Ok(None),
+        RespValue::Array(replies) => replies
             .into_iter()
             .map(|reply| componentized_valkey::codec::decode(reply).map_err(Error::Resp))
             .collect::<Result<_, _>>()
@@ -352,7 +358,7 @@ fn words(words: &[&str]) -> Vec<String> {
 async fn write_requests(
     state: Rc<RefCell<State>>,
     mut requests: mpsc::UnboundedReceiver<Request>,
-    mut output: StreamWriter<Value>,
+    mut output: StreamWriter<RespValue>,
 ) {
     while let Some(Request { command, written }) = next(&mut requests).await {
         state.borrow_mut().activity += 1;
@@ -370,14 +376,14 @@ async fn write_requests(
 /// sent unprompted, to the readers of push messages, until the transport closes.
 async fn read_replies(
     state: Rc<RefCell<State>>,
-    mut replies: StreamReader<Value>,
+    mut replies: StreamReader<RespValue>,
     closed: FutureReader<Result<(), Error>>,
 ) {
     while let Some(value) = replies.next().await {
         let mut state = state.borrow_mut();
         state.activity += 1;
         let value = match value {
-            Value::Push(_) => value,
+            RespValue::Push(_) => value,
             value => match state.pending.pop_front() {
                 Some(Reply::Call(reply)) => {
                     let _ = reply.send(reply_result(value));
@@ -414,7 +420,10 @@ async fn supervise(mut tasks: mpsc::UnboundedReceiver<Task>, inner: Weak<Inner>)
 }
 
 /// Forward push messages to a reader's stream, until the reader or the connection is gone.
-async fn forward_pushes(mut pushes: mpsc::Receiver<Value>, mut writer: StreamWriter<Value>) {
+async fn forward_pushes(
+    mut pushes: mpsc::Receiver<RespValue>,
+    mut writer: StreamWriter<RespValue>,
+) {
     while let Some(value) = next(&mut pushes).await {
         if writer.write_one(value).await.is_some() {
             break;
@@ -491,8 +500,8 @@ async fn establish(
 }
 
 /// The server's properties from the reply to HELLO, a map of property names to values.
-fn server_properties(reply: Value) -> Result<Vec<(String, Value)>, Error> {
-    let Value::Map(entries) = reply else {
+fn server_properties(reply: RespValue) -> Result<Vec<(String, RespValue)>, Error> {
+    let RespValue::Map(entries) = reply else {
         return Err(Error::Client(format!(
             "unexpected reply to HELLO: {reply:?}"
         )));
@@ -501,7 +510,7 @@ fn server_properties(reply: Value) -> Result<Vec<(String, Value)>, Error> {
         .into_iter()
         .map(|(name, value)| {
             let name = match decode(name)? {
-                Value::String(name) | Value::BulkString(name) => name,
+                RespValue::String(name) | RespValue::BulkString(name) => name,
                 name => {
                     return Err(Error::Client(format!(
                         "unexpected property name in reply to HELLO: {name:?}"
@@ -513,26 +522,26 @@ fn server_properties(reply: Value) -> Result<Vec<(String, Value)>, Error> {
         .collect()
 }
 
-fn decode(value: NestedValue) -> Result<Value, Error> {
+fn decode(value: RespNestedValue) -> Result<RespValue, Error> {
     componentized_valkey::codec::decode(value).map_err(Error::Resp)
 }
 
 /// An error value from the server fails the command.
 /// A simple string `OK`.
-fn ok(reply: Value) -> Result<(), Error> {
+fn ok(reply: RespValue) -> Result<(), Error> {
     match reply {
-        Value::String(text) if text == "OK" => Ok(()),
+        RespValue::String(text) if text == "OK" => Ok(()),
         reply => Err(unexpected(&reply)),
     }
 }
 
-fn unexpected(reply: &Value) -> Error {
+fn unexpected(reply: &RespValue) -> Error {
     Error::Client(format!("unexpected reply: {reply:?}"))
 }
 
-fn reply_result(value: Value) -> Result<Value, Error> {
+fn reply_result(value: RespValue) -> Result<RespValue, Error> {
     match value {
-        Value::Error(message) | Value::BulkError(message) => Err(Error::Valkey(message)),
+        RespValue::Error(message) | RespValue::BulkError(message) => Err(Error::Valkey(message)),
         value => Ok(value),
     }
 }

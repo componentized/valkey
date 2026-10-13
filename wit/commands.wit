@@ -10,31 +10,38 @@
 interface commands {
     use connection.{connection};
     use types.{
-        double, error, integer, value, duration-seconds, duration-milliseconds, unix-time-seconds,
-        unix-time-milliseconds, cursor, ttl-mode, ttl-result, ttl-reply, pttl-reply,
-        expiretime-reply, pexpiretime-reply, acl-dryrun-result, acl-log-entry, bgsave-operation,
-        client-type, client-filter, client-pause-mode, client-unblock-type,
-        cluster-bumpepoch-result, cluster-failover-mode, slot-migration-operation, slot-migration,
-        slot-migration-group, cluster-reset-mode, cluster-setslot-state, commandlog-type, log-entry,
-        failover-target, latency-histogram-entry, latency-latest-entry, module-info,
-        role-replica-info, role-primary, role-replica, role-reply, shutdown-flags, shutdown-save,
-        acl-list-entry, rule, rule-selector, key-rule, channel-rule, command-rule, db-rule,
-        user-rule, bit-range, bitfield-encoding, bitfield-offset, bitfield-overflow, bitfield-get,
-        bitfield-set, bitfield-incrby, bitfield-operation, bitop-operation, key-spec-begin-search,
-        key-spec-keyword, key-spec-find-keys, key-spec-range, key-spec-keynum, key-spec,
-        command-info-reply, command-argument-type, command-argument, command-docs-reply,
-        tracking-redirect, client-setinfo-attr, client-tracking-mode, client-tracking-options,
-        client-trackinginfo-reply, command-list-filter, geo-coordinates, geo-unit, geoadd-condition,
-        geo-from, geo-radius, geo-box, geo-shape, geo-count, geosearch-with-flags,
-        geo-search-result, field-persist-result, hsetex-condition, hsetex-field-condition, key-type,
-        migrate-flags, migrate-auth, list-side, linsert-position, linsert-result, flush-mode,
-        library-function, library, running-function, engine-stats, function-stats-reply, limit,
-        sort-opts, sort-order, score-bound, lex-bound, pop-end, aggregate, zrange-by,
-        zrange-withscores-by, zadd-condition, zadd-comparison, stream-id, stream-trim,
-        stream-trim-maxlen, stream-trim-minid, stream-trim-efficiency, xclaim-opts, xinfo-consumer,
-        xinfo-group, xinfo-stream-reply, xinfo-stream-reply-full, xinfo-stream-reply-full-group,
-        xinfo-stream-reply-full-consumer, xpending-summary, xpending-extended-entry, getex-ttl,
-        lcs-idx-reply, lcs-idx-match, msetex-precondition, msetex-ttl, set-precondition, set-ttl
+        double, error, integer, resp-value, duration-seconds, duration-milliseconds,
+        unix-time-seconds, unix-time-milliseconds, cursor, ttl-mode, hexpire-result,
+        hpexpireat-result, hpexpire-result, hexpireat-result, ttl-reply, httl-reply, pttl-reply,
+        hpttl-reply, expiretime-reply, hexpiretime-reply, pexpiretime-reply, hpexpiretime-reply,
+        acl-dryrun-result, acl-log-entry, bgsave-operation, client-type, client-filter,
+        client-pause-mode, client-unblock-type, cluster-bumpepoch-result, cluster-failover-mode,
+        cluster-getslotmigrations-operation, cluster-getslotmigrations-entry,
+        cluster-migrateslots-group, cluster-reset-mode, cluster-setslot-state, commandlog-type,
+        commandlog-entry, slowlog-entry, failover-target, latency-histogram-entry,
+        latency-latest-entry, module-list-entry, role-primary-replica, role-primary, role-replica,
+        role-reply, shutdown-flags, shutdown-save, acl-list-entry, acl-rule, acl-selector-rule,
+        acl-key-rule, acl-channel-rule, acl-command-rule, acl-db-rule, acl-user-rule, bit-range,
+        bitfield-encoding, bitfield-offset, bitfield-overflow, bitfield-get, bitfield-ro-get,
+        bitfield-set, bitfield-incrby, bitfield-operation, bitop-operation,
+        command-key-spec-begin-search, command-key-spec-keyword, command-key-spec-find-keys,
+        command-key-spec-range, command-key-spec-keynum, command-key-spec, command-info-reply,
+        command-reply, command-docs-argument-type, command-docs-argument, command-docs-reply,
+        client-tracking-redirect, client-setinfo-attr, client-tracking-mode,
+        client-tracking-options, client-trackinginfo-reply, command-list-filter, geo-coordinates,
+        geo-unit, geoadd-condition, geosearch-from, geosearch-radius, geosearch-box,
+        geosearch-shape, geosearchstore-shape, geosearch-count, geosearchstore-count,
+        geosearch-with-flags, geosearch-with-result, hpersist-result, hsetex-condition,
+        hsetex-field-condition, key-type, migrate-flags, migrate-auth, list-side, linsert-position,
+        linsert-result, flush-mode, function-list-function, function-list-library,
+        function-stats-running, function-stats-engine, function-stats-reply, limit, sort-opts,
+        sort-ro-opts, sort-order, score-bound, lex-bound, zmpop-end, bzmpop-end, zset-aggregate,
+        zrange-by, zrangestore-by, zrange-withscores-by, zadd-condition, zadd-comparison, stream-id,
+        stream-trim, stream-trim-maxlen, stream-trim-minid, stream-trim-efficiency, xclaim-opts,
+        xinfo-consumers-entry, xinfo-groups-entry, xinfo-stream-reply, xinfo-stream-reply-full,
+        xinfo-stream-reply-full-group, xinfo-stream-reply-full-consumer, xpending-summary,
+        xpending-extended-entry, getex-ttl, hgetex-ttl, lcs-idx-reply, lcs-idx-match,
+        msetex-precondition, msetex-ttl, set-precondition, set-ttl, hsetex-ttl
     };
 
 
@@ -72,7 +79,7 @@ interface commands {
     ///
     /// ACL GETUSER username
     /// https://valkey.io/commands/acl-getuser/
-    acl-getuser: async func(connection: borrow<connection>, username: string) -> result<option<list<rule>>, error>;
+    acl-getuser: async func(connection: borrow<connection>, username: string) -> result<option<list<acl-rule>>, error>;
 
     /// The rules of every user, as written to an ACL file.
     ///
@@ -113,7 +120,7 @@ interface commands {
     ///
     /// ACL SETUSER username [ rule ] [ [ rule ] ... ]
     /// https://valkey.io/commands/acl-setuser/
-    acl-setuser: async func(connection: borrow<connection>, username: string, rules: option<list<rule>>) -> result<_, error>;
+    acl-setuser: async func(connection: borrow<connection>, username: string, rules: option<list<acl-rule>>) -> result<_, error>;
 
     /// The names of the users.
     ///
@@ -242,7 +249,7 @@ interface commands {
     ///
     /// CLUSTER GETSLOTMIGRATIONS
     /// https://valkey.io/commands/cluster-getslotmigrations/
-    cluster-getslotmigrations: async func(connection: borrow<connection>) -> result<list<slot-migration>, error>;
+    cluster-getslotmigrations: async func(connection: borrow<connection>) -> result<list<cluster-getslotmigrations-entry>, error>;
 
     /// Connects the node to another, adding it to the cluster.
     ///
@@ -254,7 +261,7 @@ interface commands {
     ///
     /// CLUSTER MIGRATESLOTS SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ] [ SLOTSRANGE ... ]
     /// https://valkey.io/commands/cluster-migrateslots/
-    cluster-migrateslots: async func(connection: borrow<connection>, migrations: list<slot-migration-group>) -> result<_, error>;
+    cluster-migrateslots: async func(connection: borrow<connection>, migrations: list<cluster-migrateslots-group>) -> result<_, error>;
 
     /// The replicas of the primary node, each a line in the format of CLUSTER NODES.
     ///
@@ -297,7 +304,7 @@ interface commands {
     ///
     /// COMMANDLOG GET count 〈 slow | large-request | large-reply 〉
     /// https://valkey.io/commands/commandlog-get/
-    commandlog-get: async func(connection: borrow<connection>, count: integer, %type: commandlog-type) -> result<list<log-entry>, error>;
+    commandlog-get: async func(connection: borrow<connection>, count: integer, %type: commandlog-type) -> result<list<commandlog-entry>, error>;
 
     /// The number of entries in the command log of the type.
     ///
@@ -388,7 +395,7 @@ interface commands {
     ///
     /// MODULE LIST
     /// https://valkey.io/commands/module-list/
-    module-list: async func(connection: borrow<connection>) -> result<list<module-info>, error>;
+    module-list: async func(connection: borrow<connection>) -> result<list<module-list-entry>, error>;
 
     /// Loads the module at the path, with the arguments.
     ///
@@ -450,7 +457,7 @@ interface commands {
     ///
     /// SLOWLOG GET [ count ]
     /// https://valkey.io/commands/slowlog-get/
-    slowlog-get: async func(connection: borrow<connection>, count: option<integer>) -> result<list<log-entry>, error>;
+    slowlog-get: async func(connection: borrow<connection>, count: option<integer>) -> result<list<slowlog-entry>, error>;
 
     /// The number of entries in the slow log.
     ///
@@ -485,7 +492,7 @@ interface commands {
     ///
     /// BITFIELD_RO key [ GET encoding offset [ GET encoding offset ... ] ]
     /// https://valkey.io/commands/bitfield_ro/
-    bitfield-ro: async func(connection: borrow<connection>, key: string, gets: option<list<bitfield-get>>) -> result<list<integer>, error>;
+    bitfield-ro: async func(connection: borrow<connection>, key: string, gets: option<list<bitfield-ro-get>>) -> result<list<integer>, error>;
 
     /// Stores the bitwise operation of the strings stored at the source keys in the destination,
     /// returning its length, the length of the longest source.
@@ -559,7 +566,7 @@ interface commands {
     ///
     /// CLIENT GETREDIR
     /// https://valkey.io/commands/client-getredir/
-    client-getredir: async func(connection: borrow<connection>) -> result<tracking-redirect, error>;
+    client-getredir: async func(connection: borrow<connection>) -> result<client-tracking-redirect, error>;
 
     /// The ID of the connection, unique until the server restarts.
     ///
@@ -619,7 +626,7 @@ interface commands {
     ///
     /// COMMAND
     /// https://valkey.io/commands/command/
-    command: async func(connection: borrow<connection>) -> result<list<command-info-reply>, error>;
+    command: async func(connection: borrow<connection>) -> result<list<command-reply>, error>;
 
     /// The number of commands of the server.
     ///
@@ -672,7 +679,7 @@ interface commands {
     ///
     /// HELLO 3 [ AUTH username password ] [ SETNAME clientname ]
     /// https://valkey.io/commands/hello/
-    hello: async func(connection: borrow<connection>, auth: option<tuple<string, string>>, client-name: option<string>) -> result<map<string, value>, error>;
+    hello: async func(connection: borrow<connection>, auth: option<tuple<string, string>>, client-name: option<string>) -> result<map<string, resp-value>, error>;
 
     /// Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk.
     ///
@@ -759,7 +766,7 @@ interface commands {
     ///
     /// GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ]
     /// https://valkey.io/commands/geosearch/
-    geosearch: async func(connection: borrow<connection>, key: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>) -> result<list<string>, error>;
+    geosearch: async func(connection: borrow<connection>, key: string, shape: geosearch-shape, order: option<sort-order>, count: option<geosearch-count>) -> result<list<string>, error>;
 
     /// The members of the geospatial index stored at key in the shape, with the details asked for.
     ///
@@ -767,7 +774,7 @@ interface commands {
     ///
     /// GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ WITHCOORD ] [ WITHDIST ] [ WITHHASH ]
     /// https://valkey.io/commands/geosearch/
-    geosearch-with: async func(connection: borrow<connection>, key: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>, details: geosearch-with-flags) -> result<list<geo-search-result>, error>;
+    geosearch-with: async func(connection: borrow<connection>, key: string, shape: geosearch-shape, order: option<sort-order>, count: option<geosearch-count>, details: geosearch-with-flags) -> result<list<geosearch-with-result>, error>;
 
     /// Stores the members of the geospatial index stored at source in the shape, returning how
     /// many, with their positions, or with `storedist`, their distance from the center as the
@@ -775,7 +782,7 @@ interface commands {
     ///
     /// GEOSEARCHSTORE destination source [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ STOREDIST ]
     /// https://valkey.io/commands/geosearchstore/
-    geosearchstore: async func(connection: borrow<connection>, destination: string, source: string, shape: geo-shape, order: option<sort-order>, count: option<geo-count>, storedist: bool) -> result<integer, error>;
+    geosearchstore: async func(connection: borrow<connection>, destination: string, source: string, shape: geosearchstore-shape, order: option<sort-order>, count: option<geosearchstore-count>, storedist: bool) -> result<integer, error>;
 
 
     // hash commands
@@ -796,13 +803,13 @@ interface commands {
     ///
     /// HEXPIRE key seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hexpire/
-    hexpire: async func(connection: borrow<connection>, key: string, seconds: duration-seconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hexpire: async func(connection: borrow<connection>, key: string, seconds: duration-seconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<hexpire-result>, error>;
 
     /// Manipulate the expiration time for existing hash fields.
     ///
     /// HEXPIREAT key unix-time-seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hexpireat/
-    hexpireat: async func(connection: borrow<connection>, key: string, seconds: unix-time-seconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hexpireat: async func(connection: borrow<connection>, key: string, seconds: unix-time-seconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<hexpireat-result>, error>;
 
     /// When each of the hash fields expires, to the second.
     ///
@@ -810,7 +817,7 @@ interface commands {
     ///
     /// HEXPIRETIME key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hexpiretime/
-    hexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<expiretime-reply>, error>;
+    hexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<hexpiretime-reply>, error>;
 
     /// Returns the value associated with field in the hash stored at key.
     ///
@@ -835,7 +842,7 @@ interface commands {
     ///
     /// HGETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hgetex/
-    hgetex: async func(connection: borrow<connection>, key: string, ttl: option<getex-ttl>, fields: list<string>) -> result<list<option<string>>, error>;
+    hgetex: async func(connection: borrow<connection>, key: string, ttl: option<hgetex-ttl>, fields: list<string>) -> result<list<option<string>>, error>;
 
     /// Increments the number stored at field in the hash stored at key by increment.
     ///
@@ -877,19 +884,19 @@ interface commands {
     ///
     /// HPERSIST key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpersist/
-    hpersist: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-persist-result>, error>;
+    hpersist: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<hpersist-result>, error>;
 
     /// Manipulate the expiration time for existing hash fields, in milliseconds.
     ///
     /// HPEXPIRE key milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpexpire/
-    hpexpire: async func(connection: borrow<connection>, key: string, milliseconds: duration-milliseconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hpexpire: async func(connection: borrow<connection>, key: string, milliseconds: duration-milliseconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<hpexpire-result>, error>;
 
     /// Manipulate the expiration time for existing hash fields, as a Unix time in milliseconds.
     ///
     /// HPEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpexpireat/
-    hpexpireat: async func(connection: borrow<connection>, key: string, milliseconds: unix-time-milliseconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
+    hpexpireat: async func(connection: borrow<connection>, key: string, milliseconds: unix-time-milliseconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<hpexpireat-result>, error>;
 
     /// When each of the hash fields expires, to the millisecond.
     ///
@@ -897,7 +904,7 @@ interface commands {
     ///
     /// HPEXPIRETIME key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpexpiretime/
-    hpexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<pexpiretime-reply>, error>;
+    hpexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<hpexpiretime-reply>, error>;
 
     /// The remaining time to live of each of the hash fields, to the millisecond.
     ///
@@ -905,7 +912,7 @@ interface commands {
     ///
     /// HPTTL key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpttl/
-    hpttl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<pttl-reply>, error>;
+    hpttl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<hpttl-reply>, error>;
 
     /// Random fields from the hash value stored at key, up to the count.
     ///
@@ -956,7 +963,7 @@ interface commands {
     ///
     /// HSETEX key [ NX | XX ] [ FNX | FXX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ] FIELDS numfields field value [ field value ... ]
     /// https://valkey.io/commands/hsetex/
-    hsetex: async func(connection: borrow<connection>, key: string, condition: option<hsetex-condition>, field-condition: option<hsetex-field-condition>, ttl: option<set-ttl>, field-and-values: list<tuple<string, string>>) -> result<bool, error>;
+    hsetex: async func(connection: borrow<connection>, key: string, condition: option<hsetex-condition>, field-condition: option<hsetex-field-condition>, ttl: option<hsetex-ttl>, field-and-values: list<tuple<string, string>>) -> result<bool, error>;
 
     /// Sets field in the hash stored at key to value, only if field does not yet exist.
     ///
@@ -976,7 +983,7 @@ interface commands {
     ///
     /// HTTL key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/httl/
-    httl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<ttl-reply>, error>;
+    httl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<httl-reply>, error>;
 
     /// All values in the hash stored at key.
     ///
@@ -1514,27 +1521,27 @@ interface commands {
     ///
     /// EVAL script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/eval/
-    eval: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+    eval: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
 
     /// Runs the Lua script, which may not write, returning its result, see `eval`.
     ///
     /// EVAL_RO script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/eval_ro/
-    eval-ro: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+    eval-ro: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
 
     /// Runs the Lua script cached with the SHA1 digest, see `script-load`, returning its result, see
     /// `eval`.
     ///
     /// EVALSHA sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/evalsha/
-    evalsha: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+    evalsha: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
 
     /// Runs the Lua script cached with the SHA1 digest, which may not write, returning its result,
     /// see `eval`.
     ///
     /// EVALSHA_RO sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/evalsha_ro/
-    evalsha-ro: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+    evalsha-ro: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
 
     /// Calls the function, see `function-load`, returning its result, the keys it accesses and its
     /// arguments are passed to it.
@@ -1543,13 +1550,13 @@ interface commands {
     ///
     /// FCALL function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/fcall/
-    fcall: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+    fcall: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
 
     /// Calls the function, which must be flagged `no-writes`, returning its result, see `fcall`.
     ///
     /// FCALL_RO function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/fcall_ro/
-    fcall-ro: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<value, error>;
+    fcall-ro: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
 
     /// Deletes the library and its functions.
     ///
@@ -1573,7 +1580,7 @@ interface commands {
     ///
     /// FUNCTION LIST [ LIBRARYNAME library-name-pattern ] [ WITHCODE ]
     /// https://valkey.io/commands/function-list/
-    function-list: async func(connection: borrow<connection>, library-name-pattern: option<string>, withcode: bool) -> result<list<library>, error>;
+    function-list: async func(connection: borrow<connection>, library-name-pattern: option<string>, withcode: bool) -> result<list<function-list-library>, error>;
 
     /// Loads the library from its source code, replacing a library of the same name with
     /// `replace`, returning its name.
@@ -1763,7 +1770,7 @@ interface commands {
     ///
     /// SORT_RO key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]
     /// https://valkey.io/commands/sort_ro/
-    sort-ro: async func(connection: borrow<connection>, key: string, opts: option<sort-opts>) -> result<list<list<option<string>>>, error>;
+    sort-ro: async func(connection: borrow<connection>, key: string, opts: option<sort-ro-opts>) -> result<list<list<option<string>>>, error>;
 
 
     // sortedset commands
@@ -1778,7 +1785,7 @@ interface commands {
     ///
     /// BZMPOP timeout numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]
     /// https://valkey.io/commands/bzmpop/
-    bzmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: pop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
+    bzmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: bzmpop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
 
     /// Removes the member with the highest score from the first non-empty sorted set, waiting up to
     /// the timeout for one, returning its key, the member and its score.
@@ -1871,7 +1878,7 @@ interface commands {
     ///
     /// ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
     /// https://valkey.io/commands/zinter/
-    zinter: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<string>, error>;
+    zinter: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<string>, error>;
 
     /// The members, and their combined scores, in all of the sorted sets.
     ///
@@ -1879,7 +1886,7 @@ interface commands {
     ///
     /// ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES
     /// https://valkey.io/commands/zinter/
-    zinter-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<tuple<string, double>>, error>;
+    zinter-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<tuple<string, double>>, error>;
 
     /// The number of members in all of the sorted sets, counting stops at the limit.
     ///
@@ -1891,7 +1898,7 @@ interface commands {
     ///
     /// ZINTERSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
     /// https://valkey.io/commands/zinterstore/
-    zinterstore: async func(connection: borrow<connection>, destination: string, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<integer, error>;
+    zinterstore: async func(connection: borrow<connection>, destination: string, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<integer, error>;
 
     /// The number of members of the sorted set stored at key in the range, for members of equal
     /// score.
@@ -1905,7 +1912,7 @@ interface commands {
     ///
     /// ZMPOP numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]
     /// https://valkey.io/commands/zmpop/
-    zmpop: async func(connection: borrow<connection>, keys: list<string>, end: pop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
+    zmpop: async func(connection: borrow<connection>, keys: list<string>, end: zmpop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
 
     /// The score of each of the members of the sorted set stored at key, none for a member that is
     /// not in it.
@@ -1981,7 +1988,7 @@ interface commands {
     ///
     /// ZRANGESTORE dst src min max [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ]
     /// https://valkey.io/commands/zrangestore/
-    zrangestore: async func(connection: borrow<connection>, destination: string, source: string, range: zrange-by, rev: bool, limit: option<limit>) -> result<integer, error>;
+    zrangestore: async func(connection: borrow<connection>, destination: string, source: string, range: zrangestore-by, rev: bool, limit: option<limit>) -> result<integer, error>;
 
     /// The position of the member in the sorted set stored at key, from the lowest score, none when
     /// it is not a member.
@@ -2076,7 +2083,7 @@ interface commands {
     ///
     /// ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
     /// https://valkey.io/commands/zunion/
-    zunion: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<string>, error>;
+    zunion: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<string>, error>;
 
     /// The members, and their combined scores, in any of the sorted sets.
     ///
@@ -2084,13 +2091,13 @@ interface commands {
     ///
     /// ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES
     /// https://valkey.io/commands/zunion/
-    zunion-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<tuple<string, double>>, error>;
+    zunion-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<tuple<string, double>>, error>;
 
     /// Stores the members in any of the sorted sets, with their combined scores, returning how many.
     ///
     /// ZUNIONSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
     /// https://valkey.io/commands/zunionstore/
-    zunionstore: async func(connection: borrow<connection>, destination: string, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<integer, error>;
+    zunionstore: async func(connection: borrow<connection>, destination: string, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<integer, error>;
 
 
     // stream commands
@@ -2188,13 +2195,13 @@ interface commands {
     ///
     /// XINFO CONSUMERS key group
     /// https://valkey.io/commands/xinfo-consumers/
-    xinfo-consumers: async func(connection: borrow<connection>, key: string, group: string) -> result<list<xinfo-consumer>, error>;
+    xinfo-consumers: async func(connection: borrow<connection>, key: string, group: string) -> result<list<xinfo-consumers-entry>, error>;
 
     /// Consumer groups of the stream stored at <key>.
     ///
     /// XINFO GROUPS key
     /// https://valkey.io/commands/xinfo-groups/
-    xinfo-groups: async func(connection: borrow<connection>, key: string) -> result<list<xinfo-group>, error>;
+    xinfo-groups: async func(connection: borrow<connection>, key: string) -> result<list<xinfo-groups-entry>, error>;
 
     /// Information about the stream stored at <key>.
     ///

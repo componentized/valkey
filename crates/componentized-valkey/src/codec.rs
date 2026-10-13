@@ -1,6 +1,6 @@
 //! RESP serialization, from <https://github.com/iorust/resp/tree/v1.0.3>.
 
-use crate::types::{NestedValue, RespError as Error, Value};
+use crate::types::{RespError as Error, RespNestedValue, RespValue};
 
 /// up to 512 MB in length
 const RESP_MAX_SIZE: i64 = 512 * 1024 * 1024;
@@ -10,46 +10,46 @@ const CRLF_BYTES: &'static [u8] = b"\r\n";
 /// # Examples
 /// ```
 /// # use componentized_valkey::codec::encode;
-/// # use componentized_valkey::types::Value;
-/// let val = Value::String("OK".to_string());
+/// # use componentized_valkey::types::RespValue;
+/// let val = RespValue::String("OK".to_string());
 /// assert_eq!(encode(val), b"+OK\r\n");
 /// ```
-pub fn encode(value: Value) -> Vec<u8> {
+pub fn encode(value: RespValue) -> Vec<u8> {
     let mut res: Vec<u8> = Vec::new();
     buf_encode(value, &mut res);
     res
 }
 
 #[inline]
-fn buf_encode(value: Value, buf: &mut Vec<u8>) {
+fn buf_encode(value: RespValue, buf: &mut Vec<u8>) {
     match value {
-        Value::Null => {
+        RespValue::Null => {
             buf.push(b'_');
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::String(val) => {
+        RespValue::String(val) => {
             buf.push(b'+');
             buf.extend_from_slice(val.as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::Error(val) => {
+        RespValue::Error(val) => {
             buf.push(b'-');
             buf.extend_from_slice(val.as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::Integer(val) => {
+        RespValue::Integer(val) => {
             buf.push(b':');
             buf.extend_from_slice(val.to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::BulkString(val) => {
+        RespValue::BulkString(val) => {
             buf.push(b'$');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
             buf.extend_from_slice(val.as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::Array(val) => {
+        RespValue::Array(val) => {
             buf.push(b'*');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
@@ -57,7 +57,7 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
                 buf.extend_from_slice(&item);
             }
         }
-        Value::Boolean(ref val) => {
+        RespValue::Boolean(ref val) => {
             buf.push(b'#');
             match val {
                 true => buf.push(b't'),
@@ -65,24 +65,24 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
             }
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::Double(ref val) => {
+        RespValue::Double(ref val) => {
             buf.push(b',');
             buf.extend_from_slice(val.to_string().to_lowercase().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::BigNumber(ref val) => {
+        RespValue::BigNumber(ref val) => {
             buf.push(b'(');
             buf.extend_from_slice(val.as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::BulkError(ref val) => {
+        RespValue::BulkError(ref val) => {
             buf.push(b'!');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
             buf.extend_from_slice(val.as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::VerbatimString((ref encoding, ref value)) => {
+        RespValue::VerbatimString((ref encoding, ref value)) => {
             let val = format!("{encoding}:{value}");
             buf.push(b'=');
             buf.extend_from_slice(val.len().to_string().as_bytes());
@@ -90,7 +90,7 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
             buf.extend_from_slice(val.as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
         }
-        Value::Map(val) => {
+        RespValue::Map(val) => {
             buf.push(b'%');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
@@ -99,7 +99,7 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
                 buf.extend_from_slice(&value);
             }
         }
-        Value::Set(val) => {
+        RespValue::Set(val) => {
             buf.push(b'~');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
@@ -107,7 +107,7 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
                 buf.extend_from_slice(&item);
             }
         }
-        Value::Push(val) => {
+        RespValue::Push(val) => {
             buf.push(b'>');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
@@ -126,11 +126,11 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
 /// # Examples
 /// ```
 /// # use componentized_valkey::codec::{decode, encode};
-/// # use componentized_valkey::types::Value;
-/// let value = Value::BulkString("Hello".to_string());
+/// # use componentized_valkey::types::RespValue;
+/// let value = RespValue::BulkString("Hello".to_string());
 /// assert_eq!(decode(encode(value.clone())), Ok(value));
 /// ```
-pub fn decode(value: Vec<u8>) -> Result<Value, Error> {
+pub fn decode(value: Vec<u8>) -> Result<RespValue, Error> {
     match frame_end(&value, 0)? {
         Some(end) if end == value.len() => decode_frame(&value),
         Some(end) => Err(format!(
@@ -210,7 +210,7 @@ fn frame_end(buf: &[u8], start: usize) -> Result<Option<usize>, Error> {
 }
 
 /// Decodes the whole RESP value at the start of `buf`, its framing already checked by `frame_end`.
-fn decode_frame(buf: &[u8]) -> Result<Value, Error> {
+fn decode_frame(buf: &[u8]) -> Result<RespValue, Error> {
     let crlf = buf
         .windows(2)
         .position(|w| w == CRLF_BYTES)
@@ -224,7 +224,7 @@ fn decode_frame(buf: &[u8]) -> Result<Value, Error> {
         Ok(&buf[body..body + len])
     };
     // the elements of an aggregate value, each kept as its RESP
-    let elements = |count: i64| -> Result<Vec<NestedValue>, Error> {
+    let elements = |count: i64| -> Result<Vec<RespNestedValue>, Error> {
         let mut start = body;
         let mut elements = Vec::with_capacity(count as usize);
         for _ in 0..count {
@@ -236,47 +236,47 @@ fn decode_frame(buf: &[u8]) -> Result<Value, Error> {
     };
 
     match buf[0] {
-        b'+' => parse_string(header).map(Value::String),
-        b'-' => parse_string(header).map(Value::Error),
-        b':' => parse_integer(header).map(Value::Integer),
-        b'_' => Ok(Value::Null),
+        b'+' => parse_string(header).map(RespValue::String),
+        b'-' => parse_string(header).map(RespValue::Error),
+        b':' => parse_integer(header).map(RespValue::Integer),
+        b'_' => Ok(RespValue::Null),
         b'#' => match header {
-            b"t" => Ok(Value::Boolean(true)),
-            b"f" => Ok(Value::Boolean(false)),
+            b"t" => Ok(RespValue::Boolean(true)),
+            b"f" => Ok(RespValue::Boolean(false)),
             _ => Err(format!("invalid RESP boolean: {header:?}")),
         },
-        b',' => parse_double(header).map(Value::Double),
-        b'(' => parse_string(header).map(Value::BigNumber),
+        b',' => parse_double(header).map(RespValue::Double),
+        b'(' => parse_string(header).map(RespValue::BigNumber),
         b'$' => match parse_integer(header)? {
             // a null bulk string, RESP2's null
-            -1 => Ok(Value::Null),
-            _ => parse_string(blob()?).map(Value::BulkString),
+            -1 => Ok(RespValue::Null),
+            _ => parse_string(blob()?).map(RespValue::BulkString),
         },
-        b'!' => parse_string(blob()?).map(Value::BulkError),
+        b'!' => parse_string(blob()?).map(RespValue::BulkError),
         b'=' => {
             let value = parse_string(blob()?)?;
             let Some((encoding, value)) = value.split_once(':') else {
                 return Err("invalid verbatim string, missing encoding".to_string());
             };
-            Ok(Value::VerbatimString((
+            Ok(RespValue::VerbatimString((
                 encoding.to_string(),
                 value.to_string(),
             )))
         }
         b'*' => match parse_integer(header)? {
             // a null array, RESP2's null
-            -1 => Ok(Value::Null),
-            count => elements(count).map(Value::Array),
+            -1 => Ok(RespValue::Null),
+            count => elements(count).map(RespValue::Array),
         },
-        b'~' => elements(parse_integer(header)?).map(Value::Set),
-        b'>' => elements(parse_integer(header)?).map(Value::Push),
+        b'~' => elements(parse_integer(header)?).map(RespValue::Set),
+        b'>' => elements(parse_integer(header)?).map(RespValue::Push),
         b'%' => {
             let mut entries = elements(parse_integer(header)? * 2)?.into_iter();
             let mut map = vec![];
             while let (Some(key), Some(value)) = (entries.next(), entries.next()) {
                 map.push((key, value));
             }
-            Ok(Value::Map(map))
+            Ok(RespValue::Map(map))
         }
         prefix => Err(format!("invalid RESP type: {prefix:?}")),
     }
@@ -357,22 +357,22 @@ mod tests {
     #[test]
     fn decode_round_trips() {
         let values = vec![
-            Value::String("OK".to_string()),
-            Value::Error("ERR oops".to_string()),
-            Value::Integer(-42),
-            Value::BulkString("a\r\nb".to_string()),
-            Value::Null,
-            Value::Boolean(false),
-            Value::Double(1.5),
-            Value::BigNumber("12345678901234567890".to_string()),
-            Value::BulkError("SYNTAX invalid".to_string()),
-            Value::VerbatimString(("txt".to_string(), "a:b".to_string())),
-            Value::Array(vec![encode(Value::Integer(1)), encode(Value::Null)]),
-            Value::Set(vec![encode(Value::String("a".to_string()))]),
-            Value::Push(vec![encode(Value::String("message".to_string()))]),
-            Value::Map(vec![(
-                encode(Value::String("key".to_string())),
-                encode(Value::Array(vec![encode(Value::Integer(1))])),
+            RespValue::String("OK".to_string()),
+            RespValue::Error("ERR oops".to_string()),
+            RespValue::Integer(-42),
+            RespValue::BulkString("a\r\nb".to_string()),
+            RespValue::Null,
+            RespValue::Boolean(false),
+            RespValue::Double(1.5),
+            RespValue::BigNumber("12345678901234567890".to_string()),
+            RespValue::BulkError("SYNTAX invalid".to_string()),
+            RespValue::VerbatimString(("txt".to_string(), "a:b".to_string())),
+            RespValue::Array(vec![encode(RespValue::Integer(1)), encode(RespValue::Null)]),
+            RespValue::Set(vec![encode(RespValue::String("a".to_string()))]),
+            RespValue::Push(vec![encode(RespValue::String("message".to_string()))]),
+            RespValue::Map(vec![(
+                encode(RespValue::String("key".to_string())),
+                encode(RespValue::Array(vec![encode(RespValue::Integer(1))])),
             )]),
         ];
         for value in values {
@@ -386,7 +386,7 @@ mod tests {
         let decoded = decode(b"*2\r\n*1\r\n:1\r\n$1\r\na\r\n".to_vec());
         assert_eq!(
             decoded,
-            Ok(Value::Array(vec![
+            Ok(RespValue::Array(vec![
                 b"*1\r\n:1\r\n".to_vec(),
                 b"$1\r\na\r\n".to_vec()
             ]))
@@ -395,8 +395,8 @@ mod tests {
 
     #[test]
     fn decode_resp2_nulls() {
-        assert_eq!(decode(b"$-1\r\n".to_vec()), Ok(Value::Null));
-        assert_eq!(decode(b"*-1\r\n".to_vec()), Ok(Value::Null));
+        assert_eq!(decode(b"$-1\r\n".to_vec()), Ok(RespValue::Null));
+        assert_eq!(decode(b"*-1\r\n".to_vec()), Ok(RespValue::Null));
     }
 
     #[test]
@@ -416,9 +416,9 @@ mod tests {
 
     #[test]
     fn frame_len_matches_encode() {
-        let value = Value::Array(vec![
-            encode(Value::BulkString("a\r\nb".to_string())),
-            encode(Value::Integer(-3)),
+        let value = RespValue::Array(vec![
+            encode(RespValue::BulkString("a\r\nb".to_string())),
+            encode(RespValue::Integer(-3)),
         ]);
         let encoded = encode(value);
         assert_eq!(frame_len(&encoded).unwrap(), Some(encoded.len()));

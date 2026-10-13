@@ -1,20 +1,22 @@
 use crate::exports::componentized::valkey::commands::{
-    AclDryrunResult, AclListEntry, AclLogEntry, Aggregate, BgsaveOperation, BitRange, BitfieldGet,
+    AclDryrunResult, AclListEntry, AclLogEntry, AclRule, BgsaveOperation, BitRange, BitfieldGet,
     BitfieldOperation, BitopOperation, ClientFilter, ClientPauseMode, ClientSetinfoAttr,
-    ClientTrackingOptions, ClientTrackinginfoReply, ClientUnblockType, ClusterBumpepochResult,
-    ClusterFailoverMode, ClusterResetMode, ClusterSetslotState, CommandDocsReply, CommandInfoReply,
-    CommandListFilter, CommandlogType, Connection, Cursor, Double, DurationMilliseconds,
-    DurationSeconds, Error, ExpiretimeReply, FailoverTarget, FieldPersistResult, FlushMode,
-    FunctionStatsReply, GeoCoordinates, GeoCount, GeoSearchResult, GeoShape, GeoUnit,
-    GeoaddCondition, GeosearchWithFlags, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition,
-    Integer, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply, LexBound, Library,
-    Limit, LinsertPosition, LinsertResult, ListSide, LogEntry, MigrateAuth, MigrateFlags,
-    ModuleInfo, MsetexPrecondition, MsetexTtl, PexpiretimeReply, PopEnd, PttlReply, RoleReply,
-    Rule, ScoreBound, SetPrecondition, SetTtl, ShutdownFlags, ShutdownSave, SlotMigration,
-    SlotMigrationGroup, SortOpts, SortOrder, StreamId, StreamTrim, TrackingRedirect, TtlMode,
-    TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer,
-    XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary,
-    ZaddComparison, ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
+    ClientTrackingOptions, ClientTrackingRedirect, ClientTrackinginfoReply, ClientUnblockType,
+    ClusterBumpepochResult, ClusterFailoverMode, ClusterGetslotmigrationsEntry,
+    ClusterMigrateslotsGroup, ClusterResetMode, ClusterSetslotState, CommandDocsReply,
+    CommandInfoReply, CommandListFilter, CommandlogEntry, CommandlogType, Connection, Cursor,
+    Double, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply, FailoverTarget,
+    FlushMode, FunctionListLibrary, FunctionStatsReply, GeoCoordinates, GeoUnit, GeoaddCondition,
+    GeosearchCount, GeosearchShape, GeosearchWithFlags, GeosearchWithResult, GetexTtl, Guest,
+    HexpireResult, HpersistResult, HsetexCondition, HsetexFieldCondition, Integer, KeyType,
+    LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply, LexBound, Limit, LinsertPosition,
+    LinsertResult, ListSide, MigrateAuth, MigrateFlags, ModuleListEntry, MsetexPrecondition,
+    MsetexTtl, PexpiretimeReply, PttlReply, RespValue, RoleReply, ScoreBound, SetPrecondition,
+    SetTtl, ShutdownFlags, ShutdownSave, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode,
+    TtlReply, UnixTimeMilliseconds, UnixTimeSeconds, XclaimOpts, XinfoConsumersEntry,
+    XinfoGroupsEntry, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry,
+    XpendingSummary, ZaddComparison, ZaddCondition, ZmpopEnd, ZrangeBy, ZrangeWithscoresBy,
+    ZsetAggregate,
 };
 use componentized_valkey::command::{
     Bit, DecimalSeconds, Fields, Flag, KeysAndArgs, LexRange, NamedOption, NonEmpty, NumKeys,
@@ -91,7 +93,7 @@ impl Guest for Commands {
     async fn acl_setuser(
         connection: &Connection,
         username: String,
-        rules: Option<Vec<Rule>>,
+        rules: Option<Vec<AclRule>>,
     ) -> Result<(), Error> {
         exchange(
             connection,
@@ -142,7 +144,7 @@ impl Guest for Commands {
     async fn acl_getuser(
         connection: &Connection,
         username: String,
-    ) -> Result<Option<Vec<Rule>>, Error> {
+    ) -> Result<Option<Vec<AclRule>>, Error> {
         let rules: Option<AclUserRules> =
             exchange(connection, ("ACL", "GETUSER", username)).await?;
         Ok(rules.map(|rules| rules.0))
@@ -447,7 +449,7 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn cluster_getslotmigrations(
         connection: &Connection,
-    ) -> Result<Vec<SlotMigration>, Error> {
+    ) -> Result<Vec<ClusterGetslotmigrationsEntry>, Error> {
         exchange(connection, ("CLUSTER", "GETSLOTMIGRATIONS")).await
     }
 
@@ -472,7 +474,7 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn cluster_migrateslots(
         connection: &Connection,
-        migrations: Vec<SlotMigrationGroup>,
+        migrations: Vec<ClusterMigrateslotsGroup>,
     ) -> Result<(), Error> {
         exchange(
             connection,
@@ -581,7 +583,7 @@ impl Guest for Commands {
         connection: &Connection,
         count: Integer,
         type_: CommandlogType,
-    ) -> Result<Vec<LogEntry>, Error> {
+    ) -> Result<Vec<CommandlogEntry>, Error> {
         exchange(connection, ("COMMANDLOG", "GET", count, type_)).await
     }
 
@@ -763,7 +765,7 @@ impl Guest for Commands {
     #[doc = " MODULE LIST"]
     #[doc = " https://valkey.io/commands/module-list/"]
     #[allow(async_fn_in_trait)]
-    async fn module_list(connection: &Connection) -> Result<Vec<ModuleInfo>, Error> {
+    async fn module_list(connection: &Connection) -> Result<Vec<ModuleListEntry>, Error> {
         exchange(connection, ("MODULE", "LIST")).await
     }
 
@@ -897,7 +899,7 @@ impl Guest for Commands {
     async fn slowlog_get(
         connection: &Connection,
         count: Option<Integer>,
-    ) -> Result<Vec<LogEntry>, Error> {
+    ) -> Result<Vec<CommandlogEntry>, Error> {
         exchange(connection, ("SLOWLOG", "GET", count)).await
     }
 
@@ -1066,7 +1068,7 @@ impl Guest for Commands {
         connection: &Connection,
         auth: Option<(String, String)>,
         client_name: Option<String>,
-    ) -> Result<Map<String, Value>, Error> {
+    ) -> Result<Map<String, RespValue>, Error> {
         exchange(
             connection,
             (
@@ -1153,7 +1155,7 @@ impl Guest for Commands {
     #[doc = " CLIENT GETREDIR"]
     #[doc = " https://valkey.io/commands/client-getredir/"]
     #[allow(async_fn_in_trait)]
-    async fn client_getredir(connection: &Connection) -> Result<TrackingRedirect, Error> {
+    async fn client_getredir(connection: &Connection) -> Result<ClientTrackingRedirect, Error> {
         exchange(connection, ("CLIENT", "GETREDIR")).await
     }
 
@@ -1511,9 +1513,9 @@ impl Guest for Commands {
     async fn geosearch(
         connection: &Connection,
         key: String,
-        shape: GeoShape,
+        shape: GeosearchShape,
         order: Option<SortOrder>,
-        count: Option<GeoCount>,
+        count: Option<GeosearchCount>,
     ) -> Result<Vec<String>, Error> {
         exchange(connection, ("GEOSEARCH", key, shape, order, count)).await
     }
@@ -1528,11 +1530,11 @@ impl Guest for Commands {
     async fn geosearch_with(
         connection: &Connection,
         key: String,
-        shape: GeoShape,
+        shape: GeosearchShape,
         order: Option<SortOrder>,
-        count: Option<GeoCount>,
+        count: Option<GeosearchCount>,
         details: GeosearchWithFlags,
-    ) -> Result<Vec<GeoSearchResult>, Error> {
+    ) -> Result<Vec<GeosearchWithResult>, Error> {
         let command = (
             "GEOSEARCH",
             key,
@@ -1557,9 +1559,9 @@ impl Guest for Commands {
         connection: &Connection,
         destination: String,
         source: String,
-        shape: GeoShape,
+        shape: GeosearchShape,
         order: Option<SortOrder>,
-        count: Option<GeoCount>,
+        count: Option<GeosearchCount>,
         storedist: bool,
     ) -> Result<Integer, Error> {
         exchange(
@@ -1663,7 +1665,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldPersistResult>, Error> {
+    ) -> Result<Vec<HpersistResult>, Error> {
         exchange(
             connection,
             ("HPERSIST", key, Fields(NonEmpty::new("fields", fields))),
@@ -1682,7 +1684,7 @@ impl Guest for Commands {
         milliseconds: DurationMilliseconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
-    ) -> Result<Vec<TtlResult>, Error> {
+    ) -> Result<Vec<HexpireResult>, Error> {
         let command = (
             "HPEXPIRE",
             key,
@@ -1704,7 +1706,7 @@ impl Guest for Commands {
         milliseconds: UnixTimeMilliseconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
-    ) -> Result<Vec<TtlResult>, Error> {
+    ) -> Result<Vec<HexpireResult>, Error> {
         let command = (
             "HPEXPIREAT",
             key,
@@ -1808,7 +1810,7 @@ impl Guest for Commands {
         seconds: DurationSeconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
-    ) -> Result<Vec<TtlResult>, Error> {
+    ) -> Result<Vec<HexpireResult>, Error> {
         exchange(
             connection,
             (
@@ -1833,7 +1835,7 @@ impl Guest for Commands {
         seconds: UnixTimeSeconds,
         mode: Option<TtlMode>,
         fields: Vec<String>,
-    ) -> Result<Vec<TtlResult>, Error> {
+    ) -> Result<Vec<HexpireResult>, Error> {
         exchange(
             connection,
             (
@@ -3146,7 +3148,7 @@ impl Guest for Commands {
         script: String,
         keys: Option<Vec<String>>,
         args: Option<Vec<String>>,
-    ) -> Result<Value, Error> {
+    ) -> Result<RespValue, Error> {
         exchange(connection, ("EVAL", script, KeysAndArgs(keys, args))).await
     }
 
@@ -3160,7 +3162,7 @@ impl Guest for Commands {
         script: String,
         keys: Option<Vec<String>>,
         args: Option<Vec<String>>,
-    ) -> Result<Value, Error> {
+    ) -> Result<RespValue, Error> {
         exchange(connection, ("EVAL_RO", script, KeysAndArgs(keys, args))).await
     }
 
@@ -3175,7 +3177,7 @@ impl Guest for Commands {
         sha1: String,
         keys: Option<Vec<String>>,
         args: Option<Vec<String>>,
-    ) -> Result<Value, Error> {
+    ) -> Result<RespValue, Error> {
         exchange(connection, ("EVALSHA", sha1, KeysAndArgs(keys, args))).await
     }
 
@@ -3190,7 +3192,7 @@ impl Guest for Commands {
         sha1: String,
         keys: Option<Vec<String>>,
         args: Option<Vec<String>>,
-    ) -> Result<Value, Error> {
+    ) -> Result<RespValue, Error> {
         exchange(connection, ("EVALSHA_RO", sha1, KeysAndArgs(keys, args))).await
     }
 
@@ -3207,7 +3209,7 @@ impl Guest for Commands {
         function: String,
         keys: Option<Vec<String>>,
         args: Option<Vec<String>>,
-    ) -> Result<Value, Error> {
+    ) -> Result<RespValue, Error> {
         exchange(connection, ("FCALL", function, KeysAndArgs(keys, args))).await
     }
 
@@ -3221,7 +3223,7 @@ impl Guest for Commands {
         function: String,
         keys: Option<Vec<String>>,
         args: Option<Vec<String>>,
-    ) -> Result<Value, Error> {
+    ) -> Result<RespValue, Error> {
         exchange(connection, ("FCALL_RO", function, KeysAndArgs(keys, args))).await
     }
 
@@ -3261,7 +3263,7 @@ impl Guest for Commands {
         connection: &Connection,
         library_name_pattern: Option<String>,
         withcode: bool,
-    ) -> Result<Vec<Library>, Error> {
+    ) -> Result<Vec<FunctionListLibrary>, Error> {
         exchange(
             connection,
             (
@@ -4103,7 +4105,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         group: String,
-    ) -> Result<Vec<XinfoConsumer>, Error> {
+    ) -> Result<Vec<XinfoConsumersEntry>, Error> {
         exchange(connection, ("XINFO", "CONSUMERS", key, group)).await
     }
 
@@ -4112,7 +4114,10 @@ impl Guest for Commands {
     #[doc = " XINFO GROUPS key"]
     #[doc = " https://valkey.io/commands/xinfo-groups/"]
     #[allow(async_fn_in_trait)]
-    async fn xinfo_groups(connection: &Connection, key: String) -> Result<Vec<XinfoGroup>, Error> {
+    async fn xinfo_groups(
+        connection: &Connection,
+        key: String,
+    ) -> Result<Vec<XinfoGroupsEntry>, Error> {
         exchange(connection, ("XINFO", "GROUPS", key)).await
     }
 
@@ -4677,7 +4682,7 @@ impl Guest for Commands {
         connection: &Connection,
         timeout: DurationMilliseconds,
         keys: Vec<String>,
-        end: PopEnd,
+        end: ZmpopEnd,
         count: Option<Integer>,
     ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
         let command = (
@@ -4906,7 +4911,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
-        aggregate: Option<Aggregate>,
+        aggregate: Option<ZsetAggregate>,
     ) -> Result<Vec<String>, Error> {
         exchange(
             connection,
@@ -4931,7 +4936,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
-        aggregate: Option<Aggregate>,
+        aggregate: Option<ZsetAggregate>,
     ) -> Result<Vec<(String, Double)>, Error> {
         let command = (
             "ZINTER",
@@ -4974,7 +4979,7 @@ impl Guest for Commands {
         destination: String,
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
-        aggregate: Option<Aggregate>,
+        aggregate: Option<ZsetAggregate>,
     ) -> Result<Integer, Error> {
         let command = (
             "ZINTERSTORE",
@@ -5022,7 +5027,7 @@ impl Guest for Commands {
     async fn zmpop(
         connection: &Connection,
         keys: Vec<String>,
-        end: PopEnd,
+        end: ZmpopEnd,
         count: Option<Integer>,
     ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
         exchange(
@@ -5427,7 +5432,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
-        aggregate: Option<Aggregate>,
+        aggregate: Option<ZsetAggregate>,
     ) -> Result<Vec<String>, Error> {
         exchange(
             connection,
@@ -5452,7 +5457,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
-        aggregate: Option<Aggregate>,
+        aggregate: Option<ZsetAggregate>,
     ) -> Result<Vec<(String, Double)>, Error> {
         let command = (
             "ZUNION",
@@ -5474,7 +5479,7 @@ impl Guest for Commands {
         destination: String,
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
-        aggregate: Option<Aggregate>,
+        aggregate: Option<ZsetAggregate>,
     ) -> Result<Integer, Error> {
         let command = (
             "ZUNIONSTORE",
