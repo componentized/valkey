@@ -60,6 +60,8 @@ interface types {
         keep-alive-interval: option<duration-milliseconds>,
     }
 
+    // shared by the commands
+
     /// A duration in whole seconds, e.g. `EX seconds`.
     record duration-seconds {
         ex: u64,
@@ -104,27 +106,6 @@ interface types {
         /// Set expiration only when the new expiration is less than current one.
         lt,
     }
-
-    /// The outcome of setting the expiration of a hash field, e.g. with HEXPIRE.
-    enum hexpire-result {
-        /// -2: key does not exist, or field does not exist in the HASH.
-        does-not-exist,
-        /// 0: the specified NX | XX | GT | LT condition has not been met.
-        condition-not-met,
-        /// 1: the expiration time was applied.
-        applied,
-        /// 2: when called with 0 seconds.
-        zero-seconds,
-    }
-
-    /// The result for a field, see `hexpireat`.
-    type hexpireat-result = hexpire-result;
-
-    /// The result for a field, see `hpexpire`.
-    type hpexpire-result = hexpire-result;
-
-    /// The result for a field, see `hpexpireat`.
-    type hpexpireat-result = hexpire-result;
 
     /// The remaining time to live of a key or hash field, to the second, see `ttl` and `httl`.
     variant ttl-reply {
@@ -177,6 +158,21 @@ interface types {
 
     /// The expiration time of a field, see `hpexpiretime`.
     type hpexpiretime-reply = pexpiretime-reply;
+
+    /// A range of a sorted result, `LIMIT offset count`.
+    record limit {
+        /// The number of elements skipped.
+        offset: integer,
+        /// The maximum number of elements returned, negative for all of them.
+        count: integer,
+    }
+
+    enum sort-order {
+        /// ascending, smallest to largest.
+        asc,
+        /// descending, largest to smallest.
+        desc,
+    }
 
     // admin commands
 
@@ -1064,6 +1060,27 @@ interface types {
         fxx,
     }
 
+    /// The outcome of setting the expiration of a hash field, e.g. with HEXPIRE.
+    enum hexpire-result {
+        /// -2: key does not exist, or field does not exist in the HASH.
+        does-not-exist,
+        /// 0: the specified NX | XX | GT | LT condition has not been met.
+        condition-not-met,
+        /// 1: the expiration time was applied.
+        applied,
+        /// 2: when called with 0 seconds.
+        zero-seconds,
+    }
+
+    /// The result for a field, see `hexpireat`.
+    type hexpireat-result = hexpire-result;
+
+    /// The result for a field, see `hpexpire`.
+    type hpexpire-result = hexpire-result;
+
+    /// The result for a field, see `hpexpireat`.
+    type hpexpireat-result = hexpire-result;
+
     // keyspace commands
 
     /// The type of the value stored at a key.
@@ -1099,6 +1116,25 @@ interface types {
         /// `AUTH2 username password`
         username-password(tuple<string, string>),
     }
+
+    /// How SORT orders and projects the elements of a list, set or sorted set.
+    record sort-opts {
+        /// `BY pattern`: sorts by the values of the keys the pattern names, `*` replaced with each
+        /// element, or `nosort` to skip sorting.
+        by: option<string>,
+        /// `LIMIT offset count`: a range of the sorted elements.
+        limit: option<limit>,
+        /// `GET pattern`: returns the values of the keys each pattern names instead of the elements,
+        /// `#` for the element itself.
+        get: option<list<string>>,
+        /// order to sort elements.
+        order: option<sort-order>,
+        /// `ALPHA`: sorts lexicographically, rather than numerically.
+        alpha: bool,
+    }
+
+    /// The options of the sort, see `sort-ro`.
+    type sort-ro-opts = sort-opts;
 
     // list commands
 
@@ -1177,42 +1213,6 @@ interface types {
         running-script: option<function-stats-running>,
         /// The statistics of each engine, by name.
         engines: map<string, function-stats-engine>,
-    }
-
-    // set commands
-
-    /// A range of a sorted result, `LIMIT offset count`.
-    record limit {
-        /// The number of elements skipped.
-        offset: integer,
-        /// The maximum number of elements returned, negative for all of them.
-        count: integer,
-    }
-
-    /// How SORT orders and projects the elements of a list, set or sorted set.
-    record sort-opts {
-        /// `BY pattern`: sorts by the values of the keys the pattern names, `*` replaced with each
-        /// element, or `nosort` to skip sorting.
-        by: option<string>,
-        /// `LIMIT offset count`: a range of the sorted elements.
-        limit: option<limit>,
-        /// `GET pattern`: returns the values of the keys each pattern names instead of the elements,
-        /// `#` for the element itself.
-        get: option<list<string>>,
-        /// order to sort elements.
-        order: option<sort-order>,
-        /// `ALPHA`: sorts lexicographically, rather than numerically.
-        alpha: bool,
-    }
-
-    /// The options of the sort, see `sort-ro`.
-    type sort-ro-opts = sort-opts;
-
-    enum sort-order {
-        /// ascending, smallest to largest.
-        asc,
-        /// descending, largest to smallest.
-        desc,
     }
 
     // sortedset commands

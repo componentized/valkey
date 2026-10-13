@@ -5,6 +5,7 @@
 //! - [`resp`]: RESP serialization of a [`types::RespValue`], to and from bytes.
 //! - [`command`]: [`IntoCommand`], converting Rust values into the words of a command.
 //! - [`value`]: [`FromValue`], converting a reply into Rust values.
+//! - [`commands`]: both conversions of the package's types, by the commands they are for.
 //!
 //! A component's bindings use these types for the package's types interface, so every component
 //! shares them, e.g.
@@ -37,8 +38,12 @@ mod bindings {
 pub use bindings::componentized::valkey::types;
 
 pub mod command;
+pub mod commands;
 pub mod resp;
 pub mod value;
+
+#[cfg(test)]
+mod test_util;
 
 pub use command::IntoCommand;
 pub use value::FromValue;

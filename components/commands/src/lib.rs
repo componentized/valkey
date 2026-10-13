@@ -18,14 +18,17 @@ use crate::exports::componentized::valkey::commands::{
     XpendingSummary, ZaddComparison, ZaddCondition, ZmpopEnd, ZrangeBy, ZrangeWithscoresBy,
     ZsetAggregate,
 };
-use componentized_valkey::command::{
-    Bit, DecimalSeconds, Fields, Flag, KeysAndArgs, LexRange, NamedOption, NonEmpty, NumKeys,
-    OnOff, ScoreRange, Zrange,
-};
-use componentized_valkey::value::{
-    AclList, AclUserRules, ClientList, CommandDocsList, CommandInfoList, FlatPairs, Migrated,
-    NextCursor, OptionalKeyType, OrNever, OrZeroId, ScoredMembers,
-};
+use componentized_valkey::command::{Flag, NamedOption, NonEmpty, NumKeys};
+use componentized_valkey::commands::admin::{AclList, AclUserRules, ClientList};
+use componentized_valkey::commands::bitmap::Bit;
+use componentized_valkey::commands::connection::{CommandDocsList, CommandInfoList, OnOff};
+use componentized_valkey::commands::hash::Fields;
+use componentized_valkey::commands::keyspace::{Migrated, OptionalKeyType};
+use componentized_valkey::commands::scripting::KeysAndArgs;
+use componentized_valkey::commands::shared::{DecimalSeconds, NextCursor};
+use componentized_valkey::commands::sortedset::{LexRange, ScoreRange, ScoredMembers, Zrange};
+use componentized_valkey::commands::stream::OrZeroId;
+use componentized_valkey::value::{FlatPairs, OrNever};
 
 use wit_bindgen::rt::Map;
 
