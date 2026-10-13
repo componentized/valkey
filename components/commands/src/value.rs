@@ -1,11 +1,14 @@
 use crate::exports::componentized::valkey::commands::{
-    Cursor, Double, DurationMilliseconds, DurationSeconds, EngineStats, Error, ExpiretimeReply,
-    FieldPersistResult, FunctionStatsReply, GeoCoordinates, GeoSearchResult, Integer, KeyType,
-    LcsIdxMatch, LcsIdxReply, Library, LibraryFunction, LinsertResult, PexpiretimeReply, PttlReply,
-    RunningFunction, StreamId, TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
-    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
-    XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
-    XpendingSummary,
+    AclDryrunResult, AclListEntry, AclLogEntry, ChannelRule, ClusterBumpepochResult, CommandRule,
+    Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds, EngineStats, Error,
+    ExpiretimeReply, FieldPersistResult, FunctionStatsReply, GeoCoordinates, GeoSearchResult,
+    Integer, KeyRule, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxMatch, LcsIdxReply,
+    Library, LibraryFunction, LinsertResult, LogEntry, ModuleInfo, PexpiretimeReply, PttlReply,
+    RolePrimary, RoleReplica, RoleReplicaInfo, RoleReply, Rule, RuleSelector, RunningFunction,
+    SlotMigration, SlotMigrationOperation, StreamId, TtlReply, TtlResult, UnixTimeMilliseconds,
+    UnixTimeSeconds, UserRule, Value, XinfoConsumer, XinfoGroup, XinfoStreamReply,
+    XinfoStreamReplyFull, XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup,
+    XpendingExtendedEntry, XpendingSummary,
 };
 
 use resp_codec::NestedValue;
@@ -478,6 +481,454 @@ impl FromValue for Migrated {
             Value::String(reply) if reply == "NOKEY" => Ok(Migrated(false)),
             _ => Err(unexpected(&value)),
         }
+    }
+}
+
+/// `OK` when the user may run the command, otherwise why not.
+impl FromValue for AclDryrunResult {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match value {
+            Value::String(reply) if reply == "OK" => Ok(AclDryrunResult::Allowed),
+            value => String::from_value(value).map(AclDryrunResult::Denied),
+        }
+    }
+}
+
+/// The rules of ACL GETUSER: the flags, the hashed passwords, the root selector's rules, then the
+/// selectors.
+pub struct AclUserRules(pub Vec<Rule>);
+
+impl FromValue for AclUserRules {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        let flags: Vec<String> = fields.required("flags")?;
+        let passwords: Vec<String> = fields.required("passwords")?;
+        let mut rules: Vec<Rule> = flags.iter().map(|flag| rule(flag)).collect();
+        rules.extend(
+            passwords
+                .into_iter()
+                .map(|hash| Rule::User(UserRule::HashedPassword(hash))),
+        );
+        rules.extend(selector_rules(&mut fields)?.into_iter().map(root_rule));
+        let selectors: Vec<Fields> = fields.required("selectors")?;
+        for mut selector in selectors {
+            let selector = selector_rules(&mut selector)?;
+            rules.push(Rule::User(UserRule::Selector(selector)));
+        }
+        Ok(AclUserRules(rules))
+    }
+}
+
+/// The rules of a selector, from its `keys`, `channels`, `databases` and `commands` fields, each
+/// rules separated by spaces.
+///
+/// The channels are preceded by `resetchannels`, as ACL LIST writes them, so the server's
+/// `acl-pubsub-default` does not add to them.
+fn selector_rules(fields: &mut Fields) -> Result<Vec<RuleSelector>, Error> {
+    let keys: String = fields.required("keys")?;
+    let channels: String = fields.required("channels")?;
+    // since Valkey 9.1
+    let databases: Option<String> = fields.optional("databases")?;
+    let commands: String = fields.required("commands")?;
+    let mut rules: Vec<RuleSelector> = keys.split_whitespace().map(key_rule).collect();
+    rules.push(RuleSelector::Channel(ChannelRule::Reset));
+    rules.extend(channels.split_whitespace().map(channel_rule));
+    rules.extend(
+        databases
+            .iter()
+            .flat_map(|databases| databases.split_whitespace().map(db_rule)),
+    );
+    rules.extend(commands.split_whitespace().map(command_rule));
+    Ok(rules)
+}
+
+fn key_rule(rule: &str) -> RuleSelector {
+    let key_rule = match rule {
+        "allkeys" => KeyRule::All,
+        "resetkeys" => KeyRule::Reset,
+        _ => {
+            if let Some(pattern) = rule.strip_prefix("%RW~") {
+                KeyRule::AddReadWrite(pattern.to_string())
+            } else if let Some(pattern) = rule.strip_prefix("%R~") {
+                KeyRule::AddRead(pattern.to_string())
+            } else if let Some(pattern) = rule.strip_prefix("%W~") {
+                KeyRule::AddWrite(pattern.to_string())
+            } else if let Some(pattern) = rule.strip_prefix('~') {
+                KeyRule::Add(pattern.to_string())
+            } else {
+                return RuleSelector::Other(rule.to_string());
+            }
+        }
+    };
+    RuleSelector::Keys(key_rule)
+}
+
+fn channel_rule(rule: &str) -> RuleSelector {
+    let channel_rule = match rule {
+        "allchannels" => ChannelRule::All,
+        "resetchannels" => ChannelRule::Reset,
+        _ => match rule.strip_prefix('&') {
+            Some(pattern) => ChannelRule::Add(pattern.to_string()),
+            None => return RuleSelector::Other(rule.to_string()),
+        },
+    };
+    RuleSelector::Channel(channel_rule)
+}
+
+fn db_rule(rule: &str) -> RuleSelector {
+    let db_rule = match rule {
+        "alldbs" => DbRule::All,
+        "resetdbs" => DbRule::Reset,
+        _ => {
+            let dbs = rule
+                .strip_prefix("db=")
+                .map(|dbs| dbs.split(',').map(str::parse).collect::<Result<_, _>>());
+            match dbs {
+                Some(Ok(dbs)) => DbRule::Db(dbs),
+                _ => return RuleSelector::Other(rule.to_string()),
+            }
+        }
+    };
+    RuleSelector::Db(db_rule)
+}
+
+/// `+config|get` is a subcommand, or a first argument, either way it is sent back as is.
+fn command_rule(rule: &str) -> RuleSelector {
+    let command_rule = match rule {
+        "allcommands" | "+@all" => CommandRule::All,
+        "nocommands" | "-@all" => CommandRule::Reset,
+        _ => {
+            if let Some(category) = rule.strip_prefix("+@") {
+                CommandRule::AddCategory(category.to_string())
+            } else if let Some(category) = rule.strip_prefix("-@") {
+                CommandRule::RemoveCategory(category.to_string())
+            } else if let Some(command) = rule.strip_prefix('+') {
+                CommandRule::Add(command.to_string())
+            } else if let Some(command) = rule.strip_prefix('-') {
+                CommandRule::Remove(command.to_string())
+            } else {
+                return RuleSelector::Other(rule.to_string());
+            }
+        }
+    };
+    RuleSelector::Command(command_rule)
+}
+
+/// The lines of ACL LIST, each `user <username> <rule> ...`, with selectors as `(<rule> ...)`.
+pub struct AclList(pub Vec<AclListEntry>);
+
+impl FromValue for AclList {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let lines: Vec<String> = FromValue::from_value(value)?;
+        lines
+            .iter()
+            .map(|line| acl_list_entry(line))
+            .collect::<Result<_, _>>()
+            .map(AclList)
+    }
+}
+
+fn acl_list_entry(line: &str) -> Result<AclListEntry, Error> {
+    let invalid = || Error::Client(format!("unexpected ACL LIST line: {line:?}"));
+    let mut words = line
+        .strip_prefix("user ")
+        .ok_or_else(invalid)?
+        .split_whitespace();
+    let username = words.next().ok_or_else(invalid)?.to_string();
+    let mut rules = vec![];
+    while let Some(word) = words.next() {
+        if !word.starts_with('(') {
+            rules.push(rule(word));
+            continue;
+        }
+        // a selector, its rules up to the word that closes it
+        let mut selector = vec![word];
+        while !selector.last().is_some_and(|word| word.ends_with(')')) {
+            selector.push(words.next().ok_or_else(invalid)?);
+        }
+        let selector = selector.join(" ");
+        let selector = selector
+            .strip_prefix('(')
+            .and_then(|selector| selector.strip_suffix(')'))
+            .ok_or_else(invalid)?;
+        let selector = selector.split_whitespace().map(selector_rule).collect();
+        rules.push(Rule::User(UserRule::Selector(selector)));
+    }
+    Ok(AclListEntry { username, rules })
+}
+
+/// A rule of the user or its root selector, e.g. `on`, `#<hash>` or `~app:*`.
+fn rule(word: &str) -> Rule {
+    let user_rule = match word {
+        "on" => UserRule::On,
+        "off" => UserRule::Off,
+        "nopass" => UserRule::Nopass,
+        "sanitize-payload" => UserRule::SanitizePayload,
+        "skip-sanitize-payload" => UserRule::SkipSanitizePayload,
+        "clearselectors" => UserRule::Clearselectors,
+        "reset" => UserRule::Reset,
+        _ => {
+            if let Some(hash) = word.strip_prefix('#') {
+                UserRule::HashedPassword(hash.to_string())
+            } else if let Some(hash) = word.strip_prefix('!') {
+                UserRule::RemoveHashedPassword(hash.to_string())
+            } else if let Some(password) = word.strip_prefix('>') {
+                UserRule::Password(password.to_string())
+            } else if let Some(password) = word.strip_prefix('<') {
+                UserRule::RemovePassword(password.to_string())
+            } else {
+                return root_rule(selector_rule(word));
+            }
+        }
+    };
+    Rule::User(user_rule)
+}
+
+/// A rule of a selector, e.g. `~app:*`, `&news:*`, `db=0` or `+get`.
+fn selector_rule(word: &str) -> RuleSelector {
+    match word {
+        "allkeys" | "resetkeys" => key_rule(word),
+        "allchannels" | "resetchannels" => channel_rule(word),
+        "alldbs" | "resetdbs" => db_rule(word),
+        "allcommands" | "nocommands" => command_rule(word),
+        _ if word.starts_with('~') || word.starts_with('%') => key_rule(word),
+        _ if word.starts_with('&') => channel_rule(word),
+        _ if word.starts_with("db=") => db_rule(word),
+        _ if word.starts_with('+') || word.starts_with('-') => command_rule(word),
+        _ => RuleSelector::Other(word.to_string()),
+    }
+}
+
+/// A rule of the root selector.
+fn root_rule(rule: RuleSelector) -> Rule {
+    match rule {
+        RuleSelector::Keys(rule) => Rule::Keys(rule),
+        RuleSelector::Channel(rule) => Rule::Channel(rule),
+        RuleSelector::Command(rule) => Rule::Command(rule),
+        RuleSelector::Db(rule) => Rule::Db(rule),
+        RuleSelector::Other(rule) => Rule::Other(rule),
+    }
+}
+
+impl FromValue for AclLogEntry {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            count: fields.required("count")?,
+            reason: fields.required("reason")?,
+            context: fields.required("context")?,
+            object: fields.required("object")?,
+            username: fields.required("username")?,
+            age_seconds: fields.required("age-seconds")?,
+            client_info: fields.required("client-info")?,
+            // since Valkey 7.2
+            entry_id: fields.optional("entry-id")?,
+            timestamp_created: fields.optional("timestamp-created")?,
+            timestamp_last_updated: fields.optional("timestamp-last-updated")?,
+        })
+    }
+}
+
+/// `BUMPED epoch` or `STILL epoch`.
+impl FromValue for ClusterBumpepochResult {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let reply = String::from_value(value)?;
+        let invalid = || Error::Client(format!("unexpected reply: {reply:?}"));
+        let (outcome, epoch) = reply.split_once(' ').ok_or_else(invalid)?;
+        let epoch = epoch.parse().map_err(|_| invalid())?;
+        match outcome {
+            "BUMPED" => Ok(ClusterBumpepochResult::Bumped(epoch)),
+            "STILL" => Ok(ClusterBumpepochResult::Still(epoch)),
+            _ => Err(invalid()),
+        }
+    }
+}
+
+impl FromValue for SlotMigrationOperation {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match String::from_value(value)?.as_str() {
+            "IMPORT" => Ok(SlotMigrationOperation::Import),
+            "EXPORT" => Ok(SlotMigrationOperation::Export),
+            operation => Err(Error::Client(format!(
+                "unexpected operation: {operation:?}"
+            ))),
+        }
+    }
+}
+
+/// Ranges of slots, `start-end start-end ...`.
+pub struct SlotRanges(pub Vec<(u16, u16)>);
+
+impl FromValue for SlotRanges {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let ranges = String::from_value(value)?;
+        let invalid = || Error::Client(format!("unexpected slot ranges: {ranges:?}"));
+        ranges
+            .split_whitespace()
+            .map(|range| {
+                let (start, end) = range.split_once('-').ok_or_else(invalid)?;
+                Ok((
+                    start.parse().map_err(|_| invalid())?,
+                    end.parse().map_err(|_| invalid())?,
+                ))
+            })
+            .collect::<Result<_, _>>()
+            .map(SlotRanges)
+    }
+}
+
+impl FromValue for SlotMigration {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        let slot_ranges: SlotRanges = fields.required("slot_ranges")?;
+        Ok(Self {
+            link_name: fields.required("link_name")?,
+            operation: fields.required("operation")?,
+            slot_ranges: slot_ranges.0,
+            target_node: fields.required("target_node")?,
+            source_node: fields.required("source_node")?,
+            create_time: fields.required("create_time")?,
+            last_update_time: fields.required("last_update_time")?,
+            last_ack_time: fields.required("last_ack_time")?,
+            state: fields.required("state")?,
+            message: fields.required("message")?,
+            cow_size: fields.required("cow_size")?,
+        })
+    }
+}
+
+/// `[id, timestamp, value, [argument ...], client-address, client-name]`, of SLOWLOG GET and
+/// COMMANDLOG GET.
+impl FromValue for LogEntry {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match <[Value; 6]>::try_from(items(value)?) {
+            Ok([id, timestamp, value, arguments, client_address, client_name]) => Ok(Self {
+                id: FromValue::from_value(id)?,
+                timestamp: FromValue::from_value(timestamp)?,
+                value: FromValue::from_value(value)?,
+                arguments: FromValue::from_value(arguments)?,
+                client_address: FromValue::from_value(client_address)?,
+                client_name: FromValue::from_value(client_name)?,
+            }),
+            Err(items) => Err(Error::Client(format!(
+                "unexpected number of items, expected 6: {}",
+                items.len()
+            ))),
+        }
+    }
+}
+
+impl FromValue for LatencyHistogramEntry {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        // a map of each bucket to its cumulative count
+        let histogram: FlatPairs<Integer, Integer> = fields.required("histogram_usec")?;
+        Ok(Self {
+            calls: fields.required("calls")?,
+            histogram_usec: histogram.0,
+        })
+    }
+}
+
+/// `[event, timestamp, latest, max, sum, count]`
+impl FromValue for LatencyLatestEntry {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match <[Value; 6]>::try_from(items(value)?) {
+            Ok([event, timestamp, latest, max, sum, count]) => Ok(Self {
+                event: FromValue::from_value(event)?,
+                timestamp: FromValue::from_value(timestamp)?,
+                latest: FromValue::from_value(latest)?,
+                max: FromValue::from_value(max)?,
+                sum: FromValue::from_value(sum)?,
+                count: FromValue::from_value(count)?,
+            }),
+            Err(items) => Err(Error::Client(format!(
+                "unexpected number of items, expected 6: {}",
+                items.len()
+            ))),
+        }
+    }
+}
+
+impl FromValue for ModuleInfo {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            name: fields.required("name")?,
+            ver: fields.required("ver")?,
+            path: fields.required("path")?,
+            args: fields.required("args")?,
+        })
+    }
+}
+
+/// A number sent as a string, e.g. the port of a replica in ROLE.
+fn parse_string<T: std::str::FromStr>(value: Value) -> Result<T, Error> {
+    let text = String::from_value(value)?;
+    text.parse()
+        .map_err(|_| Error::Client(format!("unexpected number: {text:?}")))
+}
+
+/// `[ip, port, offset]`, the port and offset are strings.
+impl FromValue for RoleReplicaInfo {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let (ip, port, offset) = FromValue::from_value(value)?;
+        Ok(Self {
+            ip,
+            port: parse_string(port)?,
+            offset: parse_string(offset)?,
+        })
+    }
+}
+
+/// `["master", offset, [replica ...]]`, `["slave", host, port, state, offset]` or
+/// `["sentinel", [primary ...]]`.
+impl FromValue for RoleReply {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut items = items(value)?.into_iter();
+        let role = String::from_value(items.next().unwrap_or(Value::Null))?;
+        let mut next = || {
+            items
+                .next()
+                .ok_or_else(|| Error::Client(format!("too few items for the role {role:?}")))
+        };
+        match role.as_str() {
+            "master" => Ok(RoleReply::Primary(RolePrimary {
+                offset: FromValue::from_value(next()?)?,
+                replicas: FromValue::from_value(next()?)?,
+            })),
+            "slave" => Ok(RoleReply::Replica(RoleReplica {
+                primary_host: FromValue::from_value(next()?)?,
+                primary_port: u64::from_value(next()?)?
+                    .try_into()
+                    .map_err(|_| Error::Client("unexpected port".to_string()))?,
+                state: FromValue::from_value(next()?)?,
+                offset: FromValue::from_value(next()?)?,
+            })),
+            "sentinel" => Ok(RoleReply::Sentinel(FromValue::from_value(next()?)?)),
+            role => Err(Error::Client(format!("unexpected role: {role:?}"))),
+        }
+    }
+}
+
+/// The lines of CLIENT LIST, each of the fields of a connection, `name=value` separated by spaces.
+#[derive(Debug)]
+pub struct ClientList(pub Vec<Map<String, String>>);
+
+impl FromValue for ClientList {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let text = String::from_value(value)?;
+        let clients = text
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| {
+                line.split(' ')
+                    .filter_map(|field| field.split_once('='))
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .collect()
+            })
+            .collect();
+        Ok(ClientList(clients))
     }
 }
 

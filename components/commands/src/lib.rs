@@ -3,19 +3,24 @@ use crate::command::{
     ScoreRange, Zrange, emit, query,
 };
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, BitRange, BitfieldGet, BitfieldOperation, BitopOperation, Connection, Cursor,
-    Double, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply, FieldPersistResult,
-    FlushMode, FunctionStatsReply, GeoCoordinates, GeoCount, GeoSearchResult, GeoShape, GeoUnit,
-    GeoaddCondition, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Integer, KeyType,
-    LcsIdxReply, LexBound, Library, Limit, LinsertPosition, LinsertResult, ListSide, MigrateAuth,
-    MsetexPrecondition, MsetexTtl, PexpiretimeReply, PopEnd, PttlReply, Rule, ScoreBound,
-    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode, TtlReply,
-    TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
-    XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison,
-    ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
+    AclDryrunResult, AclListEntry, AclLogEntry, Aggregate, BgsaveOperation, BitRange, BitfieldGet,
+    BitfieldOperation, BitopOperation, ClientFilter, ClientPauseMode, ClientUnblockType,
+    ClusterBumpepochResult, ClusterFailoverMode, ClusterResetMode, ClusterSetslotState,
+    CommandlogType, Connection, Cursor, Double, DurationMilliseconds, DurationSeconds, Error,
+    ExpiretimeReply, FailoverTarget, FieldPersistResult, FlushMode, FunctionStatsReply,
+    GeoCoordinates, GeoCount, GeoSearchResult, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, Guest,
+    HsetexCondition, HsetexFieldCondition, Integer, KeyType, LatencyHistogramEntry,
+    LatencyLatestEntry, LcsIdxReply, LexBound, Library, Limit, LinsertPosition, LinsertResult,
+    ListSide, LogEntry, MigrateAuth, ModuleInfo, MsetexPrecondition, MsetexTtl, PexpiretimeReply,
+    PopEnd, PttlReply, RoleReply, Rule, ScoreBound, SetPrecondition, SetTtl, ShutdownSave,
+    SlotMigration, SlotMigrationGroup, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode,
+    TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer,
+    XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary,
+    ZaddComparison, ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
 use crate::value::{
-    FlatPairs, Migrated, NextCursor, OptionalKeyType, OrNever, OrZeroId, ScoredMembers,
+    AclList, AclUserRules, ClientList, FlatPairs, Migrated, NextCursor, OptionalKeyType, OrNever,
+    OrZeroId, ScoredMembers,
 };
 
 use wit_bindgen::rt::Map;
@@ -79,6 +84,822 @@ impl Guest for Commands {
             ),
         )
         .await
+    }
+
+    #[doc = " The ACL categories, or with a category, the commands in it."]
+    #[doc = ""]
+    #[doc = " ACL CAT [ category ]"]
+    #[doc = " https://valkey.io/commands/acl-cat/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_cat(
+        connection: &Connection,
+        category: Option<String>,
+    ) -> Result<Vec<String>, Error> {
+        query(connection, ("ACL", "CAT", category)).await
+    }
+
+    #[doc = " Whether the user may run the command, without running it."]
+    #[doc = ""]
+    #[doc = " ACL DRYRUN username command [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/acl-dryrun/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_dryrun(
+        connection: &Connection,
+        username: String,
+        command: Vec<String>,
+    ) -> Result<AclDryrunResult, Error> {
+        query(
+            connection,
+            ("ACL", "DRYRUN", username, NonEmpty::new("command", command)),
+        )
+        .await
+    }
+
+    #[doc = " The rules of the user, none when the user does not exist."]
+    #[doc = ""]
+    #[doc = " ACL GETUSER username"]
+    #[doc = " https://valkey.io/commands/acl-getuser/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_getuser(
+        connection: &Connection,
+        username: String,
+    ) -> Result<Option<Vec<Rule>>, Error> {
+        let rules: Option<AclUserRules> = query(connection, ("ACL", "GETUSER", username)).await?;
+        Ok(rules.map(|rules| rules.0))
+    }
+
+    #[doc = " The rules of every user, in the format of an ACL file."]
+    #[doc = ""]
+    #[doc = " ACL LIST"]
+    #[doc = " https://valkey.io/commands/acl-list/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_list(connection: &Connection) -> Result<Vec<AclListEntry>, Error> {
+        let users: AclList = query(connection, ("ACL", "LIST")).await?;
+        Ok(users.0)
+    }
+
+    #[doc = " Replaces the users with those of the configured ACL file."]
+    #[doc = ""]
+    #[doc = " ACL LOAD"]
+    #[doc = " https://valkey.io/commands/acl-load/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_load(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("ACL", "LOAD")).await
+    }
+
+    #[doc = " The recent security events, commands or authentications the rules denied, up to the count,"]
+    #[doc = " 10 without one."]
+    #[doc = ""]
+    #[doc = " See also `acl-log-reset`."]
+    #[doc = ""]
+    #[doc = " ACL LOG [ count ]"]
+    #[doc = " https://valkey.io/commands/acl-log/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_log(
+        connection: &Connection,
+        count: Option<Integer>,
+    ) -> Result<Vec<AclLogEntry>, Error> {
+        query(connection, ("ACL", "LOG", count)).await
+    }
+
+    #[doc = " Clears the security events."]
+    #[doc = ""]
+    #[doc = " See also `acl-log`."]
+    #[doc = ""]
+    #[doc = " ACL LOG RESET"]
+    #[doc = " https://valkey.io/commands/acl-log/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_log_reset(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("ACL", "LOG", "RESET")).await
+    }
+
+    #[doc = " Saves the users to the configured ACL file."]
+    #[doc = ""]
+    #[doc = " ACL SAVE"]
+    #[doc = " https://valkey.io/commands/acl-save/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_save(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("ACL", "SAVE")).await
+    }
+
+    #[doc = " The names of the users."]
+    #[doc = ""]
+    #[doc = " ACL USERS"]
+    #[doc = " https://valkey.io/commands/acl-users/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_users(connection: &Connection) -> Result<Vec<String>, Error> {
+        query(connection, ("ACL", "USERS")).await
+    }
+
+    #[doc = " The name of the user the connection is authenticated as."]
+    #[doc = ""]
+    #[doc = " ACL WHOAMI"]
+    #[doc = " https://valkey.io/commands/acl-whoami/"]
+    #[allow(async_fn_in_trait)]
+    async fn acl_whoami(connection: &Connection) -> Result<String, Error> {
+        query(connection, ("ACL", "WHOAMI")).await
+    }
+
+    #[doc = " Starts rewriting the append-only file in the background, returning the server's message."]
+    #[doc = ""]
+    #[doc = " BGREWRITEAOF"]
+    #[doc = " https://valkey.io/commands/bgrewriteaof/"]
+    #[allow(async_fn_in_trait)]
+    async fn bgrewriteaof(connection: &Connection) -> Result<String, Error> {
+        query(connection, "BGREWRITEAOF").await
+    }
+
+    #[doc = " Starts saving the databases to disk in the background, or schedules or cancels it, returning"]
+    #[doc = " the server's message."]
+    #[doc = ""]
+    #[doc = " BGSAVE [ SCHEDULE | CANCEL ]"]
+    #[doc = " https://valkey.io/commands/bgsave/"]
+    #[allow(async_fn_in_trait)]
+    async fn bgsave(
+        connection: &Connection,
+        operation: Option<BgsaveOperation>,
+    ) -> Result<String, Error> {
+        query(connection, ("BGSAVE", operation)).await
+    }
+
+    #[doc = " Closes the connections that match every one of the filters, returning how many."]
+    #[doc = ""]
+    #[doc = " CLIENT KILL filter [ filter ... ]"]
+    #[doc = " https://valkey.io/commands/client-kill/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_kill(
+        connection: &Connection,
+        filters: Vec<ClientFilter>,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            ("CLIENT", "KILL", NonEmpty::new("filters", filters)),
+        )
+        .await
+    }
+
+    #[doc = " The connections that match every one of the filters, all of them without filters, each a"]
+    #[doc = " map of its fields, e.g. `id`, `addr` and `name`."]
+    #[doc = ""]
+    #[doc = " CLIENT LIST [ filter [ filter ... ] ]"]
+    #[doc = " https://valkey.io/commands/client-list/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_list(
+        connection: &Connection,
+        filters: Option<Vec<ClientFilter>>,
+    ) -> Result<Vec<Map<String, String>>, Error> {
+        let command = ("CLIENT", "LIST", NonEmpty::optional("filters", filters));
+        let clients: ClientList = query(connection, command).await?;
+        Ok(clients.0)
+    }
+
+    #[doc = " Whether the connection may be evicted to free memory, `ON` excludes it."]
+    #[doc = ""]
+    #[doc = " CLIENT NO-EVICT 〈 ON | OFF 〉"]
+    #[doc = " https://valkey.io/commands/client-no-evict/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_no_evict(connection: &Connection, enabled: bool) -> Result<(), Error> {
+        query(
+            connection,
+            ("CLIENT", "NO-EVICT", if enabled { "ON" } else { "OFF" }),
+        )
+        .await
+    }
+
+    #[doc = " Suspends running the commands of other connections, writes only with `WRITE`, for the time."]
+    #[doc = ""]
+    #[doc = " CLIENT PAUSE timeout [ WRITE | ALL ]"]
+    #[doc = " https://valkey.io/commands/client-pause/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_pause(
+        connection: &Connection,
+        timeout: DurationMilliseconds,
+        mode: Option<ClientPauseMode>,
+    ) -> Result<(), Error> {
+        query(connection, ("CLIENT", "PAUSE", timeout, mode)).await
+    }
+
+    #[doc = " Unblocks the connection with the ID from a blocking command, as if it timed out, or with an"]
+    #[doc = " error, returning whether it was blocked."]
+    #[doc = ""]
+    #[doc = " CLIENT UNBLOCK client-id [ TIMEOUT | ERROR ]"]
+    #[doc = " https://valkey.io/commands/client-unblock/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_unblock(
+        connection: &Connection,
+        client_id: Integer,
+        unblock_type: Option<ClientUnblockType>,
+    ) -> Result<bool, Error> {
+        query(connection, ("CLIENT", "UNBLOCK", client_id, unblock_type)).await
+    }
+
+    #[doc = " Resumes running the commands of connections paused with `client-pause`."]
+    #[doc = ""]
+    #[doc = " CLIENT UNPAUSE"]
+    #[doc = " https://valkey.io/commands/client-unpause/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_unpause(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("CLIENT", "UNPAUSE")).await
+    }
+
+    #[doc = " Assigns the slots to the node."]
+    #[doc = ""]
+    #[doc = " CLUSTER ADDSLOTS slot [ slot ... ]"]
+    #[doc = " https://valkey.io/commands/cluster-addslots/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_addslots(connection: &Connection, slots: Vec<u16>) -> Result<(), Error> {
+        query(
+            connection,
+            ("CLUSTER", "ADDSLOTS", NonEmpty::new("slots", slots)),
+        )
+        .await
+    }
+
+    #[doc = " Assigns the ranges of slots, start and end both included, to the node."]
+    #[doc = ""]
+    #[doc = " CLUSTER ADDSLOTSRANGE start-slot end-slot [ start-slot end-slot ... ]"]
+    #[doc = " https://valkey.io/commands/cluster-addslotsrange/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_addslotsrange(
+        connection: &Connection,
+        ranges: Vec<(u16, u16)>,
+    ) -> Result<(), Error> {
+        query(
+            connection,
+            ("CLUSTER", "ADDSLOTSRANGE", NonEmpty::new("ranges", ranges)),
+        )
+        .await
+    }
+
+    #[doc = " Advances the node's config epoch, unless it is already the greatest in the cluster."]
+    #[doc = ""]
+    #[doc = " CLUSTER BUMPEPOCH"]
+    #[doc = " https://valkey.io/commands/cluster-bumpepoch/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_bumpepoch(connection: &Connection) -> Result<ClusterBumpepochResult, Error> {
+        query(connection, ("CLUSTER", "BUMPEPOCH")).await
+    }
+
+    #[doc = " Cancels the slot migrations in progress."]
+    #[doc = ""]
+    #[doc = " CLUSTER CANCELSLOTMIGRATIONS"]
+    #[doc = " https://valkey.io/commands/cluster-cancelslotmigrations/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_cancelslotmigrations(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "CANCELSLOTMIGRATIONS")).await
+    }
+
+    #[doc = " The number of active failure reports for the node."]
+    #[doc = ""]
+    #[doc = " CLUSTER COUNT-FAILURE-REPORTS node-id"]
+    #[doc = " https://valkey.io/commands/cluster-count-failure-reports/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_count_failure_reports(
+        connection: &Connection,
+        node_id: String,
+    ) -> Result<Integer, Error> {
+        query(connection, ("CLUSTER", "COUNT-FAILURE-REPORTS", node_id)).await
+    }
+
+    #[doc = " Unassigns the slots from the node."]
+    #[doc = ""]
+    #[doc = " CLUSTER DELSLOTS slot [ slot ... ]"]
+    #[doc = " https://valkey.io/commands/cluster-delslots/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_delslots(connection: &Connection, slots: Vec<u16>) -> Result<(), Error> {
+        query(
+            connection,
+            ("CLUSTER", "DELSLOTS", NonEmpty::new("slots", slots)),
+        )
+        .await
+    }
+
+    #[doc = " Unassigns the ranges of slots, start and end both included, from the node."]
+    #[doc = ""]
+    #[doc = " CLUSTER DELSLOTSRANGE start-slot end-slot [ start-slot end-slot ... ]"]
+    #[doc = " https://valkey.io/commands/cluster-delslotsrange/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_delslotsrange(
+        connection: &Connection,
+        ranges: Vec<(u16, u16)>,
+    ) -> Result<(), Error> {
+        query(
+            connection,
+            ("CLUSTER", "DELSLOTSRANGE", NonEmpty::new("ranges", ranges)),
+        )
+        .await
+    }
+
+    #[doc = " Fails over the primary of this replica, coordinated with it unless `FORCE` or `TAKEOVER`."]
+    #[doc = ""]
+    #[doc = " CLUSTER FAILOVER [ FORCE | TAKEOVER ]"]
+    #[doc = " https://valkey.io/commands/cluster-failover/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_failover(
+        connection: &Connection,
+        mode: Option<ClusterFailoverMode>,
+    ) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "FAILOVER", mode)).await
+    }
+
+    #[doc = " Unassigns all the slots of the node."]
+    #[doc = ""]
+    #[doc = " CLUSTER FLUSHSLOTS"]
+    #[doc = " https://valkey.io/commands/cluster-flushslots/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_flushslots(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "FLUSHSLOTS")).await
+    }
+
+    #[doc = " Removes the node from the nodes this node knows of."]
+    #[doc = ""]
+    #[doc = " CLUSTER FORGET node-id"]
+    #[doc = " https://valkey.io/commands/cluster-forget/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_forget(connection: &Connection, node_id: String) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "FORGET", node_id)).await
+    }
+
+    #[doc = " The slot migrations in progress, and those recently finished."]
+    #[doc = ""]
+    #[doc = " CLUSTER GETSLOTMIGRATIONS"]
+    #[doc = " https://valkey.io/commands/cluster-getslotmigrations/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_getslotmigrations(
+        connection: &Connection,
+    ) -> Result<Vec<SlotMigration>, Error> {
+        query(connection, ("CLUSTER", "GETSLOTMIGRATIONS")).await
+    }
+
+    #[doc = " Connects the node to another, adding it to the cluster."]
+    #[doc = ""]
+    #[doc = " CLUSTER MEET ip port [ cluster-bus-port ]"]
+    #[doc = " https://valkey.io/commands/cluster-meet/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_meet(
+        connection: &Connection,
+        ip: String,
+        port: u16,
+        cluster_bus_port: Option<u16>,
+    ) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "MEET", ip, port, cluster_bus_port)).await
+    }
+
+    #[doc = " Migrates the ranges of slots from this node to other nodes."]
+    #[doc = ""]
+    #[doc = " CLUSTER MIGRATESLOTS SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ] [ SLOTSRANGE ... ]"]
+    #[doc = " https://valkey.io/commands/cluster-migrateslots/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_migrateslots(
+        connection: &Connection,
+        migrations: Vec<SlotMigrationGroup>,
+    ) -> Result<(), Error> {
+        query(
+            connection,
+            (
+                "CLUSTER",
+                "MIGRATESLOTS",
+                NonEmpty::new("migrations", migrations),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The replicas of the primary node, each a line in the format of CLUSTER NODES."]
+    #[doc = ""]
+    #[doc = " CLUSTER REPLICAS node-id"]
+    #[doc = " https://valkey.io/commands/cluster-replicas/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_replicas(
+        connection: &Connection,
+        node_id: String,
+    ) -> Result<Vec<String>, Error> {
+        query(connection, ("CLUSTER", "REPLICAS", node_id)).await
+    }
+
+    #[doc = " Makes the node a replica of the primary node, or with none, detaches it from its primary,"]
+    #[doc = " `NO ONE`."]
+    #[doc = ""]
+    #[doc = " CLUSTER REPLICATE 〈 node-id | NO ONE 〉"]
+    #[doc = " https://valkey.io/commands/cluster-replicate/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_replicate(
+        connection: &Connection,
+        node_id: Option<String>,
+    ) -> Result<(), Error> {
+        // NO ONE detaches the replica from its primary
+        let node = match node_id {
+            Some(node_id) => vec![node_id],
+            None => vec!["NO".to_string(), "ONE".to_string()],
+        };
+        query(connection, ("CLUSTER", "REPLICATE", node)).await
+    }
+
+    #[doc = " Resets the node, forgetting the other nodes and its slots, `SOFT` without a mode."]
+    #[doc = ""]
+    #[doc = " CLUSTER RESET [ HARD | SOFT ]"]
+    #[doc = " https://valkey.io/commands/cluster-reset/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_reset(
+        connection: &Connection,
+        mode: Option<ClusterResetMode>,
+    ) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "RESET", mode)).await
+    }
+
+    #[doc = " Saves the node's cluster configuration to disk."]
+    #[doc = ""]
+    #[doc = " CLUSTER SAVECONFIG"]
+    #[doc = " https://valkey.io/commands/cluster-saveconfig/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_saveconfig(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "SAVECONFIG")).await
+    }
+
+    #[doc = " Sets the config epoch of a new node."]
+    #[doc = ""]
+    #[doc = " CLUSTER SET-CONFIG-EPOCH config-epoch"]
+    #[doc = " https://valkey.io/commands/cluster-set-config-epoch/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_set_config_epoch(
+        connection: &Connection,
+        config_epoch: Integer,
+    ) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "SET-CONFIG-EPOCH", config_epoch)).await
+    }
+
+    #[doc = " Changes the state of the slot on the node."]
+    #[doc = ""]
+    #[doc = " CLUSTER SETSLOT slot 〈 IMPORTING node-id | MIGRATING node-id | NODE node-id | STABLE 〉 [ TIMEOUT timeout ]"]
+    #[doc = " https://valkey.io/commands/cluster-setslot/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_setslot(
+        connection: &Connection,
+        slot: u16,
+        state: ClusterSetslotState,
+        timeout: Option<DurationMilliseconds>,
+    ) -> Result<(), Error> {
+        query(
+            connection,
+            (
+                "CLUSTER",
+                "SETSLOT",
+                slot,
+                state,
+                NamedOption("TIMEOUT", timeout),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The entries of the command log of the type, up to the count, all of them for -1."]
+    #[doc = ""]
+    #[doc = " COMMANDLOG GET count 〈 slow | large-request | large-reply 〉"]
+    #[doc = " https://valkey.io/commands/commandlog-get/"]
+    #[allow(async_fn_in_trait)]
+    async fn commandlog_get(
+        connection: &Connection,
+        count: Integer,
+        type_: CommandlogType,
+    ) -> Result<Vec<LogEntry>, Error> {
+        query(connection, ("COMMANDLOG", "GET", count, type_)).await
+    }
+
+    #[doc = " The number of entries in the command log of the type."]
+    #[doc = ""]
+    #[doc = " COMMANDLOG LEN 〈 slow | large-request | large-reply 〉"]
+    #[doc = " https://valkey.io/commands/commandlog-len/"]
+    #[allow(async_fn_in_trait)]
+    async fn commandlog_len(
+        connection: &Connection,
+        type_: CommandlogType,
+    ) -> Result<Integer, Error> {
+        query(connection, ("COMMANDLOG", "LEN", type_)).await
+    }
+
+    #[doc = " Clears the command log of the type."]
+    #[doc = ""]
+    #[doc = " COMMANDLOG RESET 〈 slow | large-request | large-reply 〉"]
+    #[doc = " https://valkey.io/commands/commandlog-reset/"]
+    #[allow(async_fn_in_trait)]
+    async fn commandlog_reset(connection: &Connection, type_: CommandlogType) -> Result<(), Error> {
+        query(connection, ("COMMANDLOG", "RESET", type_)).await
+    }
+
+    #[doc = " The values of the configuration parameters matching the glob-style patterns, by name."]
+    #[doc = ""]
+    #[doc = " CONFIG GET parameter [ parameter ... ]"]
+    #[doc = " https://valkey.io/commands/config-get/"]
+    #[allow(async_fn_in_trait)]
+    async fn config_get(
+        connection: &Connection,
+        parameters: Vec<String>,
+    ) -> Result<Map<String, String>, Error> {
+        query(
+            connection,
+            ("CONFIG", "GET", NonEmpty::new("parameters", parameters)),
+        )
+        .await
+    }
+
+    #[doc = " Resets the server's statistics, e.g. those of INFO."]
+    #[doc = ""]
+    #[doc = " CONFIG RESETSTAT"]
+    #[doc = " https://valkey.io/commands/config-resetstat/"]
+    #[allow(async_fn_in_trait)]
+    async fn config_resetstat(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("CONFIG", "RESETSTAT")).await
+    }
+
+    #[doc = " Rewrites the configuration file with the current configuration."]
+    #[doc = ""]
+    #[doc = " CONFIG REWRITE"]
+    #[doc = " https://valkey.io/commands/config-rewrite/"]
+    #[allow(async_fn_in_trait)]
+    async fn config_rewrite(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("CONFIG", "REWRITE")).await
+    }
+
+    #[doc = " Sets the configuration parameters to the values, all or none of them."]
+    #[doc = ""]
+    #[doc = " CONFIG SET parameter value [ parameter value ... ]"]
+    #[doc = " https://valkey.io/commands/config-set/"]
+    #[allow(async_fn_in_trait)]
+    async fn config_set(
+        connection: &Connection,
+        parameters_and_values: Vec<(String, String)>,
+    ) -> Result<(), Error> {
+        let parameters_and_values = NonEmpty::new("parameters-and-values", parameters_and_values);
+        query(connection, ("CONFIG", "SET", parameters_and_values)).await
+    }
+
+    #[doc = " Fails over from this primary to a replica, the one at the target, or aborts a failover in"]
+    #[doc = " progress."]
+    #[doc = ""]
+    #[doc = " FAILOVER [ TO host port [ FORCE ] ] [ ABORT ] [ TIMEOUT milliseconds ]"]
+    #[doc = " https://valkey.io/commands/failover/"]
+    #[allow(async_fn_in_trait)]
+    async fn failover(
+        connection: &Connection,
+        target: Option<FailoverTarget>,
+        abort: bool,
+        timeout: Option<DurationMilliseconds>,
+    ) -> Result<(), Error> {
+        let command = (
+            "FAILOVER",
+            target,
+            Flag("ABORT", abort),
+            NamedOption("TIMEOUT", timeout),
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " When the databases were last saved to disk."]
+    #[doc = ""]
+    #[doc = " LASTSAVE"]
+    #[doc = " https://valkey.io/commands/lastsave/"]
+    #[allow(async_fn_in_trait)]
+    async fn lastsave(connection: &Connection) -> Result<UnixTimeSeconds, Error> {
+        query(connection, "LASTSAVE").await
+    }
+
+    #[doc = " A report of the latency events, for people to read."]
+    #[doc = ""]
+    #[doc = " LATENCY DOCTOR"]
+    #[doc = " https://valkey.io/commands/latency-doctor/"]
+    #[allow(async_fn_in_trait)]
+    async fn latency_doctor(connection: &Connection) -> Result<String, Error> {
+        query(connection, ("LATENCY", "DOCTOR")).await
+    }
+
+    #[doc = " A graph of the latency of the event, as text."]
+    #[doc = ""]
+    #[doc = " LATENCY GRAPH event"]
+    #[doc = " https://valkey.io/commands/latency-graph/"]
+    #[allow(async_fn_in_trait)]
+    async fn latency_graph(connection: &Connection, event: String) -> Result<String, Error> {
+        query(connection, ("LATENCY", "GRAPH", event)).await
+    }
+
+    #[doc = " The latency histogram of the commands, all of them without commands, by command name."]
+    #[doc = ""]
+    #[doc = " LATENCY HISTOGRAM [ command [ command ... ] ]"]
+    #[doc = " https://valkey.io/commands/latency-histogram/"]
+    #[allow(async_fn_in_trait)]
+    async fn latency_histogram(
+        connection: &Connection,
+        commands: Option<Vec<String>>,
+    ) -> Result<Map<String, LatencyHistogramEntry>, Error> {
+        query(
+            connection,
+            (
+                "LATENCY",
+                "HISTOGRAM",
+                NonEmpty::optional("commands", commands),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The samples of the latency of the event, when each was taken and the latency."]
+    #[doc = ""]
+    #[doc = " LATENCY HISTORY event"]
+    #[doc = " https://valkey.io/commands/latency-history/"]
+    #[allow(async_fn_in_trait)]
+    async fn latency_history(
+        connection: &Connection,
+        event: String,
+    ) -> Result<Vec<(UnixTimeSeconds, DurationMilliseconds)>, Error> {
+        query(connection, ("LATENCY", "HISTORY", event)).await
+    }
+
+    #[doc = " The latest sample of the latency of each event."]
+    #[doc = ""]
+    #[doc = " LATENCY LATEST"]
+    #[doc = " https://valkey.io/commands/latency-latest/"]
+    #[allow(async_fn_in_trait)]
+    async fn latency_latest(connection: &Connection) -> Result<Vec<LatencyLatestEntry>, Error> {
+        query(connection, ("LATENCY", "LATEST")).await
+    }
+
+    #[doc = " Clears the samples of the events, all of them without events, returning how many events."]
+    #[doc = ""]
+    #[doc = " LATENCY RESET [ event [ event ... ] ]"]
+    #[doc = " https://valkey.io/commands/latency-reset/"]
+    #[allow(async_fn_in_trait)]
+    async fn latency_reset(
+        connection: &Connection,
+        events: Option<Vec<String>>,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            ("LATENCY", "RESET", NonEmpty::optional("events", events)),
+        )
+        .await
+    }
+
+    #[doc = " The loaded modules."]
+    #[doc = ""]
+    #[doc = " MODULE LIST"]
+    #[doc = " https://valkey.io/commands/module-list/"]
+    #[allow(async_fn_in_trait)]
+    async fn module_list(connection: &Connection) -> Result<Vec<ModuleInfo>, Error> {
+        query(connection, ("MODULE", "LIST")).await
+    }
+
+    #[doc = " Loads the module at the path, with the arguments."]
+    #[doc = ""]
+    #[doc = " MODULE LOAD path [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/module-load/"]
+    #[allow(async_fn_in_trait)]
+    async fn module_load(
+        connection: &Connection,
+        path: String,
+        args: Option<Vec<String>>,
+    ) -> Result<(), Error> {
+        query(
+            connection,
+            ("MODULE", "LOAD", path, NonEmpty::optional("args", args)),
+        )
+        .await
+    }
+
+    #[doc = " Loads the module at the path, with the configuration parameters and arguments."]
+    #[doc = ""]
+    #[doc = " MODULE LOADEX path [ CONFIG name value [ CONFIG name value ... ] ] [ ARGS args [ args ... ] ]"]
+    #[doc = " https://valkey.io/commands/module-loadex/"]
+    #[allow(async_fn_in_trait)]
+    async fn module_loadex(
+        connection: &Connection,
+        path: String,
+        configs: Option<Vec<(String, String)>>,
+        args: Option<Vec<String>>,
+    ) -> Result<(), Error> {
+        // CONFIG before each name and value, ARGS once before the arguments
+        let configs = configs.map(|configs| {
+            let configs = configs
+                .into_iter()
+                .map(|(name, value)| ("CONFIG", name, value));
+            configs.collect::<Vec<_>>()
+        });
+        let configs = NonEmpty::optional("configs", configs);
+        let args = NonEmpty::optional("args", args).map(|args| ("ARGS", args));
+        query(connection, ("MODULE", "LOADEX", path, configs, args)).await
+    }
+
+    #[doc = " Unloads the module, by name."]
+    #[doc = ""]
+    #[doc = " MODULE UNLOAD name"]
+    #[doc = " https://valkey.io/commands/module-unload/"]
+    #[allow(async_fn_in_trait)]
+    async fn module_unload(connection: &Connection, name: String) -> Result<(), Error> {
+        query(connection, ("MODULE", "UNLOAD", name)).await
+    }
+
+    #[doc = " Makes the server a replica of the primary at the host and port, or with none, a primary,"]
+    #[doc = " `NO ONE`, returning the server's message."]
+    #[doc = ""]
+    #[doc = " REPLICAOF 〈 host port | NO ONE 〉"]
+    #[doc = " https://valkey.io/commands/replicaof/"]
+    #[allow(async_fn_in_trait)]
+    async fn replicaof(
+        connection: &Connection,
+        primary: Option<(String, u16)>,
+    ) -> Result<String, Error> {
+        // NO ONE makes the server a primary
+        let primary = match primary {
+            Some((host, port)) => vec![host, port.to_string()],
+            None => vec!["NO".to_string(), "ONE".to_string()],
+        };
+        query(connection, ("REPLICAOF", primary)).await
+    }
+
+    #[doc = " The server's role in replication, and its state."]
+    #[doc = ""]
+    #[doc = " ROLE"]
+    #[doc = " https://valkey.io/commands/role/"]
+    #[allow(async_fn_in_trait)]
+    async fn role(connection: &Connection) -> Result<RoleReply, Error> {
+        query(connection, "ROLE").await
+    }
+
+    #[doc = " Saves the databases to disk, blocking the server until done."]
+    #[doc = ""]
+    #[doc = " SAVE"]
+    #[doc = " https://valkey.io/commands/save/"]
+    #[allow(async_fn_in_trait)]
+    async fn save(connection: &Connection) -> Result<(), Error> {
+        query(connection, "SAVE").await
+    }
+
+    #[doc = " Stops the server, saving to disk as configured, or as the save mode says."]
+    #[doc = ""]
+    #[doc = " The server closes the connection once it stops, so a shutdown that succeeds fails the call"]
+    #[doc = " with a closed error."]
+    #[doc = ""]
+    #[doc = " See also `shutdown-abort`."]
+    #[doc = ""]
+    #[doc = " SHUTDOWN [ NOSAVE | SAVE ] [ NOW ] [ FORCE ] [ SAFE ] [ FAILOVER ]"]
+    #[doc = " https://valkey.io/commands/shutdown/"]
+    #[allow(async_fn_in_trait)]
+    async fn shutdown(
+        connection: &Connection,
+        save: Option<ShutdownSave>,
+        now: bool,
+        force: bool,
+        safe: bool,
+        failover: bool,
+    ) -> Result<(), Error> {
+        let command = (
+            "SHUTDOWN",
+            save,
+            Flag("NOW", now),
+            Flag("FORCE", force),
+            Flag("SAFE", safe),
+            Flag("FAILOVER", failover),
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " Aborts a shutdown in progress."]
+    #[doc = ""]
+    #[doc = " See also `shutdown`."]
+    #[doc = ""]
+    #[doc = " SHUTDOWN ABORT"]
+    #[doc = " https://valkey.io/commands/shutdown/"]
+    #[allow(async_fn_in_trait)]
+    async fn shutdown_abort(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("SHUTDOWN", "ABORT")).await
+    }
+
+    #[doc = " The entries of the slow log, up to the count, 10 without one, all of them for -1."]
+    #[doc = ""]
+    #[doc = " SLOWLOG GET [ count ]"]
+    #[doc = " https://valkey.io/commands/slowlog-get/"]
+    #[allow(async_fn_in_trait)]
+    async fn slowlog_get(
+        connection: &Connection,
+        count: Option<Integer>,
+    ) -> Result<Vec<LogEntry>, Error> {
+        query(connection, ("SLOWLOG", "GET", count)).await
+    }
+
+    #[doc = " The number of entries in the slow log."]
+    #[doc = ""]
+    #[doc = " SLOWLOG LEN"]
+    #[doc = " https://valkey.io/commands/slowlog-len/"]
+    #[allow(async_fn_in_trait)]
+    async fn slowlog_len(connection: &Connection) -> Result<Integer, Error> {
+        query(connection, ("SLOWLOG", "LEN")).await
+    }
+
+    #[doc = " Clears the slow log."]
+    #[doc = ""]
+    #[doc = " SLOWLOG RESET"]
+    #[doc = " https://valkey.io/commands/slowlog-reset/"]
+    #[allow(async_fn_in_trait)]
+    async fn slowlog_reset(connection: &Connection) -> Result<(), Error> {
+        query(connection, ("SLOWLOG", "RESET")).await
     }
 
     #[doc = " The number of bits set to 1 in the string stored at key, in the range, 0 when the key does"]

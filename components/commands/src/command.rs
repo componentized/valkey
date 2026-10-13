@@ -1,12 +1,15 @@
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby, BitfieldOffset,
-    BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, CommandRule, Connection, Cursor,
-    DbRule, DurationMilliseconds, DurationSeconds, Error, FlushMode, GeoCoordinates, GeoCount,
-    GeoFrom, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition, HsetexFieldCondition,
-    KeyRule, KeyType, LexBound, Limit, LinsertPosition, ListSide, MigrateAuth, MsetexPrecondition,
-    PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder,
-    StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule,
-    Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
+    Aggregate, BgsaveOperation, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby,
+    BitfieldOffset, BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, ClientFilter,
+    ClientPauseMode, ClientType, ClientUnblockType, ClusterFailoverMode, ClusterResetMode,
+    ClusterSetslotState, CommandRule, CommandlogType, Connection, Cursor, DbRule,
+    DurationMilliseconds, DurationSeconds, Error, FailoverTarget, FlushMode, GeoCoordinates,
+    GeoCount, GeoFrom, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition,
+    HsetexFieldCondition, KeyRule, KeyType, LexBound, Limit, LinsertPosition, ListSide,
+    MigrateAuth, MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition,
+    SetTtl, ShutdownSave, SlotMigrationGroup, SortOpts, SortOrder, StreamTrim,
+    StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value,
+    XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -204,6 +207,7 @@ impl IntoCommand for Rule {
             Rule::Command(rule) => rule.into_command(),
             Rule::Db(rule) => rule.into_command(),
             Rule::User(rule) => rule.into_command(),
+            Rule::Other(rule) => rule.into_command(),
         }
     }
 }
@@ -215,6 +219,7 @@ impl IntoCommand for RuleSelector {
             RuleSelector::Channel(rule) => rule.into_command(),
             RuleSelector::Command(rule) => rule.into_command(),
             RuleSelector::Db(rule) => rule.into_command(),
+            RuleSelector::Other(rule) => rule.into_command(),
         }
     }
 }
@@ -282,6 +287,8 @@ impl IntoCommand for UserRule {
             UserRule::On => "on".into_command(),
             UserRule::Off => "off".into_command(),
             UserRule::Nopass => "nopass".into_command(),
+            UserRule::SanitizePayload => "sanitize-payload".into_command(),
+            UserRule::SkipSanitizePayload => "skip-sanitize-payload".into_command(),
             UserRule::Password(password) => format!(">{password}").into_command(),
             UserRule::HashedPassword(hash) => format!("#{hash}").into_command(),
             UserRule::RemovePassword(password) => format!("<{password}").into_command(),
@@ -852,5 +859,158 @@ impl IntoCommand for MigrateAuth {
                 ("AUTH2", username, password).into_command()
             }
         }
+    }
+}
+
+impl IntoCommand for BgsaveOperation {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            BgsaveOperation::Schedule => "SCHEDULE",
+            BgsaveOperation::Cancel => "CANCEL",
+        }
+        .into_command()
+    }
+}
+
+/// `master` rather than `primary`, which servers before Valkey 8.0 do not know.
+impl IntoCommand for ClientType {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClientType::Normal => "normal",
+            ClientType::Primary => "master",
+            ClientType::Replica => "replica",
+            ClientType::Pubsub => "pubsub",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ClientPauseMode {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClientPauseMode::Write => "WRITE",
+            ClientPauseMode::All => "ALL",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ClientUnblockType {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClientUnblockType::Timeout => "TIMEOUT",
+            ClientUnblockType::Error => "ERROR",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ClusterFailoverMode {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClusterFailoverMode::Force => "FORCE",
+            ClusterFailoverMode::Takeover => "TAKEOVER",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ClusterResetMode {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClusterResetMode::Hard => "HARD",
+            ClusterResetMode::Soft => "SOFT",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for CommandlogType {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            CommandlogType::Slow => "slow",
+            CommandlogType::LargeRequest => "large-request",
+            CommandlogType::LargeReply => "large-reply",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ShutdownSave {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ShutdownSave::Nosave => "NOSAVE",
+            ShutdownSave::Save => "SAVE",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ClientFilter {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClientFilter::Id(ids) => ("ID", NonEmpty::new("id", ids)).into_command(),
+            ClientFilter::Type(client_type) => ("TYPE", client_type).into_command(),
+            ClientFilter::User(user) => ("USER", user).into_command(),
+            ClientFilter::Addr(addr) => ("ADDR", addr).into_command(),
+            ClientFilter::Laddr(laddr) => ("LADDR", laddr).into_command(),
+            ClientFilter::Skipme(skip) => {
+                ("SKIPME", if skip { "YES" } else { "NO" }).into_command()
+            }
+            ClientFilter::Maxage(age) => ("MAXAGE", age).into_command(),
+            ClientFilter::Name(name) => ("NAME", name).into_command(),
+            ClientFilter::Idle(idle) => ("IDLE", idle).into_command(),
+            ClientFilter::Flags(flags) => ("FLAGS", flags).into_command(),
+            ClientFilter::LibName(name) => ("LIB-NAME", name).into_command(),
+            ClientFilter::LibVer(version) => ("LIB-VER", version).into_command(),
+            ClientFilter::Db(db) => ("DB", db).into_command(),
+            ClientFilter::Capa(capability) => ("CAPA", capability).into_command(),
+            ClientFilter::Ip(ip) => ("IP", ip).into_command(),
+            ClientFilter::NotId(ids) => ("NOT-ID", NonEmpty::new("not-id", ids)).into_command(),
+            ClientFilter::NotType(client_type) => ("NOT-TYPE", client_type).into_command(),
+            ClientFilter::NotUser(user) => ("NOT-USER", user).into_command(),
+            ClientFilter::NotAddr(addr) => ("NOT-ADDR", addr).into_command(),
+            ClientFilter::NotLaddr(laddr) => ("NOT-LADDR", laddr).into_command(),
+            ClientFilter::NotName(name) => ("NOT-NAME", name).into_command(),
+            ClientFilter::NotFlags(flags) => ("NOT-FLAGS", flags).into_command(),
+            ClientFilter::NotLibName(name) => ("NOT-LIB-NAME", name).into_command(),
+            ClientFilter::NotLibVer(version) => ("NOT-LIB-VER", version).into_command(),
+            ClientFilter::NotDb(db) => ("NOT-DB", db).into_command(),
+            ClientFilter::NotCapa(capability) => ("NOT-CAPA", capability).into_command(),
+            ClientFilter::NotIp(ip) => ("NOT-IP", ip).into_command(),
+        }
+    }
+}
+
+impl IntoCommand for ClusterSetslotState {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClusterSetslotState::Importing(node_id) => ("IMPORTING", node_id).into_command(),
+            ClusterSetslotState::Migrating(node_id) => ("MIGRATING", node_id).into_command(),
+            ClusterSetslotState::Node(node_id) => ("NODE", node_id).into_command(),
+            ClusterSetslotState::Stable => "STABLE".into_command(),
+        }
+    }
+}
+
+/// `TO host port [ FORCE ]`
+impl IntoCommand for FailoverTarget {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        ("TO", self.host, self.port, Flag("FORCE", self.force)).into_command()
+    }
+}
+
+/// `SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ]`
+impl IntoCommand for SlotMigrationGroup {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        (
+            "SLOTSRANGE",
+            NonEmpty::new("ranges", self.ranges),
+            "NODE",
+            self.node_id,
+            self.auth
+                .map(|(username, password)| ("AUTH", username, password)),
+        )
+            .into_command()
     }
 }

@@ -111,17 +111,395 @@ interface commands {
 
     // admin commands
 
+    /// Whether a user may run a command, see `acl-dryrun`.
+    variant acl-dryrun-result {
+        /// The user may run the command.
+        allowed,
+        /// The user may not run the command, and why.
+        denied(string),
+    }
+
+    /// A security event, a command or authentication the rules denied, see `acl-log`.
+    record acl-log-entry {
+        /// The number of events like this one, within 60 seconds of each other.
+        count: integer,
+        /// What was denied, e.g. `command`, `key`, `channel` or `auth`.
+        reason: string,
+        /// Where it was denied, e.g. `toplevel`, `multi` or `lua`.
+        context: string,
+        /// The command, key or channel that was denied.
+        object: string,
+        username: string,
+        /// The seconds since the latest of these events.
+        age-seconds: double,
+        /// The connection, in the format of CLIENT LIST.
+        client-info: string,
+        /// The ID of the entry, since Valkey 7.2.
+        entry-id: option<integer>,
+        /// When the first of these events happened, since Valkey 7.2.
+        timestamp-created: option<unix-time-milliseconds>,
+        /// When the latest of these events happened, since Valkey 7.2.
+        timestamp-last-updated: option<unix-time-milliseconds>,
+    }
+
+    /// What BGSAVE does.
+    enum bgsave-operation {
+        /// `SCHEDULE`: saves once the rewrite of the append-only file in progress is done.
+        schedule,
+        /// `CANCEL`: cancels the save in progress, or scheduled.
+        cancel,
+    }
+
+    /// The type of a connection, for the `client-filter`.
+    enum client-type {
+        /// `normal`
+        normal,
+        /// `master`: the connection to the primary of a replica.
+        primary,
+        /// `replica`
+        replica,
+        /// `pubsub`
+        pubsub,
+    }
+
+    /// A filter of connections, for CLIENT KILL and CLIENT LIST.
+    variant client-filter {
+        /// `ID client-id [ client-id ... ]`
+        id(list<integer>),
+        /// `TYPE`
+        %type(client-type),
+        /// `USER username`
+        user(string),
+        /// `ADDR ip:port`: the address of the client.
+        addr(string),
+        /// `LADDR ip:port`: the address of the server the client connected to.
+        laddr(string),
+        /// `SKIPME YES | NO`: whether to skip this connection, yes by default for CLIENT KILL.
+        skipme(bool),
+        /// `MAXAGE`: connections older than the time.
+        maxage(duration-seconds),
+        /// `NAME`
+        name(string),
+        /// `IDLE`: connections idle for at least the time.
+        idle(duration-seconds),
+        /// `FLAGS`: connections with all the flags, e.g. `N`.
+        %flags(string),
+        /// `LIB-NAME`
+        lib-name(string),
+        /// `LIB-VER`
+        lib-ver(string),
+        /// `DB`
+        db(integer),
+        /// `CAPA`: connections with the capability, e.g. `redirect`.
+        capa(string),
+        /// `IP`
+        ip(string),
+        /// `NOT-ID client-id [ client-id ... ]`
+        not-id(list<integer>),
+        /// `NOT-TYPE`
+        not-type(client-type),
+        /// `NOT-USER`
+        not-user(string),
+        /// `NOT-ADDR`
+        not-addr(string),
+        /// `NOT-LADDR`
+        not-laddr(string),
+        /// `NOT-NAME`
+        not-name(string),
+        /// `NOT-FLAGS`
+        not-flags(string),
+        /// `NOT-LIB-NAME`
+        not-lib-name(string),
+        /// `NOT-LIB-VER`
+        not-lib-ver(string),
+        /// `NOT-DB`
+        not-db(integer),
+        /// `NOT-CAPA`
+        not-capa(string),
+        /// `NOT-IP`
+        not-ip(string),
+    }
+
+    /// Which commands CLIENT PAUSE suspends.
+    enum client-pause-mode {
+        /// `WRITE`: commands that may write.
+        write,
+        /// `ALL`: every command, the default.
+        all,
+    }
+
+    /// How CLIENT UNBLOCK unblocks a connection.
+    enum client-unblock-type {
+        /// `TIMEOUT`: as if the command timed out, the default.
+        timeout,
+        /// `ERROR`: with an `UNBLOCKED` error.
+        error,
+    }
+
+    /// The outcome of CLUSTER BUMPEPOCH.
+    variant cluster-bumpepoch-result {
+        /// `BUMPED`: the config epoch was advanced, to this one.
+        bumped(integer),
+        /// `STILL`: the config epoch is already the greatest in the cluster, this one.
+        still(integer),
+    }
+
+    /// How CLUSTER FAILOVER fails over.
+    enum cluster-failover-mode {
+        /// `FORCE`: without the agreement of the primary, which may be down.
+        force,
+        /// `TAKEOVER`: without the agreement of the primary or the rest of the cluster.
+        takeover,
+    }
+
+    /// Which way a slot migration moves the slots.
+    enum slot-migration-operation {
+        /// `IMPORT`: to this node.
+        %import,
+        /// `EXPORT`: from this node.
+        %export,
+    }
+
+    /// A slot migration, see `cluster-getslotmigrations`.
+    record slot-migration {
+        /// The ID of the migration.
+        link-name: string,
+        operation: slot-migration-operation,
+        /// The ranges of slots, start and end both included.
+        slot-ranges: list<tuple<u16, u16>>,
+        /// The ID of the node the slots move to.
+        target-node: string,
+        /// The ID of the node the slots move from.
+        source-node: string,
+        create-time: unix-time-seconds,
+        last-update-time: unix-time-seconds,
+        last-ack-time: unix-time-seconds,
+        /// The state of the migration, for people to read.
+        state: string,
+        /// More details of the state, for people to read.
+        message: string,
+        /// The bytes copied on write while forked for the migration.
+        cow-size: integer,
+    }
+
+    /// Ranges of slots to migrate to a node, see `cluster-migrateslots`.
+    record slot-migration-group {
+        /// The ranges of slots, start and end both included.
+        ranges: list<tuple<u16, u16>>,
+        /// The ID of the node to migrate the slots to.
+        node-id: string,
+        /// `AUTH username password`: the credentials for the node, since Valkey 9.2.
+        auth: option<tuple<string, string>>,
+    }
+
+    /// How CLUSTER RESET resets a node.
+    enum cluster-reset-mode {
+        /// `HARD`: also generates a new node ID and resets the epochs.
+        hard,
+        /// `SOFT`: the default.
+        soft,
+    }
+
+    /// The state to set a slot to, see `cluster-setslot`.
+    variant cluster-setslot-state {
+        /// `IMPORTING node-id`: importing the slot from the node.
+        importing(string),
+        /// `MIGRATING node-id`: migrating the slot to the node.
+        migrating(string),
+        /// `NODE node-id`: assigned to the node.
+        node(string),
+        /// `STABLE`: neither importing nor migrating.
+        stable,
+    }
+
+    /// A command log, see `commandlog-get`.
+    enum commandlog-type {
+        /// `slow`: commands that took longer than `commandlog-execution-slower-than`.
+        slow,
+        /// `large-request`: commands larger than `commandlog-request-larger-than`.
+        large-request,
+        /// `large-reply`: replies larger than `commandlog-reply-larger-than`.
+        large-reply,
+    }
+
+    /// An entry of the slow log or a command log.
+    record log-entry {
+        /// The ID of the entry, unique until the server restarts.
+        id: integer,
+        /// When the command ran.
+        timestamp: unix-time-seconds,
+        /// The microseconds the command took, or for the large logs, the bytes of the request or
+        /// reply.
+        value: integer,
+        /// The command and its arguments, long ones shortened.
+        arguments: list<string>,
+        /// The client's address, `ip:port`.
+        client-address: string,
+        /// The client's name, see CLIENT SETNAME, empty when it has none.
+        client-name: string,
+    }
+
+    /// Where FAILOVER fails over to.
+    record failover-target {
+        host: string,
+        port: u16,
+        /// `FORCE`: fails over at the timeout, even before the replica has caught up.
+        force: bool,
+    }
+
+    /// The latency histogram of a command, see `latency-histogram`.
+    record latency-histogram-entry {
+        /// The number of times the command ran.
+        calls: integer,
+        /// The cumulative counts of the calls that took up to each number of microseconds, a power
+        /// of 2.
+        histogram-usec: list<tuple<integer, integer>>,
+    }
+
+    /// The latest sample of the latency of an event, see `latency-latest`.
+    record latency-latest-entry {
+        event: string,
+        /// When the latest sample was taken.
+        timestamp: unix-time-seconds,
+        latest: duration-milliseconds,
+        /// The highest latency since the server started, or the event was reset.
+        max: duration-milliseconds,
+        /// The sum of the latencies of the samples.
+        sum: duration-milliseconds,
+        /// The number of samples.
+        count: integer,
+    }
+
+    /// A loaded module, see `module-list`.
+    record module-info {
+        name: string,
+        /// The module's version.
+        ver: integer,
+        /// The path the module was loaded from.
+        path: string,
+        /// The arguments the module was loaded with.
+        args: list<string>,
+    }
+
+    /// A replica of a primary, see `role`.
+    record role-replica-info {
+        ip: string,
+        port: u16,
+        /// The replication offset the replica last acknowledged.
+        offset: integer,
+    }
+
+    /// The replication state of a primary, see `role`.
+    record role-primary {
+        /// The primary's replication offset.
+        offset: integer,
+        replicas: list<role-replica-info>,
+    }
+
+    /// The replication state of a replica, see `role`.
+    record role-replica {
+        primary-host: string,
+        primary-port: u16,
+        /// The state of replication, e.g. `connected`, `connecting` or `sync`.
+        state: string,
+        /// The replication offset of the data received from the primary, -1 when not connected.
+        offset: integer,
+    }
+
+    /// The server's role in replication, see `role`.
+    variant role-reply {
+        /// `master`
+        primary(role-primary),
+        /// `slave`
+        replica(role-replica),
+        /// `sentinel`: the names of the primaries it monitors.
+        sentinel(list<string>),
+    }
+
+    /// Whether SHUTDOWN saves to disk.
+    enum shutdown-save {
+        /// `NOSAVE`: does not save, even with save points configured.
+        nosave,
+        /// `SAVE`: saves, even without save points configured.
+        save,
+    }
+
+    /// The ACL categories, or with a category, the commands in it.
+    ///
+    /// ACL CAT [ category ]
+    /// https://valkey.io/commands/acl-cat/
+    acl-cat: async func(connection: borrow<connection>, category: option<string>) -> result<list<string>, error>;
+
     /// Delete all the specified ACL users and terminate all the connections that are authenticated with such users.
     ///
     /// ACL DELUSER username [ username ... ]
     /// https://valkey.io/commands/acl-deluser/
     acl-deluser: async func(connection: borrow<connection>, usernames: list<string>) -> result<integer, error>;
 
+    /// Whether the user may run the command, without running it.
+    ///
+    /// ACL DRYRUN username command [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/acl-dryrun/
+    acl-dryrun: async func(connection: borrow<connection>, username: string, command: list<string>) -> result<acl-dryrun-result, error>;
+
     /// Generates a random password.
     ///
     /// ACL GENPASS [ bits ]
     /// https://valkey.io/commands/acl-genpass/
     acl-genpass: async func(connection: borrow<connection>, bits: option<integer>) -> result<string, error>;
+
+    /// The rules of the user, none when the user does not exist.
+    ///
+    /// The flags, the hashed passwords, the root selector's rules, then the selectors, as the server
+    /// normalized them, e.g. `allkeys` is `~*`. Applied with `acl-setuser`, after `reset`, they
+    /// recreate the user. The roles of Valkey 9.2 are not included.
+    ///
+    /// ACL GETUSER username
+    /// https://valkey.io/commands/acl-getuser/
+    acl-getuser: async func(connection: borrow<connection>, username: string) -> result<option<list<rule>>, error>;
+
+    /// A user and its rules, see `acl-list`.
+    record acl-list-entry {
+        username: string,
+        /// The user's rules, as the server normalized them, e.g. `allkeys` is `~*`. Applied with
+        /// `acl-setuser`, after `reset`, they recreate the user.
+        rules: list<rule>,
+    }
+
+    /// The rules of every user, as written to an ACL file.
+    ///
+    /// ACL LIST
+    /// https://valkey.io/commands/acl-list/
+    acl-list: async func(connection: borrow<connection>) -> result<list<acl-list-entry>, error>;
+
+    /// Replaces the users with those of the configured ACL file.
+    ///
+    /// ACL LOAD
+    /// https://valkey.io/commands/acl-load/
+    acl-load: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// The recent security events, commands or authentications the rules denied, up to the count,
+    /// 10 without one.
+    ///
+    /// See also `acl-log-reset`.
+    ///
+    /// ACL LOG [ count ]
+    /// https://valkey.io/commands/acl-log/
+    acl-log: async func(connection: borrow<connection>, count: option<integer>) -> result<list<acl-log-entry>, error>;
+
+    /// Clears the security events.
+    ///
+    /// See also `acl-log`.
+    ///
+    /// ACL LOG RESET
+    /// https://valkey.io/commands/acl-log/
+    acl-log-reset: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Saves the users to the configured ACL file.
+    ///
+    /// ACL SAVE
+    /// https://valkey.io/commands/acl-save/
+    acl-save: async func(connection: borrow<connection>) -> result<_, error>;
 
     /// A rule of an ACL user, see `acl-setuser`.
     ///
@@ -137,6 +515,8 @@ interface commands {
         db(db-rule),
         /// The user itself, e.g. whether it is enabled and its passwords.
         user(user-rule),
+        /// A rule this interface does not know, e.g. from a newer server, sent as is.
+        other(string),
     }
 
     /// A rule of a selector, a set of permissions matched independently of the user's root permissions,
@@ -150,6 +530,8 @@ interface commands {
         command(command-rule),
         /// The databases the selector permits access to.
         db(db-rule),
+        /// A rule this interface does not know, e.g. from a newer server, sent as is.
+        other(string),
     }
 
     /// A rule for the keys a user may access.
@@ -219,6 +601,10 @@ interface commands {
         off,
         /// `nopass`: removes all the user's passwords, any password then authenticates as the user.
         nopass,
+        /// `sanitize-payload`: validates the payloads of the user's RESTORE commands, the default.
+        sanitize-payload,
+        /// `skip-sanitize-payload`: skips validating the payloads of the user's RESTORE commands.
+        skip-sanitize-payload,
         /// `><password>`: adds the password to the user's passwords.
         password(string),
         /// `#<hash>`: adds a password, by its SHA-256 hash as 64 lowercase hex characters, to the user's
@@ -243,81 +629,354 @@ interface commands {
     /// https://valkey.io/commands/acl-setuser/
     acl-setuser: async func(connection: borrow<connection>, username: string, rules: option<list<rule>>) -> result<_, error>;
 
+    /// The names of the users.
+    ///
+    /// ACL USERS
+    /// https://valkey.io/commands/acl-users/
+    acl-users: async func(connection: borrow<connection>) -> result<list<string>, error>;
 
-    // not yet implemented, from the @admin category:
-    //   ACL CAT
-    //   ACL DRYRUN
-    //   ACL GETUSER
-    //   ACL LIST
-    //   ACL LOAD
-    //   ACL LOG
-    //   ACL SAVE
-    //   ACL USERS
-    //   ACL WHOAMI
-    //   BGREWRITEAOF
-    //   BGSAVE
-    //   CLIENT KILL
-    //   CLIENT LIST
-    //   CLIENT NO-EVICT
-    //   CLIENT PAUSE
-    //   CLIENT UNBLOCK
-    //   CLIENT UNPAUSE
-    //   CLUSTER ADDSLOTS
-    //   CLUSTER ADDSLOTSRANGE
-    //   CLUSTER BUMPEPOCH
-    //   CLUSTER CANCELSLOTMIGRATIONS
-    //   CLUSTER COUNT-FAILURE-REPORTS
-    //   CLUSTER DELSLOTS
-    //   CLUSTER DELSLOTSRANGE
-    //   CLUSTER FAILOVER
-    //   CLUSTER FLUSHSLOT
-    //   CLUSTER FLUSHSLOTS
-    //   CLUSTER FORGET
-    //   CLUSTER GETSLOTMIGRATIONS
-    //   CLUSTER MEET
-    //   CLUSTER MIGRATESLOTS
-    //   CLUSTER REPLICAS
-    //   CLUSTER REPLICATE
-    //   CLUSTER RESET
-    //   CLUSTER SAVECONFIG
-    //   CLUSTER SET-CONFIG-EPOCH
-    //   CLUSTER SETSLOT
-    //   CLUSTER SLAVES
-    //   CLUSTER SYNCSLOTS
-    //   COMMANDLOG GET
-    //   COMMANDLOG LEN
-    //   COMMANDLOG RESET
-    //   CONFIG GET
-    //   CONFIG RESETSTAT
-    //   CONFIG REWRITE
-    //   CONFIG SET
-    //   DEBUG
-    //   FAILOVER
-    //   LASTSAVE
-    //   LATENCY DOCTOR
-    //   LATENCY GRAPH
-    //   LATENCY HISTOGRAM
-    //   LATENCY HISTORY
-    //   LATENCY LATEST
-    //   LATENCY RESET
-    //   MODULE LIST
-    //   MODULE LOAD
-    //   MODULE LOADEX
-    //   MODULE UNLOAD
-    //   MONITOR
-    //   PFDEBUG
-    //   PFSELFTEST
-    //   PSYNC
-    //   REPLCONF
-    //   REPLICAOF
-    //   ROLE
-    //   SAVE
-    //   SHUTDOWN
-    //   SLAVEOF
-    //   SLOWLOG GET
-    //   SLOWLOG LEN
-    //   SLOWLOG RESET
-    //   SYNC
+    /// The name of the user the connection is authenticated as.
+    ///
+    /// ACL WHOAMI
+    /// https://valkey.io/commands/acl-whoami/
+    acl-whoami: async func(connection: borrow<connection>) -> result<string, error>;
+
+    /// Starts rewriting the append-only file in the background, returning the server's message.
+    ///
+    /// BGREWRITEAOF
+    /// https://valkey.io/commands/bgrewriteaof/
+    bgrewriteaof: async func(connection: borrow<connection>) -> result<string, error>;
+
+    /// Starts saving the databases to disk in the background, or schedules or cancels it, returning
+    /// the server's message.
+    ///
+    /// BGSAVE [ SCHEDULE | CANCEL ]
+    /// https://valkey.io/commands/bgsave/
+    bgsave: async func(connection: borrow<connection>, operation: option<bgsave-operation>) -> result<string, error>;
+
+    /// Closes the connections that match every one of the filters, returning how many.
+    ///
+    /// CLIENT KILL filter [ filter ... ]
+    /// https://valkey.io/commands/client-kill/
+    client-kill: async func(connection: borrow<connection>, filters: list<client-filter>) -> result<integer, error>;
+
+    /// The connections that match every one of the filters, all of them without filters, each a
+    /// map of its fields, e.g. `id`, `addr` and `name`.
+    ///
+    /// CLIENT LIST [ filter [ filter ... ] ]
+    /// https://valkey.io/commands/client-list/
+    client-list: async func(connection: borrow<connection>, filters: option<list<client-filter>>) -> result<list<map<string, string>>, error>;
+
+    /// Whether the connection may be evicted to free memory, `ON` excludes it.
+    ///
+    /// CLIENT NO-EVICT 〈 ON | OFF 〉
+    /// https://valkey.io/commands/client-no-evict/
+    client-no-evict: async func(connection: borrow<connection>, enabled: bool) -> result<_, error>;
+
+    /// Suspends running the commands of other connections, writes only with `WRITE`, for the time.
+    ///
+    /// CLIENT PAUSE timeout [ WRITE | ALL ]
+    /// https://valkey.io/commands/client-pause/
+    client-pause: async func(connection: borrow<connection>, timeout: duration-milliseconds, mode: option<client-pause-mode>) -> result<_, error>;
+
+    /// Unblocks the connection with the ID from a blocking command, as if it timed out, or with an
+    /// error, returning whether it was blocked.
+    ///
+    /// CLIENT UNBLOCK client-id [ TIMEOUT | ERROR ]
+    /// https://valkey.io/commands/client-unblock/
+    client-unblock: async func(connection: borrow<connection>, client-id: integer, unblock-type: option<client-unblock-type>) -> result<bool, error>;
+
+    /// Resumes running the commands of connections paused with `client-pause`.
+    ///
+    /// CLIENT UNPAUSE
+    /// https://valkey.io/commands/client-unpause/
+    client-unpause: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Assigns the slots to the node.
+    ///
+    /// CLUSTER ADDSLOTS slot [ slot ... ]
+    /// https://valkey.io/commands/cluster-addslots/
+    cluster-addslots: async func(connection: borrow<connection>, slots: list<u16>) -> result<_, error>;
+
+    /// Assigns the ranges of slots, start and end both included, to the node.
+    ///
+    /// CLUSTER ADDSLOTSRANGE start-slot end-slot [ start-slot end-slot ... ]
+    /// https://valkey.io/commands/cluster-addslotsrange/
+    cluster-addslotsrange: async func(connection: borrow<connection>, ranges: list<tuple<u16, u16>>) -> result<_, error>;
+
+    /// Advances the node's config epoch, unless it is already the greatest in the cluster.
+    ///
+    /// CLUSTER BUMPEPOCH
+    /// https://valkey.io/commands/cluster-bumpepoch/
+    cluster-bumpepoch: async func(connection: borrow<connection>) -> result<cluster-bumpepoch-result, error>;
+
+    /// Cancels the slot migrations in progress.
+    ///
+    /// CLUSTER CANCELSLOTMIGRATIONS
+    /// https://valkey.io/commands/cluster-cancelslotmigrations/
+    cluster-cancelslotmigrations: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// The number of active failure reports for the node.
+    ///
+    /// CLUSTER COUNT-FAILURE-REPORTS node-id
+    /// https://valkey.io/commands/cluster-count-failure-reports/
+    cluster-count-failure-reports: async func(connection: borrow<connection>, node-id: string) -> result<integer, error>;
+
+    /// Unassigns the slots from the node.
+    ///
+    /// CLUSTER DELSLOTS slot [ slot ... ]
+    /// https://valkey.io/commands/cluster-delslots/
+    cluster-delslots: async func(connection: borrow<connection>, slots: list<u16>) -> result<_, error>;
+
+    /// Unassigns the ranges of slots, start and end both included, from the node.
+    ///
+    /// CLUSTER DELSLOTSRANGE start-slot end-slot [ start-slot end-slot ... ]
+    /// https://valkey.io/commands/cluster-delslotsrange/
+    cluster-delslotsrange: async func(connection: borrow<connection>, ranges: list<tuple<u16, u16>>) -> result<_, error>;
+
+    /// Fails over the primary of this replica, coordinated with it unless `FORCE` or `TAKEOVER`.
+    ///
+    /// CLUSTER FAILOVER [ FORCE | TAKEOVER ]
+    /// https://valkey.io/commands/cluster-failover/
+    cluster-failover: async func(connection: borrow<connection>, mode: option<cluster-failover-mode>) -> result<_, error>;
+
+    /// Unassigns all the slots of the node.
+    ///
+    /// CLUSTER FLUSHSLOTS
+    /// https://valkey.io/commands/cluster-flushslots/
+    cluster-flushslots: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Removes the node from the nodes this node knows of.
+    ///
+    /// CLUSTER FORGET node-id
+    /// https://valkey.io/commands/cluster-forget/
+    cluster-forget: async func(connection: borrow<connection>, node-id: string) -> result<_, error>;
+
+    /// The slot migrations in progress, and those recently finished.
+    ///
+    /// CLUSTER GETSLOTMIGRATIONS
+    /// https://valkey.io/commands/cluster-getslotmigrations/
+    cluster-getslotmigrations: async func(connection: borrow<connection>) -> result<list<slot-migration>, error>;
+
+    /// Connects the node to another, adding it to the cluster.
+    ///
+    /// CLUSTER MEET ip port [ cluster-bus-port ]
+    /// https://valkey.io/commands/cluster-meet/
+    cluster-meet: async func(connection: borrow<connection>, ip: string, port: u16, cluster-bus-port: option<u16>) -> result<_, error>;
+
+    /// Migrates the ranges of slots from this node to other nodes.
+    ///
+    /// CLUSTER MIGRATESLOTS SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ] [ SLOTSRANGE ... ]
+    /// https://valkey.io/commands/cluster-migrateslots/
+    cluster-migrateslots: async func(connection: borrow<connection>, migrations: list<slot-migration-group>) -> result<_, error>;
+
+    /// The replicas of the primary node, each a line in the format of CLUSTER NODES.
+    ///
+    /// CLUSTER REPLICAS node-id
+    /// https://valkey.io/commands/cluster-replicas/
+    cluster-replicas: async func(connection: borrow<connection>, node-id: string) -> result<list<string>, error>;
+
+    /// Makes the node a replica of the primary node, or with none, detaches it from its primary,
+    /// `NO ONE`.
+    ///
+    /// CLUSTER REPLICATE 〈 node-id | NO ONE 〉
+    /// https://valkey.io/commands/cluster-replicate/
+    cluster-replicate: async func(connection: borrow<connection>, node-id: option<string>) -> result<_, error>;
+
+    /// Resets the node, forgetting the other nodes and its slots, `SOFT` without a mode.
+    ///
+    /// CLUSTER RESET [ HARD | SOFT ]
+    /// https://valkey.io/commands/cluster-reset/
+    cluster-reset: async func(connection: borrow<connection>, mode: option<cluster-reset-mode>) -> result<_, error>;
+
+    /// Saves the node's cluster configuration to disk.
+    ///
+    /// CLUSTER SAVECONFIG
+    /// https://valkey.io/commands/cluster-saveconfig/
+    cluster-saveconfig: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Sets the config epoch of a new node.
+    ///
+    /// CLUSTER SET-CONFIG-EPOCH config-epoch
+    /// https://valkey.io/commands/cluster-set-config-epoch/
+    cluster-set-config-epoch: async func(connection: borrow<connection>, config-epoch: integer) -> result<_, error>;
+
+    /// Changes the state of the slot on the node.
+    ///
+    /// CLUSTER SETSLOT slot 〈 IMPORTING node-id | MIGRATING node-id | NODE node-id | STABLE 〉 [ TIMEOUT timeout ]
+    /// https://valkey.io/commands/cluster-setslot/
+    cluster-setslot: async func(connection: borrow<connection>, slot: u16, state: cluster-setslot-state, timeout: option<duration-milliseconds>) -> result<_, error>;
+
+    /// The entries of the command log of the type, up to the count, all of them for -1.
+    ///
+    /// COMMANDLOG GET count 〈 slow | large-request | large-reply 〉
+    /// https://valkey.io/commands/commandlog-get/
+    commandlog-get: async func(connection: borrow<connection>, count: integer, %type: commandlog-type) -> result<list<log-entry>, error>;
+
+    /// The number of entries in the command log of the type.
+    ///
+    /// COMMANDLOG LEN 〈 slow | large-request | large-reply 〉
+    /// https://valkey.io/commands/commandlog-len/
+    commandlog-len: async func(connection: borrow<connection>, %type: commandlog-type) -> result<integer, error>;
+
+    /// Clears the command log of the type.
+    ///
+    /// COMMANDLOG RESET 〈 slow | large-request | large-reply 〉
+    /// https://valkey.io/commands/commandlog-reset/
+    commandlog-reset: async func(connection: borrow<connection>, %type: commandlog-type) -> result<_, error>;
+
+    /// The values of the configuration parameters matching the glob-style patterns, by name.
+    ///
+    /// CONFIG GET parameter [ parameter ... ]
+    /// https://valkey.io/commands/config-get/
+    config-get: async func(connection: borrow<connection>, parameters: list<string>) -> result<map<string, string>, error>;
+
+    /// Resets the server's statistics, e.g. those of INFO.
+    ///
+    /// CONFIG RESETSTAT
+    /// https://valkey.io/commands/config-resetstat/
+    config-resetstat: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Rewrites the configuration file with the current configuration.
+    ///
+    /// CONFIG REWRITE
+    /// https://valkey.io/commands/config-rewrite/
+    config-rewrite: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Sets the configuration parameters to the values, all or none of them.
+    ///
+    /// CONFIG SET parameter value [ parameter value ... ]
+    /// https://valkey.io/commands/config-set/
+    config-set: async func(connection: borrow<connection>, parameters-and-values: list<tuple<string, string>>) -> result<_, error>;
+
+    /// Fails over from this primary to a replica, the one at the target, or aborts a failover in
+    /// progress.
+    ///
+    /// FAILOVER [ TO host port [ FORCE ] ] [ ABORT ] [ TIMEOUT milliseconds ]
+    /// https://valkey.io/commands/failover/
+    failover: async func(connection: borrow<connection>, target: option<failover-target>, abort: bool, timeout: option<duration-milliseconds>) -> result<_, error>;
+
+    /// When the databases were last saved to disk.
+    ///
+    /// LASTSAVE
+    /// https://valkey.io/commands/lastsave/
+    lastsave: async func(connection: borrow<connection>) -> result<unix-time-seconds, error>;
+
+    /// A report of the latency events, for people to read.
+    ///
+    /// LATENCY DOCTOR
+    /// https://valkey.io/commands/latency-doctor/
+    latency-doctor: async func(connection: borrow<connection>) -> result<string, error>;
+
+    /// A graph of the latency of the event, as text.
+    ///
+    /// LATENCY GRAPH event
+    /// https://valkey.io/commands/latency-graph/
+    latency-graph: async func(connection: borrow<connection>, event: string) -> result<string, error>;
+
+    /// The latency histogram of the commands, all of them without commands, by command name.
+    ///
+    /// LATENCY HISTOGRAM [ command [ command ... ] ]
+    /// https://valkey.io/commands/latency-histogram/
+    latency-histogram: async func(connection: borrow<connection>, commands: option<list<string>>) -> result<map<string, latency-histogram-entry>, error>;
+
+    /// The samples of the latency of the event, when each was taken and the latency.
+    ///
+    /// LATENCY HISTORY event
+    /// https://valkey.io/commands/latency-history/
+    latency-history: async func(connection: borrow<connection>, event: string) -> result<list<tuple<unix-time-seconds, duration-milliseconds>>, error>;
+
+    /// The latest sample of the latency of each event.
+    ///
+    /// LATENCY LATEST
+    /// https://valkey.io/commands/latency-latest/
+    latency-latest: async func(connection: borrow<connection>) -> result<list<latency-latest-entry>, error>;
+
+    /// Clears the samples of the events, all of them without events, returning how many events.
+    ///
+    /// LATENCY RESET [ event [ event ... ] ]
+    /// https://valkey.io/commands/latency-reset/
+    latency-reset: async func(connection: borrow<connection>, events: option<list<string>>) -> result<integer, error>;
+
+    /// The loaded modules.
+    ///
+    /// MODULE LIST
+    /// https://valkey.io/commands/module-list/
+    module-list: async func(connection: borrow<connection>) -> result<list<module-info>, error>;
+
+    /// Loads the module at the path, with the arguments.
+    ///
+    /// MODULE LOAD path [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/module-load/
+    module-load: async func(connection: borrow<connection>, path: string, args: option<list<string>>) -> result<_, error>;
+
+    /// Loads the module at the path, with the configuration parameters and arguments.
+    ///
+    /// MODULE LOADEX path [ CONFIG name value [ CONFIG name value ... ] ] [ ARGS args [ args ... ] ]
+    /// https://valkey.io/commands/module-loadex/
+    module-loadex: async func(connection: borrow<connection>, path: string, configs: option<list<tuple<string, string>>>, args: option<list<string>>) -> result<_, error>;
+
+    /// Unloads the module, by name.
+    ///
+    /// MODULE UNLOAD name
+    /// https://valkey.io/commands/module-unload/
+    module-unload: async func(connection: borrow<connection>, name: string) -> result<_, error>;
+
+    /// Makes the server a replica of the primary at the host and port, or with none, a primary,
+    /// `NO ONE`, returning the server's message.
+    ///
+    /// REPLICAOF 〈 host port | NO ONE 〉
+    /// https://valkey.io/commands/replicaof/
+    replicaof: async func(connection: borrow<connection>, primary: option<tuple<string, u16>>) -> result<string, error>;
+
+    /// The server's role in replication, and its state.
+    ///
+    /// ROLE
+    /// https://valkey.io/commands/role/
+    role: async func(connection: borrow<connection>) -> result<role-reply, error>;
+
+    /// Saves the databases to disk, blocking the server until done.
+    ///
+    /// SAVE
+    /// https://valkey.io/commands/save/
+    save: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Stops the server, saving to disk as configured, or as the save mode says.
+    ///
+    /// The server closes the connection once it stops, so a shutdown that succeeds fails the call
+    /// with a closed error.
+    ///
+    /// See also `shutdown-abort`.
+    ///
+    /// SHUTDOWN [ NOSAVE | SAVE ] [ NOW ] [ FORCE ] [ SAFE ] [ FAILOVER ]
+    /// https://valkey.io/commands/shutdown/
+    shutdown: async func(connection: borrow<connection>, save: option<shutdown-save>, now: bool, force: bool, safe: bool, failover: bool) -> result<_, error>;
+
+    /// Aborts a shutdown in progress.
+    ///
+    /// See also `shutdown`.
+    ///
+    /// SHUTDOWN ABORT
+    /// https://valkey.io/commands/shutdown/
+    shutdown-abort: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// The entries of the slow log, up to the count, 10 without one, all of them for -1.
+    ///
+    /// SLOWLOG GET [ count ]
+    /// https://valkey.io/commands/slowlog-get/
+    slowlog-get: async func(connection: borrow<connection>, count: option<integer>) -> result<list<log-entry>, error>;
+
+    /// The number of entries in the slow log.
+    ///
+    /// SLOWLOG LEN
+    /// https://valkey.io/commands/slowlog-len/
+    slowlog-len: async func(connection: borrow<connection>) -> result<integer, error>;
+
+    /// Clears the slow log.
+    ///
+    /// SLOWLOG RESET
+    /// https://valkey.io/commands/slowlog-reset/
+    slowlog-reset: async func(connection: borrow<connection>) -> result<_, error>;
 
 
     // bitmap commands
