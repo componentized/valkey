@@ -3,10 +3,10 @@ use crate::exports::componentized::valkey::commands::{
     BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, CommandRule, Connection, Cursor,
     DbRule, DurationMilliseconds, DurationSeconds, Error, FlushMode, GeoCoordinates, GeoCount,
     GeoFrom, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition, HsetexFieldCondition,
-    KeyRule, LexBound, Limit, LinsertPosition, ListSide, MsetexPrecondition, PopEnd, Rule,
-    RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim,
-    StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value,
-    XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
+    KeyRule, KeyType, LexBound, Limit, LinsertPosition, ListSide, MigrateAuth, MsetexPrecondition,
+    PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder,
+    StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule,
+    Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -74,7 +74,7 @@ macro_rules! into_command_numbers {
     };
 }
 
-into_command_numbers!(i32, i64, u8, u32, u64, usize, f64);
+into_command_numbers!(i32, i64, u8, u16, u32, u64, usize, f64);
 
 /// No word for none.
 impl<T: IntoCommand> IntoCommand for Option<T> {
@@ -825,5 +825,32 @@ impl IntoCommand for KeysAndArgs {
             NonEmpty::optional("args", args),
         )
             .into_command()
+    }
+}
+
+/// The name of the type, e.g. for SCAN's TYPE.
+impl IntoCommand for KeyType {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            KeyType::String => "string".to_string(),
+            KeyType::List => "list".to_string(),
+            KeyType::Set => "set".to_string(),
+            KeyType::Zset => "zset".to_string(),
+            KeyType::Hash => "hash".to_string(),
+            KeyType::Stream => "stream".to_string(),
+            KeyType::Other(name) => name,
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for MigrateAuth {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            MigrateAuth::Password(password) => ("AUTH", password).into_command(),
+            MigrateAuth::UsernamePassword((username, password)) => {
+                ("AUTH2", username, password).into_command()
+            }
+        }
     }
 }

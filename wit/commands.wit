@@ -69,6 +69,46 @@ interface commands {
         zero-seconds,
     }
 
+    /// The remaining time to live of a key or hash field, to the second, see `ttl` and `httl`.
+    variant ttl-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time until it expires.
+        expires-in(duration-seconds),
+    }
+
+    /// The remaining time to live of a key or hash field, to the millisecond, see `pttl` and `hpttl`.
+    variant pttl-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time until it expires.
+        expires-in(duration-milliseconds),
+    }
+
+    /// When a key or hash field expires, to the second, see `expiretime` and `hexpiretime`.
+    variant expiretime-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time at which it expires.
+        expires-at(unix-time-seconds),
+    }
+
+    /// When a key or hash field expires, to the millisecond, see `pexpiretime` and `hpexpiretime`.
+    variant pexpiretime-reply {
+        /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
+        does-not-exist,
+        /// -1: the key or field exists, but has no expiration.
+        no-expiration,
+        /// The time at which it expires.
+        expires-at(unix-time-milliseconds),
+    }
+
     // admin commands
 
     /// Delete all the specified ACL users and terminate all the connections that are authenticated with such users.
@@ -633,53 +673,13 @@ interface commands {
     /// https://valkey.io/commands/hexpireat/
     hexpireat: async func(connection: borrow<connection>, key: string, seconds: unix-time-seconds, mode: option<ttl-mode>, fields: list<string>) -> result<list<ttl-result>, error>;
 
-    /// The remaining time to live of a hash field, to the second, see `httl`.
-    variant field-ttl {
-        /// -2: the field does not exist, or the hash does not exist.
-        does-not-exist,
-        /// -1: the field exists, but has no expiration.
-        no-expiration,
-        /// The time until the field expires.
-        expires-in(duration-seconds),
-    }
-
-    /// The remaining time to live of a hash field, to the millisecond, see `hpttl`.
-    variant field-pttl {
-        /// -2: the field does not exist, or the hash does not exist.
-        does-not-exist,
-        /// -1: the field exists, but has no expiration.
-        no-expiration,
-        /// The time until the field expires.
-        expires-in(duration-milliseconds),
-    }
-
-    /// When a hash field expires, to the second, see `hexpiretime`.
-    variant field-expiretime {
-        /// -2: the field does not exist, or the hash does not exist.
-        does-not-exist,
-        /// -1: the field exists, but has no expiration.
-        no-expiration,
-        /// The time at which the field expires.
-        expires-at(unix-time-seconds),
-    }
-
-    /// When a hash field expires, to the millisecond, see `hpexpiretime`.
-    variant field-pexpiretime {
-        /// -2: the field does not exist, or the hash does not exist.
-        does-not-exist,
-        /// -1: the field exists, but has no expiration.
-        no-expiration,
-        /// The time at which the field expires.
-        expires-at(unix-time-milliseconds),
-    }
-
     /// When each of the hash fields expires, to the second.
     ///
     /// See also `hpexpiretime`.
     ///
     /// HEXPIRETIME key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hexpiretime/
-    hexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-expiretime>, error>;
+    hexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<expiretime-reply>, error>;
 
     /// Returns the value associated with field in the hash stored at key.
     ///
@@ -776,7 +776,7 @@ interface commands {
     ///
     /// HPEXPIRETIME key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpexpiretime/
-    hpexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-pexpiretime>, error>;
+    hpexpiretime: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<pexpiretime-reply>, error>;
 
     /// The remaining time to live of each of the hash fields, to the millisecond.
     ///
@@ -784,7 +784,7 @@ interface commands {
     ///
     /// HPTTL key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hpttl/
-    hpttl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-pttl>, error>;
+    hpttl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<pttl-reply>, error>;
 
     /// Random fields from the hash value stored at key, up to the count.
     ///
@@ -871,7 +871,7 @@ interface commands {
     ///
     /// HTTL key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/httl/
-    httl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<field-ttl>, error>;
+    httl: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<ttl-reply>, error>;
 
     /// All values in the hash stored at key.
     ///
@@ -913,6 +913,60 @@ interface commands {
 
     // keyspace commands
 
+    /// The type of the value stored at a key.
+    variant key-type {
+        /// `string`
+        %string,
+        /// `list`
+        %list,
+        /// `set`
+        set,
+        /// `zset`: a sorted set.
+        zset,
+        /// `hash`
+        hash,
+        /// `stream`
+        %stream,
+        /// The type of a module, by name.
+        other(string),
+    }
+
+    /// The credentials to authenticate to the other instance with, for MIGRATE.
+    variant migrate-auth {
+        /// `AUTH password`
+        password(string),
+        /// `AUTH2 username password`
+        username-password(tuple<string, string>),
+    }
+
+    /// Removes all the keys of the slot, in the mode, the server's `lazyfree-lazy-user-flush`
+    /// without one.
+    ///
+    /// CLUSTER FLUSHSLOT slot [ ASYNC | SYNC ]
+    /// https://valkey.io/commands/cluster-flushslot/
+    cluster-flushslot: async func(connection: borrow<connection>, slot: u16, mode: option<flush-mode>) -> result<_, error>;
+
+    /// Incrementally iterate over the keys of a cluster, slot by slot, or within the slot.
+    ///
+    /// The cursor carries the slot, for clients to route each call to the node that owns it.
+    ///
+    /// CLUSTERSCAN cursor [ MATCH match-pattern ] [ COUNT count ] [ TYPE type ] [ SLOT slot ]
+    /// https://valkey.io/commands/clusterscan/
+    clusterscan: async func(connection: borrow<connection>, cursor: cursor, match: option<string>, count: option<integer>, %type: option<key-type>, slot: option<u16>) -> result<tuple<option<cursor>, list<string>>, error>;
+
+    /// Copies the value of the source key to the destination key, in the database, or the current
+    /// one, returning whether it was copied, false when the destination exists without `replace`.
+    ///
+    /// COPY source destination [ DB destination-db ] [ REPLACE ]
+    /// https://valkey.io/commands/copy/
+    copy: async func(connection: borrow<connection>, source: string, destination: string, destination-db: option<integer>, replace: bool) -> result<bool, error>;
+
+    /// The number of keys in the current database.
+    ///
+    /// DBSIZE
+    /// https://valkey.io/commands/dbsize/
+    dbsize: async func(connection: borrow<connection>) -> result<integer, error>;
+
     /// Removes the specified keys.
     ///
     /// DEL key [ key ... ]
@@ -937,43 +991,172 @@ interface commands {
     /// https://valkey.io/commands/expireat/
     expireat: async func(connection: borrow<connection>, key: string, seconds: unix-time-seconds, mode: option<ttl-mode>) -> result<bool, error>;
 
+    /// When the key expires, to the second.
+    ///
+    /// See also `pexpiretime`.
+    ///
+    /// EXPIRETIME key
+    /// https://valkey.io/commands/expiretime/
+    expiretime: async func(connection: borrow<connection>, key: string) -> result<expiretime-reply, error>;
+
+    /// Removes all the keys of all the databases, in the mode, the server's
+    /// `lazyfree-lazy-user-flush` without one.
+    ///
+    /// FLUSHALL [ ASYNC | SYNC ]
+    /// https://valkey.io/commands/flushall/
+    flushall: async func(connection: borrow<connection>, mode: option<flush-mode>) -> result<_, error>;
+
+    /// Removes all the keys of the current database, in the mode, the server's
+    /// `lazyfree-lazy-user-flush` without one.
+    ///
+    /// FLUSHDB [ ASYNC | SYNC ]
+    /// https://valkey.io/commands/flushdb/
+    flushdb: async func(connection: borrow<connection>, mode: option<flush-mode>) -> result<_, error>;
+
     /// Returns all keys matching pattern.
     ///
     /// KEYS pattern
     /// https://valkey.io/commands/keys/
     keys: async func(connection: borrow<connection>, pattern: string) -> result<list<string>, error>;
 
-    // not yet implemented, from the @keyspace category:
-    //   CLUSTERSCAN
-    //   CLUSTER FLUSHSLOT
-    //   COPY
-    //   DBSIZE
+    /// Moves the keys to the database of another instance, returning whether any were moved, false
+    /// when none of the keys exist.
+    ///
+    /// With `copy` the keys are kept in this instance, with `replace` existing keys in the other
+    /// instance are replaced.
+    ///
+    /// MIGRATE host port "" destination-db timeout [ COPY ] [ REPLACE ] [ AUTH password | AUTH2 username password ] KEYS key [ key ... ]
+    /// https://valkey.io/commands/migrate/
+    migrate: async func(connection: borrow<connection>, host: string, port: u16, destination-db: integer, timeout: duration-milliseconds, copy: bool, replace: bool, auth: option<migrate-auth>, keys: list<string>) -> result<bool, error>;
+
+    /// Moves the key to the database, returning whether it was moved, false when it does not
+    /// exist, or exists in the database without `replace`.
+    ///
+    /// MOVE key db [ REPLACE ]
+    /// https://valkey.io/commands/move/
+    move: async func(connection: borrow<connection>, key: string, db: integer, replace: bool) -> result<bool, error>;
+
+    /// The internal encoding of the value stored at key, e.g. `listpack`, none when the key does
+    /// not exist.
+    ///
+    /// OBJECT ENCODING key
+    /// https://valkey.io/commands/object-encoding/
+    object-encoding: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+
+    /// The logarithmic access frequency counter of the key, none when it does not exist.
+    ///
+    /// Only with an LFU `maxmemory-policy`, otherwise it fails.
+    ///
+    /// OBJECT FREQ key
+    /// https://valkey.io/commands/object-freq/
+    object-freq: async func(connection: borrow<connection>, key: string) -> result<option<integer>, error>;
+
+    /// The time since the key was last accessed, none when it does not exist.
+    ///
+    /// OBJECT IDLETIME key
+    /// https://valkey.io/commands/object-idletime/
+    object-idletime: async func(connection: borrow<connection>, key: string) -> result<option<duration-seconds>, error>;
+
+    /// The number of references to the value stored at key, none when the key does not exist.
+    ///
+    /// OBJECT REFCOUNT key
+    /// https://valkey.io/commands/object-refcount/
+    object-refcount: async func(connection: borrow<connection>, key: string) -> result<option<integer>, error>;
+
+    /// Removes the expiration of the key, returning whether it had one.
+    ///
+    /// PERSIST key
+    /// https://valkey.io/commands/persist/
+    persist: async func(connection: borrow<connection>, key: string) -> result<bool, error>;
+
+    /// Set a timeout on key, in milliseconds.
+    ///
+    /// PEXPIRE key milliseconds [ NX | XX | GT | LT ]
+    /// https://valkey.io/commands/pexpire/
+    pexpire: async func(connection: borrow<connection>, key: string, milliseconds: duration-milliseconds, mode: option<ttl-mode>) -> result<bool, error>;
+
+    /// Set a timeout on key, as a Unix time in milliseconds.
+    ///
+    /// PEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ]
+    /// https://valkey.io/commands/pexpireat/
+    pexpireat: async func(connection: borrow<connection>, key: string, milliseconds: unix-time-milliseconds, mode: option<ttl-mode>) -> result<bool, error>;
+
+    /// When the key expires, to the millisecond.
+    ///
+    /// See also `expiretime`.
+    ///
+    /// PEXPIRETIME key
+    /// https://valkey.io/commands/pexpiretime/
+    pexpiretime: async func(connection: borrow<connection>, key: string) -> result<pexpiretime-reply, error>;
+
+    /// The remaining time to live of the key, to the millisecond.
+    ///
+    /// See also `ttl`.
+    ///
+    /// PTTL key
+    /// https://valkey.io/commands/pttl/
+    pttl: async func(connection: borrow<connection>, key: string) -> result<pttl-reply, error>;
+
+    /// A random key of the current database, none when it is empty.
+    ///
+    /// RANDOMKEY
+    /// https://valkey.io/commands/randomkey/
+    randomkey: async func(connection: borrow<connection>) -> result<option<string>, error>;
+
+    /// Renames the key, replacing the new key when it exists.
+    ///
+    /// RENAME key newkey
+    /// https://valkey.io/commands/rename/
+    rename: async func(connection: borrow<connection>, key: string, newkey: string) -> result<_, error>;
+
+    /// Renames the key, only when the new key does not exist, returning whether it was renamed.
+    ///
+    /// RENAMENX key newkey
+    /// https://valkey.io/commands/renamenx/
+    renamenx: async func(connection: borrow<connection>, key: string, newkey: string) -> result<bool, error>;
+
+    /// Incrementally iterate over the keys of the current database.
+    ///
+    /// SCAN cursor [ MATCH pattern ] [ COUNT count ] [ TYPE type ]
+    /// https://valkey.io/commands/scan/
+    scan: async func(connection: borrow<connection>, cursor: cursor, match: option<string>, count: option<integer>, %type: option<key-type>) -> result<tuple<option<cursor>, list<string>>, error>;
+
+    /// Swaps the two databases, for connections using either.
+    ///
+    /// SWAPDB index1 index2
+    /// https://valkey.io/commands/swapdb/
+    swapdb: async func(connection: borrow<connection>, index1: integer, index2: integer) -> result<_, error>;
+
+    /// Updates the last access time of the keys, returning how many exist.
+    ///
+    /// TOUCH key [ key ... ]
+    /// https://valkey.io/commands/touch/
+    touch: async func(connection: borrow<connection>, keys: list<string>) -> result<integer, error>;
+
+    /// The remaining time to live of the key, to the second.
+    ///
+    /// See also `pttl`.
+    ///
+    /// TTL key
+    /// https://valkey.io/commands/ttl/
+    ttl: async func(connection: borrow<connection>, key: string) -> result<ttl-reply, error>;
+
+    /// The type of the value stored at key, none when the key does not exist.
+    ///
+    /// TYPE key
+    /// https://valkey.io/commands/type/
+    %type: async func(connection: borrow<connection>, key: string) -> result<option<key-type>, error>;
+
+    /// Removes the keys, freeing their memory in the background, returning how many existed.
+    ///
+    /// UNLINK key [ key ... ]
+    /// https://valkey.io/commands/unlink/
+    unlink: async func(connection: borrow<connection>, keys: list<string>) -> result<integer, error>;
+
+    // not implemented, from the @keyspace category:
     //   DUMP, needs binary support, the payload is not a string
-    //   EXPIRETIME
-    //   FLUSHALL
-    //   FLUSHDB
-    //   MIGRATE
-    //   MOVE
-    //   OBJECT ENCODING
-    //   OBJECT FREQ
-    //   OBJECT IDLETIME
-    //   OBJECT REFCOUNT
-    //   PERSIST
-    //   PEXPIRE
-    //   PEXPIREAT
-    //   PEXPIRETIME
-    //   PTTL
-    //   RANDOMKEY
-    //   RENAME
-    //   RENAMENX
     //   RESTORE, needs binary support, the payload is not a string
     //   RESTORE-ASKING, needs binary support, the payload is not a string
-    //   SCAN
-    //   SWAPDB
-    //   TOUCH
-    //   TTL
-    //   TYPE
-    //   UNLINK
 
 
     // list commands

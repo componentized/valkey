@@ -4,17 +4,19 @@ use crate::command::{
 };
 use crate::exports::componentized::valkey::commands::{
     Aggregate, BitRange, BitfieldGet, BitfieldOperation, BitopOperation, Connection, Cursor,
-    Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime, FieldPersistResult,
-    FieldPexpiretime, FieldPttl, FieldTtl, FlushMode, FunctionStatsReply, GeoCoordinates, GeoCount,
-    GeoSearchResult, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, Guest, HsetexCondition,
-    HsetexFieldCondition, Integer, LcsIdxReply, LexBound, Library, Limit, LinsertPosition,
-    LinsertResult, ListSide, MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound,
-    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode, TtlResult,
-    UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
+    Double, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply, FieldPersistResult,
+    FlushMode, FunctionStatsReply, GeoCoordinates, GeoCount, GeoSearchResult, GeoShape, GeoUnit,
+    GeoaddCondition, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Integer, KeyType,
+    LcsIdxReply, LexBound, Library, Limit, LinsertPosition, LinsertResult, ListSide, MigrateAuth,
+    MsetexPrecondition, MsetexTtl, PexpiretimeReply, PopEnd, PttlReply, Rule, ScoreBound,
+    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode, TtlReply,
+    TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
     XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison,
     ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
-use crate::value::{FlatPairs, NextCursor, OrNever, OrZeroId, ScoredMembers};
+use crate::value::{
+    FlatPairs, Migrated, NextCursor, OptionalKeyType, OrNever, OrZeroId, ScoredMembers,
+};
 
 use wit_bindgen::rt::Map;
 
@@ -442,7 +444,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldExpiretime>, Error> {
+    ) -> Result<Vec<ExpiretimeReply>, Error> {
         query(
             connection,
             ("HEXPIRETIME", key, Fields(NonEmpty::new("fields", fields))),
@@ -558,7 +560,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldPexpiretime>, Error> {
+    ) -> Result<Vec<PexpiretimeReply>, Error> {
         query(
             connection,
             ("HPEXPIRETIME", key, Fields(NonEmpty::new("fields", fields))),
@@ -577,7 +579,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldPttl>, Error> {
+    ) -> Result<Vec<PttlReply>, Error> {
         query(
             connection,
             ("HPTTL", key, Fields(NonEmpty::new("fields", fields))),
@@ -621,7 +623,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<FieldTtl>, Error> {
+    ) -> Result<Vec<TtlReply>, Error> {
         query(
             connection,
             ("HTTL", key, Fields(NonEmpty::new("fields", fields))),
@@ -1502,6 +1504,374 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn keys(connection: &Connection, pattern: String) -> Result<Vec<String>, Error> {
         query(connection, ("KEYS", pattern)).await
+    }
+
+    #[doc = " Removes all the keys of the slot, in the mode, the server's `lazyfree-lazy-user-flush`"]
+    #[doc = " without one."]
+    #[doc = ""]
+    #[doc = " CLUSTER FLUSHSLOT slot [ ASYNC | SYNC ]"]
+    #[doc = " https://valkey.io/commands/cluster-flushslot/"]
+    #[allow(async_fn_in_trait)]
+    async fn cluster_flushslot(
+        connection: &Connection,
+        slot: u16,
+        mode: Option<FlushMode>,
+    ) -> Result<(), Error> {
+        query(connection, ("CLUSTER", "FLUSHSLOT", slot, mode)).await
+    }
+
+    #[doc = " Incrementally iterate over the keys of a cluster, slot by slot, or within the slot."]
+    #[doc = ""]
+    #[doc = " The cursor carries the slot, for clients to route each call to the node that owns it."]
+    #[doc = ""]
+    #[doc = " CLUSTERSCAN cursor [ MATCH match-pattern ] [ COUNT count ] [ TYPE type ] [ SLOT slot ]"]
+    #[doc = " https://valkey.io/commands/clusterscan/"]
+    #[allow(async_fn_in_trait)]
+    async fn clusterscan(
+        connection: &Connection,
+        cursor: Cursor,
+        match_: Option<String>,
+        count: Option<Integer>,
+        type_: Option<KeyType>,
+        slot: Option<u16>,
+    ) -> Result<(Option<Cursor>, Vec<String>), Error> {
+        let command = (
+            "CLUSTERSCAN",
+            cursor,
+            NamedOption("MATCH", match_),
+            NamedOption("COUNT", count),
+            NamedOption("TYPE", type_),
+            NamedOption("SLOT", slot),
+        );
+        let (cursor, keys): (NextCursor, Vec<String>) = query(connection, command).await?;
+        Ok((cursor.0, keys))
+    }
+
+    #[doc = " Copies the value of the source key to the destination key, in the database, or the current"]
+    #[doc = " one, returning whether it was copied, false when the destination exists without `replace`."]
+    #[doc = ""]
+    #[doc = " COPY source destination [ DB destination-db ] [ REPLACE ]"]
+    #[doc = " https://valkey.io/commands/copy/"]
+    #[allow(async_fn_in_trait)]
+    async fn copy(
+        connection: &Connection,
+        source: String,
+        destination: String,
+        destination_db: Option<Integer>,
+        replace: bool,
+    ) -> Result<bool, Error> {
+        query(
+            connection,
+            (
+                "COPY",
+                source,
+                destination,
+                NamedOption("DB", destination_db),
+                Flag("REPLACE", replace),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The number of keys in the current database."]
+    #[doc = ""]
+    #[doc = " DBSIZE"]
+    #[doc = " https://valkey.io/commands/dbsize/"]
+    #[allow(async_fn_in_trait)]
+    async fn dbsize(connection: &Connection) -> Result<Integer, Error> {
+        query(connection, "DBSIZE").await
+    }
+
+    #[doc = " When the key expires, to the second."]
+    #[doc = ""]
+    #[doc = " See also `pexpiretime`."]
+    #[doc = ""]
+    #[doc = " EXPIRETIME key"]
+    #[doc = " https://valkey.io/commands/expiretime/"]
+    #[allow(async_fn_in_trait)]
+    async fn expiretime(connection: &Connection, key: String) -> Result<ExpiretimeReply, Error> {
+        query(connection, ("EXPIRETIME", key)).await
+    }
+
+    #[doc = " Removes all the keys of all the databases, in the mode, the server's"]
+    #[doc = " `lazyfree-lazy-user-flush` without one."]
+    #[doc = ""]
+    #[doc = " FLUSHALL [ ASYNC | SYNC ]"]
+    #[doc = " https://valkey.io/commands/flushall/"]
+    #[allow(async_fn_in_trait)]
+    async fn flushall(connection: &Connection, mode: Option<FlushMode>) -> Result<(), Error> {
+        query(connection, ("FLUSHALL", mode)).await
+    }
+
+    #[doc = " Removes all the keys of the current database, in the mode, the server's"]
+    #[doc = " `lazyfree-lazy-user-flush` without one."]
+    #[doc = ""]
+    #[doc = " FLUSHDB [ ASYNC | SYNC ]"]
+    #[doc = " https://valkey.io/commands/flushdb/"]
+    #[allow(async_fn_in_trait)]
+    async fn flushdb(connection: &Connection, mode: Option<FlushMode>) -> Result<(), Error> {
+        query(connection, ("FLUSHDB", mode)).await
+    }
+
+    #[doc = " Moves the keys to the database of another instance, returning whether any were moved, false"]
+    #[doc = " when none of the keys exist."]
+    #[doc = ""]
+    #[doc = " With `copy` the keys are kept in this instance, with `replace` existing keys in the other"]
+    #[doc = " instance are replaced."]
+    #[doc = ""]
+    #[doc = " MIGRATE host port \"\" destination-db timeout [ COPY ] [ REPLACE ] [ AUTH password | AUTH2 username password ] KEYS key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/migrate/"]
+    #[allow(async_fn_in_trait)]
+    async fn migrate(
+        connection: &Connection,
+        host: String,
+        port: u16,
+        destination_db: Integer,
+        timeout: DurationMilliseconds,
+        copy: bool,
+        replace: bool,
+        auth: Option<MigrateAuth>,
+        keys: Vec<String>,
+    ) -> Result<bool, Error> {
+        // "" in place of the key, the keys follow KEYS
+        let command = (
+            "MIGRATE",
+            host,
+            port,
+            "",
+            destination_db,
+            timeout,
+            Flag("COPY", copy),
+            Flag("REPLACE", replace),
+            auth,
+            ("KEYS", NonEmpty::new("keys", keys)),
+        );
+        let migrated: Migrated = query(connection, command).await?;
+        Ok(migrated.0)
+    }
+
+    #[doc = " Moves the key to the database, returning whether it was moved, false when it does not"]
+    #[doc = " exist, or exists in the database without `replace`."]
+    #[doc = ""]
+    #[doc = " MOVE key db [ REPLACE ]"]
+    #[doc = " https://valkey.io/commands/move/"]
+    #[allow(async_fn_in_trait)]
+    async fn move_(
+        connection: &Connection,
+        key: String,
+        db: Integer,
+        replace: bool,
+    ) -> Result<bool, Error> {
+        query(connection, ("MOVE", key, db, Flag("REPLACE", replace))).await
+    }
+
+    #[doc = " The internal encoding of the value stored at key, e.g. `listpack`, none when the key does"]
+    #[doc = " not exist."]
+    #[doc = ""]
+    #[doc = " OBJECT ENCODING key"]
+    #[doc = " https://valkey.io/commands/object-encoding/"]
+    #[allow(async_fn_in_trait)]
+    async fn object_encoding(
+        connection: &Connection,
+        key: String,
+    ) -> Result<Option<String>, Error> {
+        query(connection, ("OBJECT", "ENCODING", key)).await
+    }
+
+    #[doc = " The logarithmic access frequency counter of the key, none when it does not exist."]
+    #[doc = ""]
+    #[doc = " Only with an LFU `maxmemory-policy`, otherwise it fails."]
+    #[doc = ""]
+    #[doc = " OBJECT FREQ key"]
+    #[doc = " https://valkey.io/commands/object-freq/"]
+    #[allow(async_fn_in_trait)]
+    async fn object_freq(connection: &Connection, key: String) -> Result<Option<Integer>, Error> {
+        query(connection, ("OBJECT", "FREQ", key)).await
+    }
+
+    #[doc = " The time since the key was last accessed, none when it does not exist."]
+    #[doc = ""]
+    #[doc = " OBJECT IDLETIME key"]
+    #[doc = " https://valkey.io/commands/object-idletime/"]
+    #[allow(async_fn_in_trait)]
+    async fn object_idletime(
+        connection: &Connection,
+        key: String,
+    ) -> Result<Option<DurationSeconds>, Error> {
+        query(connection, ("OBJECT", "IDLETIME", key)).await
+    }
+
+    #[doc = " The number of references to the value stored at key, none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " OBJECT REFCOUNT key"]
+    #[doc = " https://valkey.io/commands/object-refcount/"]
+    #[allow(async_fn_in_trait)]
+    async fn object_refcount(
+        connection: &Connection,
+        key: String,
+    ) -> Result<Option<Integer>, Error> {
+        query(connection, ("OBJECT", "REFCOUNT", key)).await
+    }
+
+    #[doc = " Removes the expiration of the key, returning whether it had one."]
+    #[doc = ""]
+    #[doc = " PERSIST key"]
+    #[doc = " https://valkey.io/commands/persist/"]
+    #[allow(async_fn_in_trait)]
+    async fn persist(connection: &Connection, key: String) -> Result<bool, Error> {
+        query(connection, ("PERSIST", key)).await
+    }
+
+    #[doc = " Set a timeout on key, in milliseconds."]
+    #[doc = ""]
+    #[doc = " PEXPIRE key milliseconds [ NX | XX | GT | LT ]"]
+    #[doc = " https://valkey.io/commands/pexpire/"]
+    #[allow(async_fn_in_trait)]
+    async fn pexpire(
+        connection: &Connection,
+        key: String,
+        milliseconds: DurationMilliseconds,
+        mode: Option<TtlMode>,
+    ) -> Result<bool, Error> {
+        query(connection, ("PEXPIRE", key, milliseconds, mode)).await
+    }
+
+    #[doc = " Set a timeout on key, as a Unix time in milliseconds."]
+    #[doc = ""]
+    #[doc = " PEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ]"]
+    #[doc = " https://valkey.io/commands/pexpireat/"]
+    #[allow(async_fn_in_trait)]
+    async fn pexpireat(
+        connection: &Connection,
+        key: String,
+        milliseconds: UnixTimeMilliseconds,
+        mode: Option<TtlMode>,
+    ) -> Result<bool, Error> {
+        query(connection, ("PEXPIREAT", key, milliseconds, mode)).await
+    }
+
+    #[doc = " When the key expires, to the millisecond."]
+    #[doc = ""]
+    #[doc = " See also `expiretime`."]
+    #[doc = ""]
+    #[doc = " PEXPIRETIME key"]
+    #[doc = " https://valkey.io/commands/pexpiretime/"]
+    #[allow(async_fn_in_trait)]
+    async fn pexpiretime(connection: &Connection, key: String) -> Result<PexpiretimeReply, Error> {
+        query(connection, ("PEXPIRETIME", key)).await
+    }
+
+    #[doc = " The remaining time to live of the key, to the millisecond."]
+    #[doc = ""]
+    #[doc = " See also `ttl`."]
+    #[doc = ""]
+    #[doc = " PTTL key"]
+    #[doc = " https://valkey.io/commands/pttl/"]
+    #[allow(async_fn_in_trait)]
+    async fn pttl(connection: &Connection, key: String) -> Result<PttlReply, Error> {
+        query(connection, ("PTTL", key)).await
+    }
+
+    #[doc = " A random key of the current database, none when it is empty."]
+    #[doc = ""]
+    #[doc = " RANDOMKEY"]
+    #[doc = " https://valkey.io/commands/randomkey/"]
+    #[allow(async_fn_in_trait)]
+    async fn randomkey(connection: &Connection) -> Result<Option<String>, Error> {
+        query(connection, "RANDOMKEY").await
+    }
+
+    #[doc = " Renames the key, replacing the new key when it exists."]
+    #[doc = ""]
+    #[doc = " RENAME key newkey"]
+    #[doc = " https://valkey.io/commands/rename/"]
+    #[allow(async_fn_in_trait)]
+    async fn rename(connection: &Connection, key: String, newkey: String) -> Result<(), Error> {
+        query(connection, ("RENAME", key, newkey)).await
+    }
+
+    #[doc = " Renames the key, only when the new key does not exist, returning whether it was renamed."]
+    #[doc = ""]
+    #[doc = " RENAMENX key newkey"]
+    #[doc = " https://valkey.io/commands/renamenx/"]
+    #[allow(async_fn_in_trait)]
+    async fn renamenx(connection: &Connection, key: String, newkey: String) -> Result<bool, Error> {
+        query(connection, ("RENAMENX", key, newkey)).await
+    }
+
+    #[doc = " Incrementally iterate over the keys of the current database."]
+    #[doc = ""]
+    #[doc = " SCAN cursor [ MATCH pattern ] [ COUNT count ] [ TYPE type ]"]
+    #[doc = " https://valkey.io/commands/scan/"]
+    #[allow(async_fn_in_trait)]
+    async fn scan(
+        connection: &Connection,
+        cursor: Cursor,
+        match_: Option<String>,
+        count: Option<Integer>,
+        type_: Option<KeyType>,
+    ) -> Result<(Option<Cursor>, Vec<String>), Error> {
+        let command = (
+            "SCAN",
+            cursor,
+            NamedOption("MATCH", match_),
+            NamedOption("COUNT", count),
+            NamedOption("TYPE", type_),
+        );
+        let (cursor, keys): (NextCursor, Vec<String>) = query(connection, command).await?;
+        Ok((cursor.0, keys))
+    }
+
+    #[doc = " Swaps the two databases, for connections using either."]
+    #[doc = ""]
+    #[doc = " SWAPDB index1 index2"]
+    #[doc = " https://valkey.io/commands/swapdb/"]
+    #[allow(async_fn_in_trait)]
+    async fn swapdb(
+        connection: &Connection,
+        index1: Integer,
+        index2: Integer,
+    ) -> Result<(), Error> {
+        query(connection, ("SWAPDB", index1, index2)).await
+    }
+
+    #[doc = " Updates the last access time of the keys, returning how many exist."]
+    #[doc = ""]
+    #[doc = " TOUCH key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/touch/"]
+    #[allow(async_fn_in_trait)]
+    async fn touch(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
+        query(connection, ("TOUCH", NonEmpty::new("keys", keys))).await
+    }
+
+    #[doc = " The remaining time to live of the key, to the second."]
+    #[doc = ""]
+    #[doc = " See also `pttl`."]
+    #[doc = ""]
+    #[doc = " TTL key"]
+    #[doc = " https://valkey.io/commands/ttl/"]
+    #[allow(async_fn_in_trait)]
+    async fn ttl(connection: &Connection, key: String) -> Result<TtlReply, Error> {
+        query(connection, ("TTL", key)).await
+    }
+
+    #[doc = " The type of the value stored at key, none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " TYPE key"]
+    #[doc = " https://valkey.io/commands/type/"]
+    #[allow(async_fn_in_trait)]
+    async fn type_(connection: &Connection, key: String) -> Result<Option<KeyType>, Error> {
+        let key_type: OptionalKeyType = query(connection, ("TYPE", key)).await?;
+        Ok(key_type.0)
+    }
+
+    #[doc = " Removes the keys, freeing their memory in the background, returning how many existed."]
+    #[doc = ""]
+    #[doc = " UNLINK key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/unlink/"]
+    #[allow(async_fn_in_trait)]
+    async fn unlink(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
+        query(connection, ("UNLINK", NonEmpty::new("keys", keys))).await
     }
 
     #[doc = " Subscribes the client to the given patterns."]

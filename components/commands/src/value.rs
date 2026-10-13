@@ -1,8 +1,8 @@
 use crate::exports::componentized::valkey::commands::{
-    Cursor, Double, DurationMilliseconds, DurationSeconds, EngineStats, Error, FieldExpiretime,
-    FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, FunctionStatsReply, GeoCoordinates,
-    GeoSearchResult, Integer, LcsIdxMatch, LcsIdxReply, Library, LibraryFunction, LinsertResult,
-    RunningFunction, StreamId, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
+    Cursor, Double, DurationMilliseconds, DurationSeconds, EngineStats, Error, ExpiretimeReply,
+    FieldPersistResult, FunctionStatsReply, GeoCoordinates, GeoSearchResult, Integer, KeyType,
+    LcsIdxMatch, LcsIdxReply, Library, LibraryFunction, LinsertResult, PexpiretimeReply, PttlReply,
+    RunningFunction, StreamId, TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
     XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
     XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
     XpendingSummary,
@@ -310,10 +310,10 @@ macro_rules! from_value_field_times {
 }
 
 from_value_field_times!(
-    FieldTtl(DurationSeconds) => ExpiresIn,
-    FieldPttl(DurationMilliseconds) => ExpiresIn,
-    FieldExpiretime(UnixTimeSeconds) => ExpiresAt,
-    FieldPexpiretime(UnixTimeMilliseconds) => ExpiresAt
+    TtlReply(DurationSeconds) => ExpiresIn,
+    PttlReply(DurationMilliseconds) => ExpiresIn,
+    ExpiretimeReply(UnixTimeSeconds) => ExpiresAt,
+    PexpiretimeReply(UnixTimeMilliseconds) => ExpiresAt
 );
 
 impl FromValue for FieldPersistResult {
@@ -445,6 +445,39 @@ impl FromValue for FunctionStatsReply {
             running_script: fields.required("running_script")?,
             engines: fields.required("engines")?,
         })
+    }
+}
+
+/// The type of a key, by name, none for `none`, a key that does not exist.
+pub struct OptionalKeyType(pub Option<KeyType>);
+
+impl FromValue for OptionalKeyType {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        // `none` rather than null, though the reply schema has null
+        let name: Option<String> = FromValue::from_value(value)?;
+        Ok(OptionalKeyType(match name.as_deref() {
+            None | Some("none") => None,
+            Some("string") => Some(KeyType::String),
+            Some("list") => Some(KeyType::List),
+            Some("set") => Some(KeyType::Set),
+            Some("zset") => Some(KeyType::Zset),
+            Some("hash") => Some(KeyType::Hash),
+            Some("stream") => Some(KeyType::Stream),
+            Some(_) => name.map(KeyType::Other),
+        }))
+    }
+}
+
+/// `OK` when keys were moved, `NOKEY` when none of them exist.
+pub struct Migrated(pub bool);
+
+impl FromValue for Migrated {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match &value {
+            Value::String(reply) if reply == "OK" => Ok(Migrated(true)),
+            Value::String(reply) if reply == "NOKEY" => Ok(Migrated(false)),
+            _ => Err(unexpected(&value)),
+        }
     }
 }
 
