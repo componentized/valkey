@@ -12,10 +12,10 @@ use std::task::Poll;
 
 use componentized::valkey::connection::{Connection, Error};
 use componentized::valkey::connector;
+use componentized_valkey::types::{NestedValue, Value};
 use exports::wasi::cli::run::Guest;
 use futures_channel::mpsc;
 use futures_core::Stream;
-use resp_codec::{NestedValue, Value};
 use wasi::cli::{environment, stderr, stdin, stdout, types::ErrorCode};
 use wit_bindgen::{FutureReader, StreamReader, StreamResult, StreamWriter};
 
@@ -377,7 +377,7 @@ fn render(value: Value) -> String {
 }
 
 fn render_nested(value: NestedValue) -> String {
-    match resp_codec::decode(value) {
+    match componentized_valkey::codec::decode(value) {
         Ok(value) => render(value),
         Err(error) => format!("(invalid) {error}"),
     }
@@ -410,7 +410,7 @@ wit_bindgen::generate!({
     world: "cli",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
+        "componentized:valkey/types@0.3.0-dev": componentized_valkey::types,
     },
     generate_all,
 });

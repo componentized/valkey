@@ -21,12 +21,12 @@ use std::future::poll_fn;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
+use componentized_valkey::types::{NestedValue, Value};
 use exports::componentized::valkey::connection::{
     ConnectOpts, Connection, DurationMilliseconds, Error, Guest, GuestConnection,
 };
 use futures_channel::{mpsc, oneshot};
 use futures_core::Stream;
-use resp_codec::{NestedValue, Value};
 use wasi::clocks::monotonic_clock::wait_for;
 use wit_bindgen::{FutureReader, FutureWriter, StreamReader, StreamWriter, spawn_local};
 
@@ -207,7 +207,7 @@ fn enqueue(
     let command = Value::Array(
         command
             .into_iter()
-            .map(|word| resp_codec::encode(Value::BulkString(word)))
+            .map(|word| componentized_valkey::codec::encode(Value::BulkString(word)))
             .collect(),
     );
     inner
@@ -285,7 +285,7 @@ async fn transaction(
         Value::Null => Ok(None),
         Value::Array(replies) => replies
             .into_iter()
-            .map(|reply| resp_codec::decode(reply).map_err(Error::Resp))
+            .map(|reply| componentized_valkey::codec::decode(reply).map_err(Error::Resp))
             .collect::<Result<_, _>>()
             .map(Some),
         reply => Err(unexpected(&reply)),
@@ -514,7 +514,7 @@ fn server_properties(reply: Value) -> Result<Vec<(String, Value)>, Error> {
 }
 
 fn decode(value: NestedValue) -> Result<Value, Error> {
-    resp_codec::decode(value).map_err(Error::Resp)
+    componentized_valkey::codec::decode(value).map_err(Error::Resp)
 }
 
 /// An error value from the server fails the command.
@@ -551,7 +551,7 @@ wit_bindgen::generate!({
     world: "connection",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
+        "componentized:valkey/types@0.3.0-dev": componentized_valkey::types,
     },
     generate_all,
 });

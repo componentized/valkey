@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 futures-channel = { workspace = true }
 futures-core = { workspace = true }
-resp-codec = { workspace = true }
+componentized-valkey = { workspace = true }
 wit-bindgen = { workspace = true, features = ["async-spawn", "inter-task-wakeup"] }
 
 [dev-dependencies]

@@ -1,4 +1,4 @@
-use crate::bindings::componentized::valkey::types::{
+use crate::types::{
     Aggregate, BgsaveOperation, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby,
     BitfieldOffset, BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, ClientFilter,
     ClientPauseMode, ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientType,

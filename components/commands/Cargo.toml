@@ -8,7 +8,7 @@ license = "Apache-2.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-resp-codec = { workspace = true }
+componentized-valkey = { workspace = true }
 wit-bindgen = { workspace = true }
 
 [dev-dependencies]

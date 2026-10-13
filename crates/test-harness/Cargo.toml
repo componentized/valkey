@@ -6,7 +6,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-resp-codec = { workspace = true }
+componentized-valkey = { workspace = true }
 tokio = { workspace = true }
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }

@@ -152,7 +152,7 @@ dependencies = [
 name = "commands"
 version = "0.1.0"
 dependencies = [
- "resp-codec",
+ "componentized-valkey",
  "test-harness",
  "tokio",
  "wasmtime",
@@ -160,12 +160,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "componentized-valkey"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "connection"
 version = "0.1.0"
 dependencies = [
+ "componentized-valkey",
  "futures-channel",
  "futures-core",
- "resp-codec",
  "test-harness",
  "tokio",
  "wasmtime",
@@ -408,9 +415,9 @@ dependencies = [
 name = "dep-cli"
 version = "0.1.0"
 dependencies = [
+ "componentized-valkey",
  "futures-channel",
  "futures-core",
- "resp-codec",
  "wit-bindgen",
 ]
 
@@ -1200,13 +1207,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "resp-codec"
-version = "0.1.0"
-dependencies = [
- "wit-bindgen",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1424,9 +1424,9 @@ checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 name = "tcp"
 version = "0.1.0"
 dependencies = [
+ "componentized-valkey",
  "futures-channel",
  "futures-core",
- "resp-codec",
  "test-harness",
  "tokio",
  "wasmtime",
@@ -1437,7 +1437,7 @@ dependencies = [
 name = "tcp-connector"
 version = "0.1.0"
 dependencies = [
- "resp-codec",
+ "componentized-valkey",
  "wit-bindgen",
 ]
 
@@ -1467,7 +1467,7 @@ dependencies = [
 name = "test-harness"
 version = "0.1.0"
 dependencies = [
- "resp-codec",
+ "componentized-valkey",
  "tokio",
  "wasmtime",
  "wasmtime-wasi",

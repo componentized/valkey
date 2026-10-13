@@ -67,7 +67,7 @@ wit_bindgen::generate!({
     world: "tcp-connector",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
+        "componentized:valkey/types@0.3.0-dev": componentized_valkey::types,
     },
     generate_all,
 });

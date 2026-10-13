@@ -8,7 +8,7 @@ members = [
     "components/sample-http-incrementor",
     "components/tcp",
     "components/tcp-connector",
-    "crates/resp-codec",
+    "crates/componentized-valkey",
     "crates/test-harness",
 ]
 
@@ -18,7 +18,7 @@ version = "0.3.0-dev"
 [workspace.dependencies]
 futures-channel = "0.3"
 futures-core = "0.3"
-resp-codec = { path = "./crates/resp-codec" }
+componentized-valkey = { path = "./crates/componentized-valkey" }
 test-harness = { path = "./crates/test-harness" }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 wasmtime = { version = "49", features = ["component-model-async"] }

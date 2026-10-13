@@ -80,17 +80,17 @@ pub type Resp = resp_bindings::exports::componentized::valkey::resp::Guest;
 
 /// Encode a value as RESP, e.g. to nest it in an aggregate.
 pub fn encode(value: Value) -> NestedValue {
-    resp_codec::encode(to_codec(value))
+    componentized_valkey::codec::encode(to_codec(value))
 }
 
 /// Decode a nested value.
 pub fn decode(value: NestedValue) -> Result<Value, String> {
-    resp_codec::decode(value).map(from_codec)
+    componentized_valkey::codec::decode(value).map(from_codec)
 }
 
 // a value is not recursive, nested values are encoded RESP, so each conversion is one match
-fn to_codec(value: Value) -> resp_codec::Value {
-    use resp_codec::Value as V;
+fn to_codec(value: Value) -> componentized_valkey::types::Value {
+    use componentized_valkey::types::Value as V;
     match value {
         Value::String(value) => V::String(value),
         Value::Error(value) => V::Error(value),
@@ -109,8 +109,8 @@ fn to_codec(value: Value) -> resp_codec::Value {
     }
 }
 
-fn from_codec(value: resp_codec::Value) -> Value {
-    use resp_codec::Value as V;
+fn from_codec(value: componentized_valkey::types::Value) -> Value {
+    use componentized_valkey::types::Value as V;
     match value {
         V::String(value) => Value::String(value),
         V::Error(value) => Value::Error(value),

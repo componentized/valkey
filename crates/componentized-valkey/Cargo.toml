@@ -1,0 +1,10 @@
+[package]
+name = "componentized-valkey"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Rust types and conversions for the componentized:valkey WIT package: the shared types, a RESP codec, and the conversions between commands and replies."
+publish = false
+
+[dependencies]
+wit-bindgen = { workspace = true }

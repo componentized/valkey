@@ -1,19 +1,19 @@
-use crate::bindings::componentized::valkey::types::{
+use crate::types::{
     AclDryrunResult, AclListEntry, AclLogEntry, ChannelRule, ClientTrackinginfoReply,
     ClusterBumpepochResult, CommandArgument, CommandArgumentType, CommandDocsReply,
     CommandInfoReply, CommandRule, Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds,
     EngineStats, Error, ExpiretimeReply, FieldPersistResult, FunctionStatsReply, GeoCoordinates,
     GeoSearchResult, Integer, KeyRule, KeySpec, KeySpecBeginSearch, KeySpecFindKeys, KeySpecKeynum,
     KeySpecKeyword, KeySpecRange, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxMatch,
-    LcsIdxReply, Library, LibraryFunction, LinsertResult, LogEntry, ModuleInfo, PexpiretimeReply,
-    PttlReply, RolePrimary, RoleReplica, RoleReplicaInfo, RoleReply, Rule, RuleSelector,
-    RunningFunction, SlotMigration, SlotMigrationOperation, StreamId, TrackingRedirect, TtlReply,
-    TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value, XinfoConsumer, XinfoGroup,
-    XinfoStreamReply, XinfoStreamReplyFull, XinfoStreamReplyFullConsumer,
-    XinfoStreamReplyFullGroup, XpendingExtendedEntry, XpendingSummary,
+    LcsIdxReply, Library, LibraryFunction, LinsertResult, LogEntry, ModuleInfo, NestedValue,
+    PexpiretimeReply, PttlReply, RolePrimary, RoleReplica, RoleReplicaInfo, RoleReply, Rule,
+    RuleSelector, RunningFunction, SlotMigration, SlotMigrationOperation, StreamId,
+    TrackingRedirect, TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value,
+    XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
+    XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup, XpendingExtendedEntry,
+    XpendingSummary,
 };
 
-use crate::NestedValue;
 use wit_bindgen::rt::Map;
 
 /// Converts a reply into a Rust type, e.g. `Option<String>` for a bulk string or null.

@@ -16,18 +16,18 @@ use crate::exports::componentized::valkey::commands::{
     XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary,
     ZaddComparison, ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
-use resp_codec::command::{
+use componentized_valkey::command::{
     Bit, DecimalSeconds, Fields, Flag, KeysAndArgs, LexRange, NamedOption, NonEmpty, NumKeys,
     OnOff, ScoreRange, Zrange,
 };
-use resp_codec::value::{
+use componentized_valkey::value::{
     AclList, AclUserRules, ClientList, CommandDocsList, CommandInfoList, FlatPairs, Migrated,
     NextCursor, OptionalKeyType, OrNever, OrZeroId, ScoredMembers,
 };
 
 use wit_bindgen::rt::Map;
 
-use resp_codec::{FromValue, IntoCommand};
+use componentized_valkey::{FromValue, IntoCommand};
 
 /// Send a command, its words as bulk strings, and convert its reply.
 ///
@@ -5492,7 +5492,7 @@ wit_bindgen::generate!({
     world: "commands",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
+        "componentized:valkey/types@0.3.0-dev": componentized_valkey::types,
     },
     generate_all,
 });

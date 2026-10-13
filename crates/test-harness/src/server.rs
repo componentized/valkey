@@ -42,7 +42,9 @@ impl Client {
     /// The next command the client sent, as its words, `None` once it closed its side.
     pub async fn request(&mut self) -> Option<Vec<Value>> {
         loop {
-            if let Some(len) = resp_codec::frame_len(&self.buffered).expect("valid RESP") {
+            if let Some(len) =
+                componentized_valkey::codec::frame_len(&self.buffered).expect("valid RESP")
+            {
                 let rest = self.buffered.split_off(len);
                 let frame = std::mem::replace(&mut self.buffered, rest);
                 let Value::Array(words) = decode(frame).expect("valid RESP") else {

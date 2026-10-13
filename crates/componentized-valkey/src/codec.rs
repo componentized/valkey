@@ -1,6 +1,6 @@
 //! RESP serialization, from <https://github.com/iorust/resp/tree/v1.0.3>.
 
-use crate::{Error, NestedValue, Value};
+use crate::types::{NestedValue, RespError as Error, Value};
 
 /// up to 512 MB in length
 const RESP_MAX_SIZE: i64 = 512 * 1024 * 1024;
@@ -9,7 +9,8 @@ const CRLF_BYTES: &'static [u8] = b"\r\n";
 /// Encodes RESP value to RESP binary buffer.
 /// # Examples
 /// ```
-/// # use resp_codec::{Value, encode};
+/// # use componentized_valkey::codec::encode;
+/// # use componentized_valkey::types::Value;
 /// let val = Value::String("OK".to_string());
 /// assert_eq!(encode(val), b"+OK\r\n");
 /// ```
@@ -124,7 +125,8 @@ fn buf_encode(value: Value, buf: &mut Vec<u8>) {
 ///
 /// # Examples
 /// ```
-/// # use resp_codec::{Value, decode, encode};
+/// # use componentized_valkey::codec::{decode, encode};
+/// # use componentized_valkey::types::Value;
 /// let value = Value::BulkString("Hello".to_string());
 /// assert_eq!(decode(encode(value.clone())), Ok(value));
 /// ```

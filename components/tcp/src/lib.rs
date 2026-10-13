@@ -21,10 +21,10 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 use componentized::valkey::connection::{ConnectOpts, Connection, Error};
+use componentized_valkey::types::Value;
 use exports::componentized::valkey::tcp::{Guest, GuestTransport, Transport};
 use futures_channel::{mpsc, oneshot};
 use futures_core::Stream;
-use resp_codec::Value;
 use wasi::sockets::ip_name_lookup::{ErrorCode as LookupErrorCode, resolve_addresses};
 use wasi::sockets::types::{
     ErrorCode, IpAddress, IpAddressFamily, IpSocketAddress, Ipv4SocketAddress, Ipv6SocketAddress,
@@ -164,11 +164,11 @@ async fn receive_pump(
     let result = 'pump: loop {
         // hand over each whole value buffered, a value may span several reads
         loop {
-            match resp_codec::frame_len(&buffered) {
+            match componentized_valkey::codec::frame_len(&buffered) {
                 Ok(Some(len)) => {
                     let rest = buffered.split_off(len);
                     let frame = std::mem::replace(&mut buffered, rest);
-                    match resp_codec::decode(frame) {
+                    match componentized_valkey::codec::decode(frame) {
                         Ok(value) => {
                             if replies.write_one(value).await.is_some() {
                                 // nobody reads the values anymore
@@ -209,7 +209,11 @@ async fn send_pump(
         return;
     };
     while let Some(value) = requests.next().await {
-        if !bytes.write_all(resp_codec::encode(value)).await.is_empty() {
+        if !bytes
+            .write_all(componentized_valkey::codec::encode(value))
+            .await
+            .is_empty()
+        {
             // the socket stopped sending
             break;
         }
@@ -283,7 +287,7 @@ wit_bindgen::generate!({
     world: "tcp",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/types@0.3.0-dev": resp_codec::bindings::componentized::valkey::types,
+        "componentized:valkey/types@0.3.0-dev": componentized_valkey::types,
     },
     generate_all,
 });
