@@ -1,26 +1,28 @@
 use crate::command::{
     Bit, DecimalSeconds, Fields, Flag, KeysAndArgs, LexRange, NamedOption, NonEmpty, NumKeys,
-    ScoreRange, Zrange, emit, query,
+    OnOff, ScoreRange, Zrange, emit, query,
 };
 use crate::exports::componentized::valkey::commands::{
     AclDryrunResult, AclListEntry, AclLogEntry, Aggregate, BgsaveOperation, BitRange, BitfieldGet,
-    BitfieldOperation, BitopOperation, ClientFilter, ClientPauseMode, ClientUnblockType,
-    ClusterBumpepochResult, ClusterFailoverMode, ClusterResetMode, ClusterSetslotState,
-    CommandlogType, Connection, Cursor, Double, DurationMilliseconds, DurationSeconds, Error,
-    ExpiretimeReply, FailoverTarget, FieldPersistResult, FlushMode, FunctionStatsReply,
-    GeoCoordinates, GeoCount, GeoSearchResult, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, Guest,
-    HsetexCondition, HsetexFieldCondition, Integer, KeyType, LatencyHistogramEntry,
-    LatencyLatestEntry, LcsIdxReply, LexBound, Library, Limit, LinsertPosition, LinsertResult,
-    ListSide, LogEntry, MigrateAuth, ModuleInfo, MsetexPrecondition, MsetexTtl, PexpiretimeReply,
-    PopEnd, PttlReply, RoleReply, Rule, ScoreBound, SetPrecondition, SetTtl, ShutdownSave,
-    SlotMigration, SlotMigrationGroup, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode,
-    TtlReply, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer,
-    XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary,
-    ZaddComparison, ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
+    BitfieldOperation, BitopOperation, ClientFilter, ClientPauseMode, ClientSetinfoAttr,
+    ClientTrackingOptions, ClientTrackinginfoReply, ClientUnblockType, ClusterBumpepochResult,
+    ClusterFailoverMode, ClusterResetMode, ClusterSetslotState, CommandDocsReply, CommandInfoReply,
+    CommandListFilter, CommandlogType, Connection, Cursor, Double, DurationMilliseconds,
+    DurationSeconds, Error, ExpiretimeReply, FailoverTarget, FieldPersistResult, FlushMode,
+    FunctionStatsReply, GeoCoordinates, GeoCount, GeoSearchResult, GeoShape, GeoUnit,
+    GeoaddCondition, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition, Integer, KeyType,
+    LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply, LexBound, Library, Limit,
+    LinsertPosition, LinsertResult, ListSide, LogEntry, MigrateAuth, ModuleInfo,
+    MsetexPrecondition, MsetexTtl, PexpiretimeReply, PopEnd, PttlReply, RoleReply, Rule,
+    ScoreBound, SetPrecondition, SetTtl, ShutdownSave, SlotMigration, SlotMigrationGroup, SortOpts,
+    SortOrder, StreamId, StreamTrim, TrackingRedirect, TtlMode, TtlReply, TtlResult,
+    UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
+    XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison,
+    ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
 };
 use crate::value::{
-    AclList, AclUserRules, ClientList, FlatPairs, Migrated, NextCursor, OptionalKeyType, OrNever,
-    OrZeroId, ScoredMembers,
+    AclList, AclUserRules, ClientList, CommandDocsList, CommandInfoList, FlatPairs, Migrated,
+    NextCursor, OptionalKeyType, OrNever, OrZeroId, ScoredMembers,
 };
 
 use wit_bindgen::rt::Map;
@@ -1074,6 +1076,339 @@ impl Guest for Commands {
         } else {
             Err(Error::Client(format!("unexpected reply: {reply:?}")))
         }
+    }
+
+    #[doc = " Signals that the next command follows an ASK redirect, for a slot being imported."]
+    #[doc = ""]
+    #[doc = " It applies to the next command on the connection, which may be another caller's when the"]
+    #[doc = " connection is shared. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " ASKING"]
+    #[doc = " https://valkey.io/commands/asking/"]
+    #[allow(async_fn_in_trait)]
+    async fn asking(connection: &Connection) -> Result<(), Error> {
+        query(connection, "ASKING").await
+    }
+
+    #[doc = " Whether the keys the next command reads are tracked, with tracking in `optin` or `optout`"]
+    #[doc = " mode."]
+    #[doc = ""]
+    #[doc = " It applies to the next command on the connection, which may be another caller's when the"]
+    #[doc = " connection is shared. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " CLIENT CACHING 〈 YES | NO 〉"]
+    #[doc = " https://valkey.io/commands/client-caching/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_caching(connection: &Connection, enabled: bool) -> Result<(), Error> {
+        query(
+            connection,
+            ("CLIENT", "CACHING", if enabled { "YES" } else { "NO" }),
+        )
+        .await
+    }
+
+    #[doc = " Declares the capabilities the client supports, e.g. `redirect`."]
+    #[doc = ""]
+    #[doc = " CLIENT CAPA capability [ capability ... ]"]
+    #[doc = " https://valkey.io/commands/client-capa/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_capa(connection: &Connection, capabilities: Vec<String>) -> Result<(), Error> {
+        query(
+            connection,
+            (
+                "CLIENT",
+                "CAPA",
+                NonEmpty::new("capabilities", capabilities),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The name of the connection, none when it has none."]
+    #[doc = ""]
+    #[doc = " CLIENT GETNAME"]
+    #[doc = " https://valkey.io/commands/client-getname/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_getname(connection: &Connection) -> Result<Option<String>, Error> {
+        query(connection, ("CLIENT", "GETNAME")).await
+    }
+
+    #[doc = " Where the connection's tracking notifications are redirected."]
+    #[doc = ""]
+    #[doc = " CLIENT GETREDIR"]
+    #[doc = " https://valkey.io/commands/client-getredir/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_getredir(connection: &Connection) -> Result<TrackingRedirect, Error> {
+        query(connection, ("CLIENT", "GETREDIR")).await
+    }
+
+    #[doc = " The ID of the connection, unique until the server restarts."]
+    #[doc = ""]
+    #[doc = " CLIENT ID"]
+    #[doc = " https://valkey.io/commands/client-id/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_id(connection: &Connection) -> Result<Integer, Error> {
+        query(connection, ("CLIENT", "ID")).await
+    }
+
+    #[doc = " Whether the connection is an import source, which may write while the server is in import"]
+    #[doc = " mode."]
+    #[doc = ""]
+    #[doc = " CLIENT IMPORT-SOURCE 〈 ON | OFF 〉"]
+    #[doc = " https://valkey.io/commands/client-import-source/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_import_source(connection: &Connection, enabled: bool) -> Result<(), Error> {
+        query(connection, ("CLIENT", "IMPORT-SOURCE", OnOff(enabled))).await
+    }
+
+    #[doc = " The fields of the connection, as CLIENT LIST has them, e.g. `id`, `addr` and `name`."]
+    #[doc = ""]
+    #[doc = " CLIENT INFO"]
+    #[doc = " https://valkey.io/commands/client-info/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_info(connection: &Connection) -> Result<Map<String, String>, Error> {
+        // a line of CLIENT LIST
+        let clients: ClientList = query(connection, ("CLIENT", "INFO")).await?;
+        clients
+            .0
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Client("unexpected empty reply".to_string()))
+    }
+
+    #[doc = " Whether the connection's commands leave the access time of the keys they read unchanged."]
+    #[doc = ""]
+    #[doc = " It applies to the connection, so to every caller sharing it."]
+    #[doc = ""]
+    #[doc = " CLIENT NO-TOUCH 〈 ON | OFF 〉"]
+    #[doc = " https://valkey.io/commands/client-no-touch/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_no_touch(connection: &Connection, enabled: bool) -> Result<(), Error> {
+        query(connection, ("CLIENT", "NO-TOUCH", OnOff(enabled))).await
+    }
+
+    #[doc = " Sets the name or version of the library of the connection, see CLIENT LIST."]
+    #[doc = ""]
+    #[doc = " CLIENT SETINFO 〈 LIB-NAME libname | LIB-VER libver 〉"]
+    #[doc = " https://valkey.io/commands/client-setinfo/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_setinfo(connection: &Connection, attr: ClientSetinfoAttr) -> Result<(), Error> {
+        query(connection, ("CLIENT", "SETINFO", attr)).await
+    }
+
+    #[doc = " Sets the name of the connection."]
+    #[doc = ""]
+    #[doc = " CLIENT SETNAME connection-name"]
+    #[doc = " https://valkey.io/commands/client-setname/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_setname(connection: &Connection, connection_name: String) -> Result<(), Error> {
+        query(connection, ("CLIENT", "SETNAME", connection_name)).await
+    }
+
+    #[doc = " Turns tracking on with the options, or off with none, for server assisted client side"]
+    #[doc = " caching. Invalidations arrive as push messages, see `connection.pushes`."]
+    #[doc = ""]
+    #[doc = " It applies to the connection, so to every caller sharing it."]
+    #[doc = ""]
+    #[doc = " CLIENT TRACKING 〈 ON | OFF 〉 [ REDIRECT client-id ] [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN ] [ OPTOUT ] [ NOLOOP ]"]
+    #[doc = " https://valkey.io/commands/client-tracking/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_tracking(
+        connection: &Connection,
+        options: Option<ClientTrackingOptions>,
+    ) -> Result<(), Error> {
+        // ON with options, OFF without
+        let status = OnOff(options.is_some());
+        query(connection, ("CLIENT", "TRACKING", status, options)).await
+    }
+
+    #[doc = " The connection's tracking state."]
+    #[doc = ""]
+    #[doc = " CLIENT TRACKINGINFO"]
+    #[doc = " https://valkey.io/commands/client-trackinginfo/"]
+    #[allow(async_fn_in_trait)]
+    async fn client_trackinginfo(
+        connection: &Connection,
+    ) -> Result<ClientTrackinginfoReply, Error> {
+        query(connection, ("CLIENT", "TRACKINGINFO")).await
+    }
+
+    #[doc = " The number of commands of the server."]
+    #[doc = ""]
+    #[doc = " COMMAND COUNT"]
+    #[doc = " https://valkey.io/commands/command-count/"]
+    #[allow(async_fn_in_trait)]
+    async fn command_count(connection: &Connection) -> Result<Integer, Error> {
+        query(connection, ("COMMAND", "COUNT")).await
+    }
+
+    #[doc = " Every command of the server, a container followed by its subcommands."]
+    #[doc = ""]
+    #[doc = " COMMAND"]
+    #[doc = " https://valkey.io/commands/command/"]
+    #[allow(async_fn_in_trait)]
+    async fn command(connection: &Connection) -> Result<Vec<CommandInfoReply>, Error> {
+        let commands: CommandInfoList = query(connection, "COMMAND").await?;
+        Ok(commands.0)
+    }
+
+    #[doc = " The documentation of the commands, all of them without names, a container followed by its"]
+    #[doc = " subcommands, commands that do not exist left out."]
+    #[doc = ""]
+    #[doc = " COMMAND DOCS [ command-name [ command-name ... ] ]"]
+    #[doc = " https://valkey.io/commands/command-docs/"]
+    #[allow(async_fn_in_trait)]
+    async fn command_docs(
+        connection: &Connection,
+        command_names: Option<Vec<String>>,
+    ) -> Result<Vec<CommandDocsReply>, Error> {
+        let command_names = NonEmpty::optional("command-names", command_names);
+        let commands: CommandDocsList =
+            query(connection, ("COMMAND", "DOCS", command_names)).await?;
+        Ok(commands.0)
+    }
+
+    #[doc = " The commands, all of them without names, a container followed by its subcommands, commands"]
+    #[doc = " that do not exist left out."]
+    #[doc = ""]
+    #[doc = " COMMAND INFO [ command-name [ command-name ... ] ]"]
+    #[doc = " https://valkey.io/commands/command-info/"]
+    #[allow(async_fn_in_trait)]
+    async fn command_info(
+        connection: &Connection,
+        command_names: Option<Vec<String>>,
+    ) -> Result<Vec<CommandInfoReply>, Error> {
+        let command_names = NonEmpty::optional("command-names", command_names);
+        let commands: CommandInfoList =
+            query(connection, ("COMMAND", "INFO", command_names)).await?;
+        Ok(commands.0)
+    }
+
+    #[doc = " The keys of the command, its name and arguments."]
+    #[doc = ""]
+    #[doc = " COMMAND GETKEYS command [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/command-getkeys/"]
+    #[allow(async_fn_in_trait)]
+    async fn command_getkeys(
+        connection: &Connection,
+        command: Vec<String>,
+    ) -> Result<Vec<String>, Error> {
+        query(
+            connection,
+            ("COMMAND", "GETKEYS", NonEmpty::new("command", command)),
+        )
+        .await
+    }
+
+    #[doc = " The keys of the command, its name and arguments, and how the command uses each, e.g. `RW`"]
+    #[doc = " and `access`."]
+    #[doc = ""]
+    #[doc = " COMMAND GETKEYSANDFLAGS command [ arg [ arg ... ] ]"]
+    #[doc = " https://valkey.io/commands/command-getkeysandflags/"]
+    #[allow(async_fn_in_trait)]
+    async fn command_getkeysandflags(
+        connection: &Connection,
+        command: Vec<String>,
+    ) -> Result<Vec<(String, Vec<String>)>, Error> {
+        query(
+            connection,
+            (
+                "COMMAND",
+                "GETKEYSANDFLAGS",
+                NonEmpty::new("command", command),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The names of the commands of the server, those that match the filter with one."]
+    #[doc = ""]
+    #[doc = " COMMAND LIST [ FILTERBY 〈 MODULE module-name | ACLCAT category | PATTERN pattern 〉 ]"]
+    #[doc = " https://valkey.io/commands/command-list/"]
+    #[allow(async_fn_in_trait)]
+    async fn command_list(
+        connection: &Connection,
+        filter: Option<CommandListFilter>,
+    ) -> Result<Vec<String>, Error> {
+        query(connection, ("COMMAND", "LIST", filter)).await
+    }
+
+    #[doc = " Returns the message."]
+    #[doc = ""]
+    #[doc = " ECHO message"]
+    #[doc = " https://valkey.io/commands/echo/"]
+    #[allow(async_fn_in_trait)]
+    async fn echo(connection: &Connection, message: String) -> Result<String, Error> {
+        query(connection, ("ECHO", message)).await
+    }
+
+    #[doc = " Allows the connection to read from a replica of a cluster, for the slots of its primary."]
+    #[doc = ""]
+    #[doc = " It applies to the connection, so to every caller sharing it."]
+    #[doc = ""]
+    #[doc = " READONLY"]
+    #[doc = " https://valkey.io/commands/readonly/"]
+    #[allow(async_fn_in_trait)]
+    async fn readonly(connection: &Connection) -> Result<(), Error> {
+        query(connection, "READONLY").await
+    }
+
+    #[doc = " Disallows the connection to read from a replica of a cluster, the default."]
+    #[doc = ""]
+    #[doc = " It applies to the connection, so to every caller sharing it."]
+    #[doc = ""]
+    #[doc = " READWRITE"]
+    #[doc = " https://valkey.io/commands/readwrite/"]
+    #[allow(async_fn_in_trait)]
+    async fn readwrite(connection: &Connection) -> Result<(), Error> {
+        query(connection, "READWRITE").await
+    }
+
+    #[doc = " Changes the database of the connection."]
+    #[doc = ""]
+    #[doc = " It applies to the connection, so to every caller sharing it."]
+    #[doc = ""]
+    #[doc = " SELECT index"]
+    #[doc = " https://valkey.io/commands/select/"]
+    #[allow(async_fn_in_trait)]
+    async fn select(connection: &Connection, index: Integer) -> Result<(), Error> {
+        query(connection, ("SELECT", index)).await
+    }
+
+    #[doc = " Waits until the connection's writes reached the number of replicas, or the timeout passed,"]
+    #[doc = " returning how many replicas they reached. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " WAIT numreplicas timeout"]
+    #[doc = " https://valkey.io/commands/wait/"]
+    #[allow(async_fn_in_trait)]
+    async fn wait(
+        connection: &Connection,
+        numreplicas: Integer,
+        timeout: DurationMilliseconds,
+    ) -> Result<Integer, Error> {
+        query(connection, ("WAIT", numreplicas, timeout)).await
+    }
+
+    #[doc = " Waits until the connection's writes are in the append-only file of the primary, and of the"]
+    #[doc = " number of replicas, or the timeout passed, returning how many of each they reached. A timeout"]
+    #[doc = " of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " WAITAOF numlocal numreplicas timeout"]
+    #[doc = " https://valkey.io/commands/waitaof/"]
+    #[allow(async_fn_in_trait)]
+    async fn waitaof(
+        connection: &Connection,
+        numlocal: Integer,
+        numreplicas: Integer,
+        timeout: DurationMilliseconds,
+    ) -> Result<(Integer, Integer), Error> {
+        query(connection, ("WAITAOF", numlocal, numreplicas, timeout)).await
     }
 
     #[doc = " Adds the members at their positions to the geospatial index stored at key, or updates their"]

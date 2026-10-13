@@ -1,14 +1,16 @@
 use crate::exports::componentized::valkey::commands::{
-    AclDryrunResult, AclListEntry, AclLogEntry, ChannelRule, ClusterBumpepochResult, CommandRule,
-    Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds, EngineStats, Error,
-    ExpiretimeReply, FieldPersistResult, FunctionStatsReply, GeoCoordinates, GeoSearchResult,
-    Integer, KeyRule, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxMatch, LcsIdxReply,
-    Library, LibraryFunction, LinsertResult, LogEntry, ModuleInfo, PexpiretimeReply, PttlReply,
-    RolePrimary, RoleReplica, RoleReplicaInfo, RoleReply, Rule, RuleSelector, RunningFunction,
-    SlotMigration, SlotMigrationOperation, StreamId, TtlReply, TtlResult, UnixTimeMilliseconds,
-    UnixTimeSeconds, UserRule, Value, XinfoConsumer, XinfoGroup, XinfoStreamReply,
-    XinfoStreamReplyFull, XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup,
-    XpendingExtendedEntry, XpendingSummary,
+    AclDryrunResult, AclListEntry, AclLogEntry, ChannelRule, ClientTrackinginfoReply,
+    ClusterBumpepochResult, CommandArgument, CommandArgumentType, CommandDocsReply,
+    CommandInfoReply, CommandRule, Cursor, DbRule, Double, DurationMilliseconds, DurationSeconds,
+    EngineStats, Error, ExpiretimeReply, FieldPersistResult, FunctionStatsReply, GeoCoordinates,
+    GeoSearchResult, Integer, KeyRule, KeySpec, KeySpecBeginSearch, KeySpecFindKeys, KeySpecKeynum,
+    KeySpecKeyword, KeySpecRange, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxMatch,
+    LcsIdxReply, Library, LibraryFunction, LinsertResult, LogEntry, ModuleInfo, PexpiretimeReply,
+    PttlReply, RolePrimary, RoleReplica, RoleReplicaInfo, RoleReply, Rule, RuleSelector,
+    RunningFunction, SlotMigration, SlotMigrationOperation, StreamId, TrackingRedirect, TtlReply,
+    TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value, XinfoConsumer, XinfoGroup,
+    XinfoStreamReply, XinfoStreamReplyFull, XinfoStreamReplyFullConsumer,
+    XinfoStreamReplyFullGroup, XpendingExtendedEntry, XpendingSummary,
 };
 
 use resp_codec::NestedValue;
@@ -932,6 +934,208 @@ impl FromValue for ClientList {
     }
 }
 
+/// `-1` when tracking is off, `0` when not redirected, otherwise the ID of the connection.
+impl FromValue for TrackingRedirect {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        match Integer::from_value(value)? {
+            -1 => Ok(TrackingRedirect::NotTracking),
+            0 => Ok(TrackingRedirect::NotRedirected),
+            id if id > 0 => Ok(TrackingRedirect::Redirected(id)),
+            code => Err(Error::Client(format!("unexpected reply: {code}"))),
+        }
+    }
+}
+
+impl FromValue for ClientTrackinginfoReply {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        Ok(Self {
+            flags: fields.required("flags")?,
+            redirect: fields.required("redirect")?,
+            prefixes: fields.required("prefixes")?,
+        })
+    }
+}
+
+/// The entries of COMMAND and COMMAND INFO, each followed by its subcommands, nulls, for commands
+/// that do not exist, left out.
+pub struct CommandInfoList(pub Vec<CommandInfoReply>);
+
+impl FromValue for CommandInfoList {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut commands = vec![];
+        for command in items(value)? {
+            command_info(command, &mut commands)?;
+        }
+        Ok(CommandInfoList(commands))
+    }
+}
+
+/// `[name, arity, flags, first-key, last-key, step, acl-categories, tips, key-specs, subcommands]`,
+/// the ACL categories since 6.0, the rest since 7.0.
+fn command_info(value: Value, commands: &mut Vec<CommandInfoReply>) -> Result<(), Error> {
+    if value == Value::Null {
+        return Ok(());
+    }
+    let mut items = items(value)?.into_iter();
+    let mut next = || {
+        items
+            .next()
+            .ok_or_else(|| Error::Client("too few items for a command".to_string()))
+    };
+    let info = CommandInfoReply {
+        name: FromValue::from_value(next()?)?,
+        arity: FromValue::from_value(next()?)?,
+        flags: FromValue::from_value(next()?)?,
+        first_key: FromValue::from_value(next()?)?,
+        last_key: FromValue::from_value(next()?)?,
+        step: FromValue::from_value(next()?)?,
+        acl_categories: next().map_or(Ok(vec![]), FromValue::from_value)?,
+        tips: next().map_or(Ok(vec![]), FromValue::from_value)?,
+        key_specs: next().map_or(Ok(vec![]), FromValue::from_value)?,
+    };
+    let subcommands: Vec<Value> = next().map_or(Ok(vec![]), FromValue::from_value)?;
+    commands.push(info);
+    for subcommand in subcommands {
+        command_info(subcommand, commands)?;
+    }
+    Ok(())
+}
+
+impl FromValue for KeySpec {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut fields = Fields::from_value(value)?;
+        let mut begin_search: Fields = fields.required("begin_search")?;
+        let mut find_keys: Fields = fields.required("find_keys")?;
+        Ok(Self {
+            notes: fields.optional("notes")?,
+            flags: fields.required("flags")?,
+            begin_search: begin_search_spec(&mut begin_search)?,
+            find_keys: find_keys_spec(&mut find_keys)?,
+        })
+    }
+}
+
+/// `{type, spec}`, a type this interface does not know is `unknown`.
+fn begin_search_spec(fields: &mut Fields) -> Result<KeySpecBeginSearch, Error> {
+    let kind: String = fields.required("type")?;
+    let mut spec: Fields = fields.required("spec")?;
+    Ok(match kind.as_str() {
+        "index" => KeySpecBeginSearch::Index(spec.required("index")?),
+        "keyword" => KeySpecBeginSearch::Keyword(KeySpecKeyword {
+            keyword: spec.required("keyword")?,
+            startfrom: spec.required("startfrom")?,
+        }),
+        _ => KeySpecBeginSearch::Unknown,
+    })
+}
+
+/// `{type, spec}`, a type this interface does not know is `unknown`.
+fn find_keys_spec(fields: &mut Fields) -> Result<KeySpecFindKeys, Error> {
+    let kind: String = fields.required("type")?;
+    let mut spec: Fields = fields.required("spec")?;
+    Ok(match kind.as_str() {
+        "range" => KeySpecFindKeys::Range(KeySpecRange {
+            lastkey: spec.required("lastkey")?,
+            keystep: spec.required("keystep")?,
+            limit: spec.required("limit")?,
+        }),
+        "keynum" => KeySpecFindKeys::Keynum(KeySpecKeynum {
+            keynumidx: spec.required("keynumidx")?,
+            firstkey: spec.required("firstkey")?,
+            keystep: spec.required("keystep")?,
+        }),
+        _ => KeySpecFindKeys::Unknown,
+    })
+}
+
+/// The documentation of COMMAND DOCS, a map by name, each followed by its subcommands.
+pub struct CommandDocsList(pub Vec<CommandDocsReply>);
+
+impl FromValue for CommandDocsList {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let mut commands = vec![];
+        for (name, doc) in entries::<String, Fields>(value)? {
+            command_doc(name, doc, &mut commands)?;
+        }
+        Ok(CommandDocsList(commands))
+    }
+}
+
+fn command_doc(
+    name: String,
+    mut fields: Fields,
+    commands: &mut Vec<CommandDocsReply>,
+) -> Result<(), Error> {
+    let mut arguments = vec![];
+    let nested: Option<Vec<Fields>> = fields.optional("arguments")?;
+    command_arguments(nested.unwrap_or_default(), None, &mut arguments)?;
+    commands.push(CommandDocsReply {
+        name,
+        summary: fields.required("summary")?,
+        since: fields.required("since")?,
+        group: fields.required("group")?,
+        complexity: fields.optional("complexity")?,
+        module: fields.optional("module")?,
+        doc_flags: fields.optional("doc_flags")?.unwrap_or_default(),
+        deprecated_since: fields.optional("deprecated_since")?,
+        replaced_by: fields.optional("replaced_by")?,
+        history: fields.optional("history")?.unwrap_or_default(),
+        arguments,
+    });
+    let subcommands: Option<Vec<(String, Fields)>> = fields
+        .optional::<FlatPairs<String, Fields>>("subcommands")?
+        .map(|subcommands| subcommands.0);
+    for (name, doc) in subcommands.unwrap_or_default() {
+        command_doc(name, doc, commands)?;
+    }
+    Ok(())
+}
+
+/// The arguments, depth first, each followed by those it contains, which point to it as their
+/// parent.
+fn command_arguments(
+    nested: Vec<Fields>,
+    parent: Option<u32>,
+    arguments: &mut Vec<CommandArgument>,
+) -> Result<(), Error> {
+    for mut fields in nested {
+        let index = u32::try_from(arguments.len())
+            .map_err(|_| Error::Client("too many arguments".to_string()))?;
+        let kind: String = fields.required("type")?;
+        arguments.push(CommandArgument {
+            parent,
+            name: fields.required("name")?,
+            type_: argument_type(kind),
+            display_text: fields.optional("display_text")?,
+            key_spec_index: fields.optional("key_spec_index")?,
+            token: fields.optional("token")?,
+            summary: fields.optional("summary")?,
+            since: fields.optional("since")?,
+            deprecated_since: fields.optional("deprecated_since")?,
+            flags: fields.optional("flags")?.unwrap_or_default(),
+        });
+        let contained: Option<Vec<Fields>> = fields.optional("arguments")?;
+        command_arguments(contained.unwrap_or_default(), Some(index), arguments)?;
+    }
+    Ok(())
+}
+
+fn argument_type(kind: String) -> CommandArgumentType {
+    match kind.as_str() {
+        "string" => CommandArgumentType::String,
+        "integer" => CommandArgumentType::Integer,
+        "double" => CommandArgumentType::Double,
+        "key" => CommandArgumentType::Key,
+        "pattern" => CommandArgumentType::Pattern,
+        "unix-time" => CommandArgumentType::UnixTime,
+        "pure-token" => CommandArgumentType::PureToken,
+        "oneof" => CommandArgumentType::Oneof,
+        "block" => CommandArgumentType::Block,
+        _ => CommandArgumentType::Other(kind),
+    }
+}
+
 impl FromValue for TtlResult {
     fn from_value(value: Value) -> Result<Self, Error> {
         match Integer::from_value(value)? {
@@ -1082,7 +1286,7 @@ fn items(reply: Value) -> Result<Vec<Value>, Error> {
 }
 
 /// The entries of a map, or of a flat array of keys and values.
-fn entries<K: FromValue, V: FromValue>(reply: Value) -> Result<Vec<(K, V)>, Error> {
+pub fn entries<K: FromValue, V: FromValue>(reply: Value) -> Result<Vec<(K, V)>, Error> {
     let entry = |key, value| Ok((K::from_value(decode(key)?)?, V::from_value(decode(value)?)?));
     match reply {
         Value::Map(entries) => entries

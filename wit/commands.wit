@@ -1114,11 +1114,359 @@ interface commands {
 
     // connection commands
 
+    /// How a key spec finds the first key, see `key-spec`.
+    variant key-spec-begin-search {
+        /// `index`: the argument at the index.
+        index(integer),
+        /// `keyword`: the argument after the keyword.
+        keyword(key-spec-keyword),
+        /// `unknown`: the keys cannot be found from the arguments alone.
+        unknown,
+    }
+
+    /// The keyword before the first key, see `key-spec-begin-search`.
+    record key-spec-keyword {
+        keyword: string,
+        /// The index of the argument to start searching from, from the end when negative.
+        startfrom: integer,
+    }
+
+    /// How a key spec finds the keys after the first one, see `key-spec`.
+    variant key-spec-find-keys {
+        /// `range`: a range of arguments.
+        range(key-spec-range),
+        /// `keynum`: the number of keys is an argument.
+        keynum(key-spec-keynum),
+        /// `unknown`: the keys cannot be found from the arguments alone.
+        unknown,
+    }
+
+    /// A range of keys, see `key-spec-find-keys`.
+    record key-spec-range {
+        /// The index of the last key, relative to the first, from the end when negative.
+        lastkey: integer,
+        /// The number of arguments from one key to the next.
+        keystep: integer,
+        /// With a `lastkey` of -1, divides the remaining arguments, e.g. 2 for half of them.
+        limit: integer,
+    }
+
+    /// A number of keys, see `key-spec-find-keys`.
+    record key-spec-keynum {
+        /// The index of the argument with the number of keys, relative to the first.
+        keynumidx: integer,
+        /// The index of the first key, relative to the first.
+        firstkey: integer,
+        /// The number of arguments from one key to the next.
+        keystep: integer,
+    }
+
+    /// Where a command's keys are and how it uses them.
+    record key-spec {
+        notes: option<string>,
+        /// How the command uses the keys, e.g. `RW`, `access` and `update`.
+        %flags: list<string>,
+        begin-search: key-spec-begin-search,
+        find-keys: key-spec-find-keys,
+    }
+
+    /// A command, see `command` and `command-info`.
+    record command-info-reply {
+        /// The command's name, e.g. `get`, or for a subcommand, `config|get`.
+        name: string,
+        /// The number of arguments, the name included, the minimum when negative.
+        arity: integer,
+        /// The command's flags, e.g. `readonly` and `fast`.
+        %flags: list<string>,
+        /// The index of the first key, 0 for none.
+        first-key: integer,
+        /// The index of the last key, from the end when negative.
+        last-key: integer,
+        /// The number of arguments from one key to the next.
+        step: integer,
+        /// The ACL categories of the command, e.g. `@read`.
+        acl-categories: list<string>,
+        /// Hints for clients, e.g. `nondeterministic_output`.
+        tips: list<string>,
+        key-specs: list<key-spec>,
+    }
+
+    /// The type of an argument of a command, see `command-argument`.
+    variant command-argument-type {
+        /// `string`
+        %string,
+        /// `integer`
+        integer,
+        /// `double`
+        double,
+        /// `key`: a key, see `key-spec-index`.
+        key,
+        /// `pattern`: a glob-style pattern.
+        pattern,
+        /// `unix-time`
+        unix-time,
+        /// `pure-token`: the token alone, without a value.
+        pure-token,
+        /// `oneof`: one of the arguments it contains.
+        oneof,
+        /// `block`: the arguments it contains, together.
+        block,
+        /// A type this interface does not know, e.g. from a newer server.
+        other(string),
+    }
+
+    /// An argument of a command, see `command-docs`.
+    record command-argument {
+        /// The index of the `oneof` or `block` argument containing this one, in the command's
+        /// arguments, none at the top level.
+        parent: option<u32>,
+        name: string,
+        %type: command-argument-type,
+        /// The name to show for the argument.
+        display-text: option<string>,
+        /// The index of the argument's key spec, for a key.
+        key-spec-index: option<integer>,
+        /// The token before the argument's value, e.g. `EX`, or for a `pure-token`, the token alone.
+        token: option<string>,
+        summary: option<string>,
+        /// The version that added the argument.
+        since: option<string>,
+        deprecated-since: option<string>,
+        /// The argument's flags, e.g. `optional`, `multiple` and `multiple_token`.
+        %flags: list<string>,
+    }
+
+    /// The documentation of a command, see `command-docs`.
+    record command-docs-reply {
+        /// The command's name, e.g. `get`, or for a subcommand, `config|get`.
+        name: string,
+        summary: string,
+        /// The version that added the command.
+        since: string,
+        /// The command's group, e.g. `string`.
+        group: string,
+        /// The command's time complexity, none for a few commands, e.g. MONITOR.
+        complexity: option<string>,
+        /// The module of the command, for a module's command.
+        module: option<string>,
+        /// The command's documentation flags, e.g. `deprecated` or `syscmd`.
+        doc-flags: list<string>,
+        deprecated-since: option<string>,
+        /// The command to use instead, for a deprecated command.
+        replaced-by: option<string>,
+        /// The changes to the command, the version of each and what changed.
+        history: list<tuple<string, string>>,
+        /// The arguments, depth first, those an argument contains after it.
+        arguments: list<command-argument>,
+    }
+
+    /// Where a connection's tracking notifications are redirected, see `client-getredir` and
+    /// `client-trackinginfo`.
+    variant tracking-redirect {
+        /// -1: tracking is not on.
+        not-tracking,
+        /// 0: tracking is on, the notifications are not redirected.
+        not-redirected,
+        /// The ID of the connection the notifications are redirected to.
+        redirected(integer),
+    }
+
+    /// Information about the library of a connection, see `client-setinfo`.
+    variant client-setinfo-attr {
+        /// `LIB-NAME`: the name of the library, e.g. `valkey-wasm`.
+        lib-name(string),
+        /// `LIB-VER`: the version of the library.
+        lib-ver(string),
+    }
+
+    /// Which keys tracking tracks without CLIENT CACHING.
+    enum client-tracking-mode {
+        /// `OPTIN`: none, only those of commands after CLIENT CACHING YES.
+        optin,
+        /// `OPTOUT`: all, except those of commands after CLIENT CACHING NO.
+        optout,
+    }
+
+    /// The options of CLIENT TRACKING ON.
+    record client-tracking-options {
+        /// `REDIRECT client-id`: sends the notifications to the connection with the ID instead.
+        redirect: option<integer>,
+        /// `PREFIX prefix`: with `bcast`, only notifies about keys with the prefixes.
+        prefixes: option<list<string>>,
+        /// `BCAST`: notifies about every change of the keys with the prefixes, read or not.
+        bcast: bool,
+        mode: option<client-tracking-mode>,
+        /// `NOLOOP`: does not notify about the keys the connection changed itself.
+        noloop: bool,
+    }
+
+    /// A connection's tracking state, see `client-trackinginfo`.
+    record client-trackinginfo-reply {
+        /// The tracking flags, e.g. `on`, `bcast`, `optin` or `noloop`.
+        %flags: list<string>,
+        /// Where the notifications are redirected.
+        redirect: tracking-redirect,
+        /// The prefixes of BCAST.
+        prefixes: list<string>,
+    }
+
+    /// The filter of COMMAND LIST.
+    variant command-list-filter {
+        /// `MODULE module-name`: the commands of the module.
+        module(string),
+        /// `ACLCAT category`: the commands in the ACL category.
+        aclcat(string),
+        /// `PATTERN pattern`: the commands matching the glob-style pattern.
+        pattern(string),
+    }
+
+    /// Signals that the next command follows an ASK redirect, for a slot being imported.
+    ///
+    /// It applies to the next command on the connection, which may be another caller's when the
+    /// connection is shared. Use a connection of your own.
+    ///
+    /// ASKING
+    /// https://valkey.io/commands/asking/
+    asking: async func(connection: borrow<connection>) -> result<_, error>;
+
     /// Authenticates the current connection.
     ///
     /// AUTH [ username ] password
     /// https://valkey.io/commands/auth/
     auth: async func(connection: borrow<connection>, username: option<string>, password: string) -> result<_, error>;
+
+    /// Whether the keys the next command reads are tracked, with tracking in `optin` or `optout`
+    /// mode.
+    ///
+    /// It applies to the next command on the connection, which may be another caller's when the
+    /// connection is shared. Use a connection of your own.
+    ///
+    /// CLIENT CACHING 〈 YES | NO 〉
+    /// https://valkey.io/commands/client-caching/
+    client-caching: async func(connection: borrow<connection>, enabled: bool) -> result<_, error>;
+
+    /// Declares the capabilities the client supports, e.g. `redirect`.
+    ///
+    /// CLIENT CAPA capability [ capability ... ]
+    /// https://valkey.io/commands/client-capa/
+    client-capa: async func(connection: borrow<connection>, capabilities: list<string>) -> result<_, error>;
+
+    /// The name of the connection, none when it has none.
+    ///
+    /// CLIENT GETNAME
+    /// https://valkey.io/commands/client-getname/
+    client-getname: async func(connection: borrow<connection>) -> result<option<string>, error>;
+
+    /// Where the connection's tracking notifications are redirected.
+    ///
+    /// CLIENT GETREDIR
+    /// https://valkey.io/commands/client-getredir/
+    client-getredir: async func(connection: borrow<connection>) -> result<tracking-redirect, error>;
+
+    /// The ID of the connection, unique until the server restarts.
+    ///
+    /// CLIENT ID
+    /// https://valkey.io/commands/client-id/
+    client-id: async func(connection: borrow<connection>) -> result<integer, error>;
+
+    /// Whether the connection is an import source, which may write while the server is in import
+    /// mode.
+    ///
+    /// CLIENT IMPORT-SOURCE 〈 ON | OFF 〉
+    /// https://valkey.io/commands/client-import-source/
+    client-import-source: async func(connection: borrow<connection>, enabled: bool) -> result<_, error>;
+
+    /// The fields of the connection, as CLIENT LIST has them, e.g. `id`, `addr` and `name`.
+    ///
+    /// CLIENT INFO
+    /// https://valkey.io/commands/client-info/
+    client-info: async func(connection: borrow<connection>) -> result<map<string, string>, error>;
+
+    /// Whether the connection's commands leave the access time of the keys they read unchanged.
+    ///
+    /// It applies to the connection, so to every caller sharing it.
+    ///
+    /// CLIENT NO-TOUCH 〈 ON | OFF 〉
+    /// https://valkey.io/commands/client-no-touch/
+    client-no-touch: async func(connection: borrow<connection>, enabled: bool) -> result<_, error>;
+
+    /// Sets the name or version of the library of the connection, see CLIENT LIST.
+    ///
+    /// CLIENT SETINFO 〈 LIB-NAME libname | LIB-VER libver 〉
+    /// https://valkey.io/commands/client-setinfo/
+    client-setinfo: async func(connection: borrow<connection>, attr: client-setinfo-attr) -> result<_, error>;
+
+    /// Sets the name of the connection.
+    ///
+    /// CLIENT SETNAME connection-name
+    /// https://valkey.io/commands/client-setname/
+    client-setname: async func(connection: borrow<connection>, connection-name: string) -> result<_, error>;
+
+    /// Turns tracking on with the options, or off with none, for server assisted client side
+    /// caching. Invalidations arrive as push messages, see `connection.pushes`.
+    ///
+    /// It applies to the connection, so to every caller sharing it.
+    ///
+    /// CLIENT TRACKING 〈 ON | OFF 〉 [ REDIRECT client-id ] [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN ] [ OPTOUT ] [ NOLOOP ]
+    /// https://valkey.io/commands/client-tracking/
+    client-tracking: async func(connection: borrow<connection>, options: option<client-tracking-options>) -> result<_, error>;
+
+    /// The connection's tracking state.
+    ///
+    /// CLIENT TRACKINGINFO
+    /// https://valkey.io/commands/client-trackinginfo/
+    client-trackinginfo: async func(connection: borrow<connection>) -> result<client-trackinginfo-reply, error>;
+
+    /// Every command of the server, a container followed by its subcommands.
+    ///
+    /// COMMAND
+    /// https://valkey.io/commands/command/
+    command: async func(connection: borrow<connection>) -> result<list<command-info-reply>, error>;
+
+    /// The number of commands of the server.
+    ///
+    /// COMMAND COUNT
+    /// https://valkey.io/commands/command-count/
+    command-count: async func(connection: borrow<connection>) -> result<integer, error>;
+
+    /// The documentation of the commands, all of them without names, a container followed by its
+    /// subcommands, commands that do not exist left out.
+    ///
+    /// COMMAND DOCS [ command-name [ command-name ... ] ]
+    /// https://valkey.io/commands/command-docs/
+    command-docs: async func(connection: borrow<connection>, command-names: option<list<string>>) -> result<list<command-docs-reply>, error>;
+
+    /// The keys of the command, its name and arguments.
+    ///
+    /// COMMAND GETKEYS command [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/command-getkeys/
+    command-getkeys: async func(connection: borrow<connection>, command: list<string>) -> result<list<string>, error>;
+
+    /// The keys of the command, its name and arguments, and how the command uses each, e.g. `RW`
+    /// and `access`.
+    ///
+    /// COMMAND GETKEYSANDFLAGS command [ arg [ arg ... ] ]
+    /// https://valkey.io/commands/command-getkeysandflags/
+    command-getkeysandflags: async func(connection: borrow<connection>, command: list<string>) -> result<list<tuple<string, list<string>>>, error>;
+
+    /// The commands, all of them without names, a container followed by its subcommands, commands
+    /// that do not exist left out.
+    ///
+    /// COMMAND INFO [ command-name [ command-name ... ] ]
+    /// https://valkey.io/commands/command-info/
+    command-info: async func(connection: borrow<connection>, command-names: option<list<string>>) -> result<list<command-info-reply>, error>;
+
+    /// The names of the commands of the server, those that match the filter with one.
+    ///
+    /// COMMAND LIST [ FILTERBY 〈 MODULE module-name | ACLCAT category | PATTERN pattern 〉 ]
+    /// https://valkey.io/commands/command-list/
+    command-list: async func(connection: borrow<connection>, filter: option<command-list-filter>) -> result<list<string>, error>;
+
+    /// Returns the message.
+    ///
+    /// ECHO message
+    /// https://valkey.io/commands/echo/
+    echo: async func(connection: borrow<connection>, message: string) -> result<string, error>;
 
     /// Switch to a different protocol, optionally authenticating and setting the connection's name, or provide a contextual client report.
     ///
@@ -1134,42 +1482,50 @@ interface commands {
     /// https://valkey.io/commands/ping/
     ping: async func(connection: borrow<connection>, message: option<string>) -> result<_, error>;
 
-    // not yet implemented, from the @connection category:
-    //   ASKING
-    //   CLIENT CACHING
-    //   CLIENT CAPA
-    //   CLIENT GETNAME
-    //   CLIENT GETREDIR
-    //   CLIENT ID
-    //   CLIENT IMPORT-SOURCE
-    //   CLIENT INFO
-    //   CLIENT KILL
-    //   CLIENT LIST
-    //   CLIENT NO-EVICT
-    //   CLIENT NO-TOUCH
-    //   CLIENT PAUSE
-    //   CLIENT REPLY
-    //   CLIENT SETINFO
-    //   CLIENT SETNAME
-    //   CLIENT TRACKING
-    //   CLIENT TRACKINGINFO
-    //   CLIENT UNBLOCK
-    //   CLIENT UNPAUSE
-    //   COMMAND
-    //   COMMAND COUNT
-    //   COMMAND DOCS
-    //   COMMAND GETKEYS
-    //   COMMAND GETKEYSANDFLAGS
-    //   COMMAND INFO
-    //   COMMAND LIST
-    //   ECHO
-    //   QUIT
-    //   READONLY
-    //   READWRITE
-    //   RESET
-    //   SELECT
-    //   WAIT
-    //   WAITAOF
+    /// Allows the connection to read from a replica of a cluster, for the slots of its primary.
+    ///
+    /// It applies to the connection, so to every caller sharing it.
+    ///
+    /// READONLY
+    /// https://valkey.io/commands/readonly/
+    readonly: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Disallows the connection to read from a replica of a cluster, the default.
+    ///
+    /// It applies to the connection, so to every caller sharing it.
+    ///
+    /// READWRITE
+    /// https://valkey.io/commands/readwrite/
+    readwrite: async func(connection: borrow<connection>) -> result<_, error>;
+
+    /// Changes the database of the connection.
+    ///
+    /// It applies to the connection, so to every caller sharing it.
+    ///
+    /// SELECT index
+    /// https://valkey.io/commands/select/
+    select: async func(connection: borrow<connection>, index: integer) -> result<_, error>;
+
+    /// Waits until the connection's writes reached the number of replicas, or the timeout passed,
+    /// returning how many replicas they reached. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// WAIT numreplicas timeout
+    /// https://valkey.io/commands/wait/
+    wait: async func(connection: borrow<connection>, numreplicas: integer, timeout: duration-milliseconds) -> result<integer, error>;
+
+    /// Waits until the connection's writes are in the append-only file of the primary, and of the
+    /// number of replicas, or the timeout passed, returning how many of each they reached. A timeout
+    /// of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// WAITAOF numlocal numreplicas timeout
+    /// https://valkey.io/commands/waitaof/
+    waitaof: async func(connection: borrow<connection>, numlocal: integer, numreplicas: integer, timeout: duration-milliseconds) -> result<tuple<integer, integer>, error>;
 
 
     // geo commands

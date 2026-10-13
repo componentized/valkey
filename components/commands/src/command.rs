@@ -1,8 +1,9 @@
 use crate::exports::componentized::valkey::commands::{
     Aggregate, BgsaveOperation, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby,
     BitfieldOffset, BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, ClientFilter,
-    ClientPauseMode, ClientType, ClientUnblockType, ClusterFailoverMode, ClusterResetMode,
-    ClusterSetslotState, CommandRule, CommandlogType, Connection, Cursor, DbRule,
+    ClientPauseMode, ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientType,
+    ClientUnblockType, ClusterFailoverMode, ClusterResetMode, ClusterSetslotState,
+    CommandListFilter, CommandRule, CommandlogType, Connection, Cursor, DbRule,
     DurationMilliseconds, DurationSeconds, Error, FailoverTarget, FlushMode, GeoCoordinates,
     GeoCount, GeoFrom, GeoShape, GeoUnit, GeoaddCondition, GetexTtl, HsetexCondition,
     HsetexFieldCondition, KeyRule, KeyType, LexBound, Limit, LinsertPosition, ListSide,
@@ -1012,5 +1013,64 @@ impl IntoCommand for SlotMigrationGroup {
                 .map(|(username, password)| ("AUTH", username, password)),
         )
             .into_command()
+    }
+}
+
+impl IntoCommand for ClientSetinfoAttr {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClientSetinfoAttr::LibName(name) => ("LIB-NAME", name).into_command(),
+            ClientSetinfoAttr::LibVer(version) => ("LIB-VER", version).into_command(),
+        }
+    }
+}
+
+impl IntoCommand for ClientTrackingMode {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            ClientTrackingMode::Optin => "OPTIN",
+            ClientTrackingMode::Optout => "OPTOUT",
+        }
+        .into_command()
+    }
+}
+
+/// `[ REDIRECT client-id ] [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN | OPTOUT ] [ NOLOOP ]`
+impl IntoCommand for ClientTrackingOptions {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        // PREFIX before each prefix
+        let prefixes = self.prefixes.map(|prefixes| {
+            let prefixes = prefixes.into_iter().map(|prefix| ("PREFIX", prefix));
+            prefixes.collect::<Vec<_>>()
+        });
+        (
+            NamedOption("REDIRECT", self.redirect),
+            NonEmpty::optional("prefixes", prefixes),
+            Flag("BCAST", self.bcast),
+            self.mode,
+            Flag("NOLOOP", self.noloop),
+        )
+            .into_command()
+    }
+}
+
+/// `FILTERBY 〈 MODULE module-name | ACLCAT category | PATTERN pattern 〉`
+impl IntoCommand for CommandListFilter {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        let (filter, value) = match self {
+            CommandListFilter::Module(name) => ("MODULE", name),
+            CommandListFilter::Aclcat(category) => ("ACLCAT", category),
+            CommandListFilter::Pattern(pattern) => ("PATTERN", pattern),
+        };
+        ("FILTERBY", filter, value).into_command()
+    }
+}
+
+/// `ON` or `OFF`, e.g. for CLIENT NO-TOUCH.
+pub struct OnOff(pub bool);
+
+impl IntoCommand for OnOff {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        if self.0 { "ON" } else { "OFF" }.into_command()
     }
 }
