@@ -1,16 +1,17 @@
 use crate::command::{
-    DecimalSeconds, Fields, Flag, LexRange, NamedOption, NonEmpty, NumKeys, ScoreRange, Zrange,
-    emit, query,
+    Bit, DecimalSeconds, Fields, Flag, LexRange, NamedOption, NonEmpty, NumKeys, ScoreRange,
+    Zrange, emit, query,
 };
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, Connection, Cursor, Double, DurationMilliseconds, DurationSeconds, Error,
-    FieldExpiretime, FieldPersistResult, FieldPexpiretime, FieldPttl, FieldTtl, GetexTtl, Guest,
-    HsetexCondition, HsetexFieldCondition, Integer, LcsIdxReply, LexBound, Limit, LinsertPosition,
-    LinsertResult, ListSide, MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound,
-    SetPrecondition, SetTtl, SortOpts, StreamId, StreamTrim, TtlMode, TtlResult,
-    UnixTimeMilliseconds, UnixTimeSeconds, Value, XclaimOpts, XinfoConsumer, XinfoGroup,
-    XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison,
-    ZaddCondition, ZrangeBy, ZrangeWithscoresBy,
+    Aggregate, BitRange, BitfieldGet, BitfieldOperation, BitopOperation, Connection, Cursor,
+    Double, DurationMilliseconds, DurationSeconds, Error, FieldExpiretime, FieldPersistResult,
+    FieldPexpiretime, FieldPttl, FieldTtl, GetexTtl, Guest, HsetexCondition, HsetexFieldCondition,
+    Integer, LcsIdxReply, LexBound, Limit, LinsertPosition, LinsertResult, ListSide,
+    MsetexPrecondition, MsetexTtl, PopEnd, Rule, ScoreBound, SetPrecondition, SetTtl, SortOpts,
+    StreamId, StreamTrim, TtlMode, TtlResult, UnixTimeMilliseconds, UnixTimeSeconds, Value,
+    XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply, XinfoStreamReplyFull,
+    XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition, ZrangeBy,
+    ZrangeWithscoresBy,
 };
 use crate::value::{FlatPairs, NextCursor, OrNever, OrZeroId, ScoredMembers};
 
@@ -75,6 +76,129 @@ impl Guest for Commands {
             ),
         )
         .await
+    }
+
+    #[doc = " The number of bits set to 1 in the string stored at key, in the range, 0 when the key does"]
+    #[doc = " not exist."]
+    #[doc = ""]
+    #[doc = " BITCOUNT key [ start [ end [ BYTE | BIT ] ] ]"]
+    #[doc = " https://valkey.io/commands/bitcount/"]
+    #[allow(async_fn_in_trait)]
+    async fn bitcount(
+        connection: &Connection,
+        key: String,
+        range: Option<BitRange>,
+    ) -> Result<Integer, Error> {
+        query(connection, ("BITCOUNT", key, range)).await
+    }
+
+    #[doc = " Reads and writes integer fields of the string stored at key, returning the result of each"]
+    #[doc = " operation in order, none for a write that failed with `OVERFLOW FAIL`."]
+    #[doc = ""]
+    #[doc = " See also `bitfield-ro`."]
+    #[doc = ""]
+    #[doc = " BITFIELD key [ GET encoding offset | [ OVERFLOW WRAP | SAT | FAIL ] 〈 SET encoding offset value | INCRBY encoding offset increment 〉 [ GET encoding offset | [ OVERFLOW WRAP | SAT | FAIL ] 〈 SET encoding offset value | INCRBY encoding offset increment 〉 ... ] ]"]
+    #[doc = " https://valkey.io/commands/bitfield/"]
+    #[allow(async_fn_in_trait)]
+    async fn bitfield(
+        connection: &Connection,
+        key: String,
+        operations: Option<Vec<BitfieldOperation>>,
+    ) -> Result<Vec<Option<Integer>>, Error> {
+        query(
+            connection,
+            (
+                "BITFIELD",
+                key,
+                NonEmpty::optional("operations", operations),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Reads integer fields of the string stored at key, the read-only variant of `bitfield`."]
+    #[doc = ""]
+    #[doc = " BITFIELD_RO key [ GET encoding offset [ GET encoding offset ... ] ]"]
+    #[doc = " https://valkey.io/commands/bitfield_ro/"]
+    #[allow(async_fn_in_trait)]
+    async fn bitfield_ro(
+        connection: &Connection,
+        key: String,
+        gets: Option<Vec<BitfieldGet>>,
+    ) -> Result<Vec<Integer>, Error> {
+        query(
+            connection,
+            ("BITFIELD_RO", key, NonEmpty::optional("gets", gets)),
+        )
+        .await
+    }
+
+    #[doc = " Stores the bitwise operation of the strings stored at the source keys in the destination,"]
+    #[doc = " returning its length, the length of the longest source."]
+    #[doc = ""]
+    #[doc = " BITOP 〈 AND | OR | XOR | NOT 〉 destkey key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/bitop/"]
+    #[allow(async_fn_in_trait)]
+    async fn bitop(
+        connection: &Connection,
+        destination: String,
+        operation: BitopOperation,
+    ) -> Result<Integer, Error> {
+        // the operation and its keys are either side of the destination
+        let (operation, keys) = match operation {
+            BitopOperation::And(keys) => ("AND", keys),
+            BitopOperation::Or(keys) => ("OR", keys),
+            BitopOperation::Xor(keys) => ("XOR", keys),
+            BitopOperation::Not(key) => ("NOT", vec![key]),
+        };
+        query(
+            connection,
+            ("BITOP", operation, destination, NonEmpty::new("keys", keys)),
+        )
+        .await
+    }
+
+    #[doc = " The position of the first bit set to the bit in the string stored at key, in the range,"]
+    #[doc = " none when there is none."]
+    #[doc = ""]
+    #[doc = " BITPOS key bit [ start [ end [ BYTE | BIT ] ] ]"]
+    #[doc = " https://valkey.io/commands/bitpos/"]
+    #[allow(async_fn_in_trait)]
+    async fn bitpos(
+        connection: &Connection,
+        key: String,
+        bit: bool,
+        range: Option<BitRange>,
+    ) -> Result<Option<Integer>, Error> {
+        // -1 when there is no such bit
+        let position: OrNever<Integer> =
+            query(connection, ("BITPOS", key, Bit(bit), range)).await?;
+        Ok(position.0)
+    }
+
+    #[doc = " The bit at the offset of the string stored at key, false beyond its end, or when the key"]
+    #[doc = " does not exist."]
+    #[doc = ""]
+    #[doc = " GETBIT key offset"]
+    #[doc = " https://valkey.io/commands/getbit/"]
+    #[allow(async_fn_in_trait)]
+    async fn getbit(connection: &Connection, key: String, offset: u64) -> Result<bool, Error> {
+        query(connection, ("GETBIT", key, offset)).await
+    }
+
+    #[doc = " Sets the bit at the offset of the string stored at key, growing it as needed, returning the"]
+    #[doc = " previous bit."]
+    #[doc = ""]
+    #[doc = " SETBIT key offset value"]
+    #[doc = " https://valkey.io/commands/setbit/"]
+    #[allow(async_fn_in_trait)]
+    async fn setbit(
+        connection: &Connection,
+        key: String,
+        offset: u64,
+        value: bool,
+    ) -> Result<bool, Error> {
+        query(connection, ("SETBIT", key, offset, Bit(value))).await
     }
 
     #[doc = " Authenticates the current connection."]

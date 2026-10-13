@@ -1,10 +1,11 @@
 use crate::exports::componentized::valkey::commands::{
-    Aggregate, ChannelRule, CommandRule, Connection, Cursor, DbRule, DurationMilliseconds,
-    DurationSeconds, Error, GetexTtl, HsetexCondition, HsetexFieldCondition, KeyRule, LexBound,
-    Limit, LinsertPosition, ListSide, MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound,
-    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode,
-    UnixTimeMilliseconds, UnixTimeSeconds, UserRule, Value, XclaimOpts, ZaddComparison,
-    ZaddCondition, ZrangeBy,
+    Aggregate, BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby, BitfieldOffset,
+    BitfieldOperation, BitfieldOverflow, BitfieldSet, ChannelRule, CommandRule, Connection, Cursor,
+    DbRule, DurationMilliseconds, DurationSeconds, Error, GetexTtl, HsetexCondition,
+    HsetexFieldCondition, KeyRule, LexBound, Limit, LinsertPosition, ListSide, MsetexPrecondition,
+    PopEnd, Rule, RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, SortOrder,
+    StreamTrim, StreamTrimEfficiency, TtlMode, UnixTimeMilliseconds, UnixTimeSeconds, UserRule,
+    Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -645,5 +646,90 @@ impl IntoCommand for LinsertPosition {
             LinsertPosition::After => "AFTER",
         }
         .into_command()
+    }
+}
+
+/// `start [ end [ BIT ] ]`, BYTE is the default, and left out for servers before it existed.
+impl IntoCommand for BitRange {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            BitRange::From(start) => start.into_command(),
+            BitRange::Bytes((start, end)) => (start, end).into_command(),
+            BitRange::Bits((start, end)) => (start, end, "BIT").into_command(),
+        }
+    }
+}
+
+/// `i1` to `i64`, `u1` to `u63`, other widths fail.
+impl IntoCommand for BitfieldEncoding {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            BitfieldEncoding::Signed(width @ 1..=64) => format!("i{width}").into_command(),
+            BitfieldEncoding::Unsigned(width @ 1..=63) => format!("u{width}").into_command(),
+            BitfieldEncoding::Signed(width) => Err(Error::Client(format!(
+                "a signed bitfield is 1 to 64 bits wide, not {width}"
+            ))),
+            BitfieldEncoding::Unsigned(width) => Err(Error::Client(format!(
+                "an unsigned bitfield is 1 to 63 bits wide, not {width}"
+            ))),
+        }
+    }
+}
+
+impl IntoCommand for BitfieldOffset {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            BitfieldOffset::Bit(offset) => offset.into_command(),
+            BitfieldOffset::Field(field) => format!("#{field}").into_command(),
+        }
+    }
+}
+
+impl IntoCommand for BitfieldOverflow {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        let overflow = match self {
+            BitfieldOverflow::Wrap => "WRAP",
+            BitfieldOverflow::Sat => "SAT",
+            BitfieldOverflow::Fail => "FAIL",
+        };
+        ("OVERFLOW", overflow).into_command()
+    }
+}
+
+impl IntoCommand for BitfieldGet {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        ("GET", self.encoding, self.offset).into_command()
+    }
+}
+
+impl IntoCommand for BitfieldSet {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        ("SET", self.encoding, self.offset, self.value).into_command()
+    }
+}
+
+impl IntoCommand for BitfieldIncrby {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        ("INCRBY", self.encoding, self.offset, self.increment).into_command()
+    }
+}
+
+/// A write is preceded by its overflow mode, when given.
+impl IntoCommand for BitfieldOperation {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        match self {
+            BitfieldOperation::Get(get) => get.into_command(),
+            BitfieldOperation::Set((overflow, set)) => (overflow, set).into_command(),
+            BitfieldOperation::Incrby((overflow, incrby)) => (overflow, incrby).into_command(),
+        }
+    }
+}
+
+/// A bit, `1` or `0`, e.g. for SETBIT.
+pub struct Bit(pub bool);
+
+impl IntoCommand for Bit {
+    fn into_command(self) -> Result<Vec<String>, Error> {
+        if self.0 { "1" } else { "0" }.into_command()
     }
 }

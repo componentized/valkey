@@ -282,14 +282,136 @@ interface commands {
 
     // bitmap commands
 
-    // not yet implemented, from the @bitmap category:
-    //   BITCOUNT
-    //   BITFIELD
-    //   BITFIELD_RO
-    //   BITOP
-    //   BITPOS
-    //   GETBIT
-    //   SETBIT
+    /// A range of a string, negative from the end, for BITCOUNT and BITPOS.
+    variant bit-range {
+        /// `start`: the bytes from the start to the end of the string.
+        %from(integer),
+        /// `start end`: the bytes from the start to the end, both included.
+        bytes(tuple<integer, integer>),
+        /// `start end BIT`: the bits from the start to the end, both included.
+        bits(tuple<integer, integer>),
+    }
+
+    /// The number of bits set to 1 in the string stored at key, in the range, 0 when the key does
+    /// not exist.
+    ///
+    /// BITCOUNT key [ start [ end [ BYTE | BIT ] ] ]
+    /// https://valkey.io/commands/bitcount/
+    bitcount: async func(connection: borrow<connection>, key: string, range: option<bit-range>) -> result<integer, error>;
+
+    /// The type of an integer field of a string, for BITFIELD.
+    variant bitfield-encoding {
+        /// `i1` to `i64`: a signed integer of the width in bits.
+        signed(u8),
+        /// `u1` to `u63`: an unsigned integer of the width in bits.
+        unsigned(u8),
+    }
+
+    /// Where an integer field of a string starts, for BITFIELD.
+    variant bitfield-offset {
+        /// The offset in bits.
+        bit(u64),
+        /// `#field`: the field of the encoding's width, the offset in bits is the field times the
+        /// width.
+        field(u64),
+    }
+
+    /// What a write does when the field overflows, `OVERFLOW`.
+    enum bitfield-overflow {
+        /// `WRAP`: wraps around, the default.
+        wrap,
+        /// `SAT`: saturates at the minimum or maximum.
+        sat,
+        /// `FAIL`: does not write, the result is none.
+        fail,
+    }
+
+    /// `GET encoding offset`: the value of the field.
+    record bitfield-get {
+        encoding: bitfield-encoding,
+        offset: bitfield-offset,
+    }
+
+    /// `SET encoding offset value`: sets the field, the result is its previous value.
+    record bitfield-set {
+        encoding: bitfield-encoding,
+        offset: bitfield-offset,
+        value: s64,
+    }
+
+    /// `INCRBY encoding offset increment`: increments the field, the result is its new value.
+    record bitfield-incrby {
+        encoding: bitfield-encoding,
+        offset: bitfield-offset,
+        increment: s64,
+    }
+
+    /// An operation of BITFIELD.
+    ///
+    /// A write is preceded by an optional overflow mode, `OVERFLOW WRAP | SAT | FAIL`, for it and
+    /// the following writes. None keeps the current mode, `WRAP` at the start of the command.
+    variant bitfield-operation {
+        /// `GET encoding offset`
+        get(bitfield-get),
+        /// `[ OVERFLOW WRAP | SAT | FAIL ] SET encoding offset value`
+        set(tuple<option<bitfield-overflow>, bitfield-set>),
+        /// `[ OVERFLOW WRAP | SAT | FAIL ] INCRBY encoding offset increment`
+        incrby(tuple<option<bitfield-overflow>, bitfield-incrby>),
+    }
+
+    /// Reads and writes integer fields of the string stored at key, returning the result of each
+    /// operation in order, none for a write that failed with `OVERFLOW FAIL`.
+    ///
+    /// BITFIELD key [ GET encoding offset | [ OVERFLOW WRAP | SAT | FAIL ] 〈 SET encoding offset value | INCRBY encoding offset increment 〉 [ GET encoding offset | [ OVERFLOW WRAP | SAT | FAIL ] 〈 SET encoding offset value | INCRBY encoding offset increment 〉 ... ] ]
+    /// https://valkey.io/commands/bitfield/
+    bitfield: async func(connection: borrow<connection>, key: string, operations: option<list<bitfield-operation>>) -> result<list<option<integer>>, error>;
+
+    /// Reads integer fields of the string stored at key, the read-only variant of `bitfield`.
+    ///
+    /// BITFIELD_RO key [ GET encoding offset [ GET encoding offset ... ] ]
+    /// https://valkey.io/commands/bitfield_ro/
+    bitfield-ro: async func(connection: borrow<connection>, key: string, gets: option<list<bitfield-get>>) -> result<list<integer>, error>;
+
+    /// A bitwise operation of BITOP, and its source keys.
+    variant bitop-operation {
+        /// `AND`
+        and(list<string>),
+        /// `OR`
+        or(list<string>),
+        /// `XOR`
+        xor(list<string>),
+        /// `NOT`: of a single key.
+        not(string),
+    }
+
+    /// Stores the bitwise operation of the strings stored at the source keys in the destination,
+    /// returning its length, the length of the longest source.
+    ///
+    /// BITOP 〈 AND | OR | XOR | NOT 〉 destkey key [ key ... ]
+    /// https://valkey.io/commands/bitop/
+    bitop: async func(connection: borrow<connection>, destination: string, operation: bitop-operation) -> result<integer, error>;
+
+    /// The position of the first bit set to the bit in the string stored at key, in the range,
+    /// none when there is none.
+    ///
+    /// BITPOS key bit [ start [ end [ BYTE | BIT ] ] ]
+    /// https://valkey.io/commands/bitpos/
+    bitpos: async func(connection: borrow<connection>, key: string, bit: bool, range: option<bit-range>) -> result<option<integer>, error>;
+
+    /// The bit at the offset of the string stored at key, false beyond its end, or when the key
+    /// does not exist.
+    ///
+    /// GETBIT key offset
+    /// https://valkey.io/commands/getbit/
+    getbit: async func(connection: borrow<connection>, key: string, offset: u64) -> result<bool, error>;
+
+    /// Sets the bit at the offset of the string stored at key, growing it as needed, returning the
+    /// previous bit.
+    ///
+    /// SETBIT key offset value
+    /// https://valkey.io/commands/setbit/
+    setbit: async func(connection: borrow<connection>, key: string, offset: u64, value: bool) -> result<bool, error>;
+
 
     // connection commands
 
