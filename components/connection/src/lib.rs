@@ -136,6 +136,9 @@ impl GuestConnection for ConnectionImpl {
     }
 
     async fn watch(&self, keys: Vec<String>) -> Result<(), Error> {
+        if keys.is_empty() {
+            return Err(Error::Client("keys requires at least one item".to_string()));
+        }
         let command = std::iter::once("WATCH".to_string()).chain(keys).collect();
         ok(exchange(&self.0, command).await?)
     }
@@ -189,6 +192,11 @@ fn enqueue(
     reply: Option<Reply>,
     written: Option<oneshot::Sender<()>>,
 ) -> Result<(), Error> {
+    if command.is_empty() {
+        return Err(Error::Client(
+            "a command requires at least one word".to_string(),
+        ));
+    }
     let mut state = inner.state.borrow_mut();
     if let Some(error) = &state.closed {
         return Err(error.clone());
@@ -253,6 +261,12 @@ async fn transaction(
     inner: &Inner,
     commands: Vec<Vec<String>>,
 ) -> Result<Option<Vec<Value>>, Error> {
+    // before MULTI is sent, so an invalid command fails the transaction rather than being left out
+    if commands.iter().any(Vec::is_empty) {
+        return Err(Error::Client(
+            "a command requires at least one word".to_string(),
+        ));
+    }
     let batch = std::iter::once(words(&["MULTI"]))
         .chain(commands)
         .chain(std::iter::once(words(&["EXEC"])))

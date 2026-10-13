@@ -1,3 +1,8 @@
+/// Typed functions for Valkey's commands, over the mechanics of a connection.
+///
+/// A list argument must have at least one item, as the command requires, an empty list fails with a
+/// client error before anything is sent. A list the command allows to be left out is an option,
+/// none rather than empty.
 interface commands {
     use connection.{connection, double, duration, instant, integer, value, error};
 
@@ -163,7 +168,7 @@ interface commands {
     ///
     /// ACL SETUSER username [ rule ] [ [ rule ] ... ]
     /// https://valkey.io/commands/acl-setuser/
-    acl-setuser: async func(connection: borrow<connection>, username: string, rules: list<rule>) -> result<_, error>;
+    acl-setuser: async func(connection: borrow<connection>, username: string, rules: option<list<rule>>) -> result<_, error>;
 
 
     // not yet implemented, from the @admin category:
@@ -616,7 +621,7 @@ interface commands {
     ///
     /// PUBSUB NUMSUB [ channel ] [ [ channel ] ... ]
     /// https://valkey.io/commands/pubsub-numsub/
-    pubsub-numsub: async func(connection: borrow<connection>, channels: list<string>) -> result<map<string, integer>, error>;
+    pubsub-numsub: async func(connection: borrow<connection>, channels: option<list<string>>) -> result<map<string, integer>, error>;
 
     /// Lists the currently active shard channels.
     ///
@@ -628,13 +633,13 @@ interface commands {
     ///
     /// PUBSUB SHARDNUMSUB [ shardchannel [ shardchannel ... ] ]
     /// https://valkey.io/commands/pubsub-shardnumsub/
-    pubsub-shardnumsub: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<map<string, integer>, error>;
+    pubsub-shardnumsub: async func(connection: borrow<connection>, shardchannels: option<list<string>>) -> result<map<string, integer>, error>;
 
     /// Unsubscribes the client from the given patterns, or from all of them if none is given.
     ///
     /// PUNSUBSCRIBE [ pattern [ pattern ... ] ]
     /// https://valkey.io/commands/punsubscribe/
-    punsubscribe: async func(connection: borrow<connection>, patterns: list<string>) -> result<_, error>;
+    punsubscribe: async func(connection: borrow<connection>, patterns: option<list<string>>) -> result<_, error>;
 
     /// Posts a message to the given shard channel.
     ///
@@ -658,13 +663,13 @@ interface commands {
     ///
     /// SUNSUBSCRIBE [ shardchannel ] [ [ shardchannel ] ... ]
     /// https://valkey.io/commands/sunsubscribe/
-    sunsubscribe: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<_, error>;
+    sunsubscribe: async func(connection: borrow<connection>, shardchannels: option<list<string>>) -> result<_, error>;
 
     /// Unsubscribes the client from the given channels, or from all of them if none is given.
     ///
     /// UNSUBSCRIBE [ channel ] [ [ channel ] ... ]
     /// https://valkey.io/commands/unsubscribe/
-    unsubscribe: async func(connection: borrow<connection>, channels: list<string>) -> result<_, error>;
+    unsubscribe: async func(connection: borrow<connection>, channels: option<list<string>>) -> result<_, error>;
 
 
     // scripting commands
@@ -694,69 +699,575 @@ interface commands {
 
     // set commands
 
-    // not yet implemented, from the @set category:
-    //   SADD
-    //   SCARD
-    //   SDIFF
-    //   SDIFFSTORE
-    //   SINTER
-    //   SINTERCARD
-    //   SINTERSTORE
-    //   SISMEMBER
-    //   SMEMBERS
-    //   SMISMEMBER
-    //   SMOVE
-    //   SORT
-    //   SORT_RO
-    //   SPOP
-    //   SRANDMEMBER
-    //   SREM
-    //   SSCAN
-    //   SUNION
-    //   SUNIONSTORE
+    /// Adds the members to the set stored at key, returning how many were not already members.
+    ///
+    /// SADD key member [ member ... ]
+    /// https://valkey.io/commands/sadd/
+    sadd: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<integer, error>;
+
+    /// The number of members in the set stored at key.
+    ///
+    /// SCARD key
+    /// https://valkey.io/commands/scard/
+    scard: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// The members of the first set that are not in any of the others.
+    ///
+    /// SDIFF key [ key ... ]
+    /// https://valkey.io/commands/sdiff/
+    sdiff: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+
+    /// Stores the members of the first set that are not in any of the others, returning how many.
+    ///
+    /// SDIFFSTORE destination key [ key ... ]
+    /// https://valkey.io/commands/sdiffstore/
+    sdiffstore: async func(connection: borrow<connection>, destination: string, keys: list<string>) -> result<integer, error>;
+
+    /// The members in all of the sets.
+    ///
+    /// SINTER key [ key ... ]
+    /// https://valkey.io/commands/sinter/
+    sinter: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+
+    /// The number of members in all of the sets, counting stops at the limit.
+    ///
+    /// SINTERCARD numkeys key [ key ... ] [ LIMIT limit ]
+    /// https://valkey.io/commands/sintercard/
+    sintercard: async func(connection: borrow<connection>, keys: list<string>, limit: option<integer>) -> result<integer, error>;
+
+    /// Stores the members in all of the sets, returning how many.
+    ///
+    /// SINTERSTORE destination key [ key ... ]
+    /// https://valkey.io/commands/sinterstore/
+    sinterstore: async func(connection: borrow<connection>, destination: string, keys: list<string>) -> result<integer, error>;
+
+    /// Whether the member is in the set stored at key, false when the key does not exist.
+    ///
+    /// See also `sismember-xx`.
+    ///
+    /// SISMEMBER key member
+    /// https://valkey.io/commands/sismember/
+    sismember: async func(connection: borrow<connection>, key: string, member: string) -> result<bool, error>;
+
+    /// Whether the member is in the set stored at key, none when the key does not exist.
+    ///
+    /// See also `sismember`.
+    ///
+    /// SISMEMBER key member XX
+    /// https://valkey.io/commands/sismember/
+    sismember-xx: async func(connection: borrow<connection>, key: string, member: string) -> result<option<bool>, error>;
+
+    /// The members of the set stored at key.
+    ///
+    /// SMEMBERS key
+    /// https://valkey.io/commands/smembers/
+    smembers: async func(connection: borrow<connection>, key: string) -> result<list<string>, error>;
+
+    /// Whether each of the members is in the set stored at key.
+    ///
+    /// SMISMEMBER key member [ member ... ]
+    /// https://valkey.io/commands/smismember/
+    smismember: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<list<bool>, error>;
+
+    /// Moves the member from one set to another, false when it was not in the source set.
+    ///
+    /// SMOVE source destination member
+    /// https://valkey.io/commands/smove/
+    smove: async func(connection: borrow<connection>, source: string, destination: string, member: string) -> result<bool, error>;
+
+    /// Removes and returns random members of the set stored at key, up to the count.
+    ///
+    /// Without a count, one member, or none when the key does not exist.
+    ///
+    /// SPOP key [ count ]
+    /// https://valkey.io/commands/spop/
+    spop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+
+    /// Random members of the set stored at key, up to the count.
+    ///
+    /// Without a count, one member, or none when the key does not exist. A negative count may return
+    /// the same member more than once, its absolute value is the number of members returned.
+    ///
+    /// SRANDMEMBER key [ count ]
+    /// https://valkey.io/commands/srandmember/
+    srandmember: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+
+    /// Removes the members from the set stored at key, returning how many were members.
+    ///
+    /// SREM key member [ member ... ]
+    /// https://valkey.io/commands/srem/
+    srem: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<integer, error>;
+
+    /// Incrementally iterate over the members of the set stored at key.
+    ///
+    /// SSCAN key cursor [ MATCH pattern ] [ COUNT count ]
+    /// https://valkey.io/commands/sscan/
+    sscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
+
+    /// The members in any of the sets.
+    ///
+    /// SUNION key [ key ... ]
+    /// https://valkey.io/commands/sunion/
+    sunion: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+
+    /// Stores the members in any of the sets, returning how many.
+    ///
+    /// SUNIONSTORE destination key [ key ... ]
+    /// https://valkey.io/commands/sunionstore/
+    sunionstore: async func(connection: borrow<connection>, destination: string, keys: list<string>) -> result<integer, error>;
+
+    /// A range of a sorted result, `LIMIT offset count`.
+    record limit {
+        /// The number of elements skipped.
+        offset: integer,
+        /// The maximum number of elements returned, negative for all of them.
+        count: integer,
+    }
+
+    /// How SORT orders and projects the elements of a list, set or sorted set.
+    record sort-opts {
+        /// `BY pattern`: sorts by the values of the keys the pattern names, `*` replaced with each
+        /// element, or `nosort` to skip sorting.
+        by: option<string>,
+        /// `LIMIT offset count`: a range of the sorted elements.
+        limit: option<limit>,
+        /// `GET pattern`: returns the values of the keys each pattern names instead of the elements,
+        /// `#` for the element itself.
+        get: option<list<string>>,
+        /// order to sort elements.
+        order: option<sort-order>,
+        /// `ALPHA`: sorts lexicographically, rather than numerically.
+        alpha: bool,
+    }
+
+    enum sort-order {
+        /// ascending, smallest to largest.
+        asc,
+        /// descending, largest to smallest.
+        desc,
+    }
+
+    /// Sorts the elements of the list, set or sorted set stored at key.
+    ///
+    /// Each row is the element, or with `get`, the value of each pattern, none when its key does not
+    /// exist.
+    ///
+    /// SORT key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]
+    /// https://valkey.io/commands/sort/
+    sort: async func(connection: borrow<connection>, key: string, opts: option<sort-opts>) -> result<list<list<option<string>>>, error>;
+
+    /// Sorts the elements of the list, set or sorted set stored at key, storing them as a list,
+    /// returning how many.
+    ///
+    /// SORT key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ] STORE destination
+    /// https://valkey.io/commands/sort/
+    sort-store: async func(connection: borrow<connection>, key: string, opts: option<sort-opts>, destination: string) -> result<integer, error>;
+
+    /// The read-only variant of `sort`, e.g. for replicas.
+    ///
+    /// SORT_RO key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]
+    /// https://valkey.io/commands/sort_ro/
+    sort-ro: async func(connection: borrow<connection>, key: string, opts: option<sort-opts>) -> result<list<list<option<string>>>, error>;
 
 
     // sortedset commands
 
+    /// A bound of a range of scores.
+    variant score-bound {
+        /// The score, included in the range.
+        inclusive(double),
+        /// `(score`: the score, excluded from the range.
+        exclusive(double),
+        /// `-inf` as the min, `+inf` as the max, the start is the max with `REV`.
+        unbounded,
+    }
 
-    // not yet implemented, from the @sortedset category:
-    //   BZMPOP
-    //   BZPOPMAX
-    //   BZPOPMIN
-    //   SORT
-    //   SORT_RO
-    //   ZADD
-    //   ZCARD
-    //   ZCOUNT
-    //   ZDIFF
-    //   ZDIFFSTORE
-    //   ZINCRBY
-    //   ZINTER
-    //   ZINTERCARD
-    //   ZINTERSTORE
-    //   ZLEXCOUNT
-    //   ZMPOP
-    //   ZMSCORE
-    //   ZPOPMAX
-    //   ZPOPMIN
-    //   ZRANDMEMBER
-    //   ZRANGE
-    //   ZRANGEBYLEX
-    //   ZRANGEBYSCORE
-    //   ZRANGESTORE
-    //   ZRANK
-    //   ZREM
-    //   ZREMRANGEBYLEX
-    //   ZREMRANGEBYRANK
-    //   ZREMRANGEBYSCORE
-    //   ZREVRANGE
-    //   ZREVRANGEBYLEX
-    //   ZREVRANGEBYSCORE
-    //   ZREVRANK
-    //   ZSCAN
-    //   ZSCORE
-    //   ZUNION
-    //   ZUNIONSTORE
+    /// A bound of a range of members, for members of equal score, ordered lexicographically.
+    variant lex-bound {
+        /// `[member`: the member, included in the range.
+        inclusive(string),
+        /// `(member`: the member, excluded from the range.
+        exclusive(string),
+        /// `-` as the min, `+` as the max, the start is the max with `REV`.
+        unbounded,
+    }
+
+    /// Which end of a sorted set to pop from.
+    enum pop-end {
+        /// The members with the lowest scores.
+        min,
+        /// The members with the highest scores.
+        max,
+    }
+
+    /// How scores combine for a member in several sorted sets.
+    enum aggregate {
+        /// The sum of the weighted scores, the default.
+        sum,
+        /// The lowest weighted score.
+        min,
+        /// The highest weighted score.
+        max,
+    }
+
+    /// The range of ZRANGE and ZRANGESTORE, `start` and `stop`, given as they are sent: with `REV`,
+    /// the higher bound first.
+    variant zrange-by {
+        /// Positions, both included, negative from the end.
+        rank(tuple<integer, integer>),
+        /// `BYSCORE`: the members with scores in the range.
+        score(tuple<score-bound, score-bound>),
+        /// `BYLEX`: the members in the range, for members of equal score.
+        lex(tuple<lex-bound, lex-bound>),
+    }
+
+    /// The range of ZRANGE WITHSCORES, which does not support BYLEX, see `zrange-by`.
+    variant zrange-withscores-by {
+        /// Positions, both included, negative from the end.
+        rank(tuple<integer, integer>),
+        /// `BYSCORE`: the members with scores in the range.
+        score(tuple<score-bound, score-bound>),
+    }
+
+    /// Only update or only add members, ZADD's `NX` and `XX`.
+    enum zadd-condition {
+        /// Only add new members, never update existing ones.
+        nx,
+        /// Only update existing members, never add new ones.
+        xx,
+    }
+
+    /// Only update a member's score when the new score is greater or less, ZADD's `GT` and `LT`.
+    enum zadd-comparison {
+        /// Only update when the new score is greater than the current one.
+        gt,
+        /// Only update when the new score is less than the current one.
+        lt,
+    }
+
+    /// Removes the members with the lowest or highest scores from the first non-empty sorted set,
+    /// waiting up to the timeout for one, returning its key and the members and their scores.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// BZMPOP timeout numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]
+    /// https://valkey.io/commands/bzmpop/
+    bzmpop: async func(connection: borrow<connection>, timeout: duration, keys: list<string>, end: pop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
+
+    /// Removes the member with the highest score from the first non-empty sorted set, waiting up to
+    /// the timeout for one, returning its key, the member and its score.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// BZPOPMAX key [ key ... ] timeout
+    /// https://valkey.io/commands/bzpopmax/
+    bzpopmax: async func(connection: borrow<connection>, keys: list<string>, timeout: duration) -> result<option<tuple<string, string, double>>, error>;
+
+    /// Removes the member with the lowest score from the first non-empty sorted set, waiting up to
+    /// the timeout for one, returning its key, the member and its score.
+    ///
+    /// Returns none when the timeout passed. A timeout of zero waits indefinitely.
+    ///
+    /// The connection waits too, replies to commands sent after it on the connection wait behind
+    /// it. Use a connection of your own.
+    ///
+    /// BZPOPMIN key [ key ... ] timeout
+    /// https://valkey.io/commands/bzpopmin/
+    bzpopmin: async func(connection: borrow<connection>, keys: list<string>, timeout: duration) -> result<option<tuple<string, string, double>>, error>;
+
+    /// Adds the members with their scores to the sorted set stored at key, or updates their scores,
+    /// returning how many were added, or with `changed`, added or updated.
+    ///
+    /// See also `zadd-incr`.
+    ///
+    /// ZADD key [ NX | XX ] [ GT | LT ] [ CH ] score member [ score member ... ]
+    /// https://valkey.io/commands/zadd/
+    zadd: async func(connection: borrow<connection>, key: string, condition: option<zadd-condition>, comparison: option<zadd-comparison>, changed: bool, score-and-members: list<tuple<double, string>>) -> result<option<integer>, error>;
+
+    /// Increments the score of the member in the sorted set stored at key, returning the new score,
+    /// none when the condition or comparison prevented it.
+    ///
+    /// See also `zadd` and `zincrby`.
+    ///
+    /// ZADD key [ NX | XX ] [ GT | LT ] INCR score member
+    /// https://valkey.io/commands/zadd/
+    zadd-incr: async func(connection: borrow<connection>, key: string, condition: option<zadd-condition>, comparison: option<zadd-comparison>, increment: double, member: string) -> result<option<double>, error>;
+
+    /// The number of members in the sorted set stored at key.
+    ///
+    /// ZCARD key
+    /// https://valkey.io/commands/zcard/
+    zcard: async func(connection: borrow<connection>, key: string) -> result<integer, error>;
+
+    /// The number of members of the sorted set stored at key with scores in the range.
+    ///
+    /// ZCOUNT key min max
+    /// https://valkey.io/commands/zcount/
+    zcount: async func(connection: borrow<connection>, key: string, min: score-bound, max: score-bound) -> result<integer, error>;
+
+    /// The members of the first sorted set that are not in any of the others.
+    ///
+    /// See also `zdiff-withscores`.
+    ///
+    /// ZDIFF numkeys key [ key ... ]
+    /// https://valkey.io/commands/zdiff/
+    zdiff: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+
+    /// The members, and their scores, of the first sorted set that are not in any of the others.
+    ///
+    /// See also `zdiff`.
+    ///
+    /// ZDIFF numkeys key [ key ... ] WITHSCORES
+    /// https://valkey.io/commands/zdiff/
+    zdiff-withscores: async func(connection: borrow<connection>, keys: list<string>) -> result<list<tuple<string, double>>, error>;
+
+    /// Stores the members of the first sorted set that are not in any of the others, returning how
+    /// many.
+    ///
+    /// ZDIFFSTORE destination numkeys key [ key ... ]
+    /// https://valkey.io/commands/zdiffstore/
+    zdiffstore: async func(connection: borrow<connection>, destination: string, keys: list<string>) -> result<integer, error>;
+
+    /// Increments the score of the member in the sorted set stored at key, returning the new score.
+    ///
+    /// ZINCRBY key increment member
+    /// https://valkey.io/commands/zincrby/
+    zincrby: async func(connection: borrow<connection>, key: string, increment: double, member: string) -> result<double, error>;
+
+    /// The members in all of the sorted sets.
+    ///
+    /// The weights, when given, multiply the scores of each sorted set, one for each key.
+    ///
+    /// See also `zinter-withscores`.
+    ///
+    /// ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
+    /// https://valkey.io/commands/zinter/
+    zinter: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<string>, error>;
+
+    /// The members, and their combined scores, in all of the sorted sets.
+    ///
+    /// See also `zinter`.
+    ///
+    /// ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES
+    /// https://valkey.io/commands/zinter/
+    zinter-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<tuple<string, double>>, error>;
+
+    /// The number of members in all of the sorted sets, counting stops at the limit.
+    ///
+    /// ZINTERCARD numkeys key [ key ... ] [ LIMIT limit ]
+    /// https://valkey.io/commands/zintercard/
+    zintercard: async func(connection: borrow<connection>, keys: list<string>, limit: option<integer>) -> result<integer, error>;
+
+    /// Stores the members in all of the sorted sets, with their combined scores, returning how many.
+    ///
+    /// ZINTERSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
+    /// https://valkey.io/commands/zinterstore/
+    zinterstore: async func(connection: borrow<connection>, destination: string, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<integer, error>;
+
+    /// The number of members of the sorted set stored at key in the range, for members of equal
+    /// score.
+    ///
+    /// ZLEXCOUNT key min max
+    /// https://valkey.io/commands/zlexcount/
+    zlexcount: async func(connection: borrow<connection>, key: string, min: lex-bound, max: lex-bound) -> result<integer, error>;
+
+    /// Removes the members with the lowest or highest scores from the first non-empty sorted set,
+    /// returning its key and the members and their scores, none when every sorted set is empty.
+    ///
+    /// ZMPOP numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]
+    /// https://valkey.io/commands/zmpop/
+    zmpop: async func(connection: borrow<connection>, keys: list<string>, end: pop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
+
+    /// The score of each of the members of the sorted set stored at key, none for a member that is
+    /// not in it.
+    ///
+    /// ZMSCORE key member [ member ... ]
+    /// https://valkey.io/commands/zmscore/
+    zmscore: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<list<option<double>>, error>;
+
+    /// Removes and returns the members with the highest scores, and their scores, up to the count,
+    /// one without a count.
+    ///
+    /// ZPOPMAX key [ count ]
+    /// https://valkey.io/commands/zpopmax/
+    zpopmax: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<tuple<string, double>>, error>;
+
+    /// Removes and returns the members with the lowest scores, and their scores, up to the count,
+    /// one without a count.
+    ///
+    /// ZPOPMIN key [ count ]
+    /// https://valkey.io/commands/zpopmin/
+    zpopmin: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<tuple<string, double>>, error>;
+
+    /// Random members of the sorted set stored at key, up to the count.
+    ///
+    /// Without a count, one member, or none when the key does not exist. A negative count may return
+    /// the same member more than once, its absolute value is the number of members returned.
+    ///
+    /// See also `zrandmember-withscores`.
+    ///
+    /// ZRANDMEMBER key [ count ]
+    /// https://valkey.io/commands/zrandmember/
+    zrandmember: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+
+    /// Random members of the sorted set stored at key, and their scores, up to the count.
+    ///
+    /// A negative count may return the same member more than once, its absolute value is the number
+    /// of members returned.
+    ///
+    /// See also `zrandmember`.
+    ///
+    /// ZRANDMEMBER key count WITHSCORES
+    /// https://valkey.io/commands/zrandmember/
+    zrandmember-withscores: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<tuple<string, double>>, error>;
+
+    /// The members of the sorted set stored at key in the range, from the lowest score, or the
+    /// highest with `rev`.
+    ///
+    /// The limit is a range of the members in the range, only with BYSCORE or BYLEX. With `xx`,
+    /// returns none when the key does not exist.
+    ///
+    /// Also covers the deprecated ZRANGEBYLEX, ZRANGEBYSCORE, ZREVRANGE, ZREVRANGEBYLEX and
+    /// ZREVRANGEBYSCORE. See also `zrange-withscores`.
+    ///
+    /// ZRANGE key start stop [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ] [ XX ]
+    /// https://valkey.io/commands/zrange/
+    zrange: async func(connection: borrow<connection>, key: string, range: zrange-by, rev: bool, limit: option<limit>, xx: bool) -> result<option<list<string>>, error>;
+
+    /// The members of the sorted set stored at key in the range, and their scores, from the lowest
+    /// score, or the highest with `rev`.
+    ///
+    /// The limit is a range of the members in the range, only with BYSCORE. With `xx`, returns none
+    /// when the key does not exist.
+    ///
+    /// See also `zrange`.
+    ///
+    /// ZRANGE key start stop [ BYSCORE ] [ REV ] [ LIMIT offset count ] WITHSCORES [ XX ]
+    /// https://valkey.io/commands/zrange/
+    zrange-withscores: async func(connection: borrow<connection>, key: string, range: zrange-withscores-by, rev: bool, limit: option<limit>, xx: bool) -> result<option<list<tuple<string, double>>>, error>;
+
+    /// Stores the members of the sorted set stored at source in the range, returning how many.
+    ///
+    /// The limit is a range of the members in the range, only with BYSCORE or BYLEX.
+    ///
+    /// ZRANGESTORE dst src min max [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ]
+    /// https://valkey.io/commands/zrangestore/
+    zrangestore: async func(connection: borrow<connection>, destination: string, source: string, range: zrange-by, rev: bool, limit: option<limit>) -> result<integer, error>;
+
+    /// The position of the member in the sorted set stored at key, from the lowest score, none when
+    /// it is not a member.
+    ///
+    /// See also `zrank-withscore` and `zrevrank`.
+    ///
+    /// ZRANK key member
+    /// https://valkey.io/commands/zrank/
+    zrank: async func(connection: borrow<connection>, key: string, member: string) -> result<option<integer>, error>;
+
+    /// The position, and the score, of the member in the sorted set stored at key, from the lowest
+    /// score, none when it is not a member.
+    ///
+    /// See also `zrank`.
+    ///
+    /// ZRANK key member WITHSCORE
+    /// https://valkey.io/commands/zrank/
+    zrank-withscore: async func(connection: borrow<connection>, key: string, member: string) -> result<option<tuple<integer, double>>, error>;
+
+    /// Removes the members from the sorted set stored at key, returning how many were members.
+    ///
+    /// ZREM key member [ member ... ]
+    /// https://valkey.io/commands/zrem/
+    zrem: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<integer, error>;
+
+    /// Removes the members of the sorted set stored at key in the range, for members of equal score,
+    /// returning how many.
+    ///
+    /// ZREMRANGEBYLEX key min max
+    /// https://valkey.io/commands/zremrangebylex/
+    zremrangebylex: async func(connection: borrow<connection>, key: string, min: lex-bound, max: lex-bound) -> result<integer, error>;
+
+    /// Removes the members of the sorted set stored at key at the positions, both included,
+    /// negative from the end, returning how many.
+    ///
+    /// ZREMRANGEBYRANK key start stop
+    /// https://valkey.io/commands/zremrangebyrank/
+    zremrangebyrank: async func(connection: borrow<connection>, key: string, start: integer, stop: integer) -> result<integer, error>;
+
+    /// Removes the members of the sorted set stored at key with scores in the range, returning how
+    /// many.
+    ///
+    /// ZREMRANGEBYSCORE key min max
+    /// https://valkey.io/commands/zremrangebyscore/
+    zremrangebyscore: async func(connection: borrow<connection>, key: string, min: score-bound, max: score-bound) -> result<integer, error>;
+
+    /// The position of the member in the sorted set stored at key, from the highest score, none
+    /// when it is not a member.
+    ///
+    /// See also `zrevrank-withscore`.
+    ///
+    /// ZREVRANK key member
+    /// https://valkey.io/commands/zrevrank/
+    zrevrank: async func(connection: borrow<connection>, key: string, member: string) -> result<option<integer>, error>;
+
+    /// The position, and the score, of the member in the sorted set stored at key, from the highest
+    /// score, none when it is not a member.
+    ///
+    /// See also `zrevrank`.
+    ///
+    /// ZREVRANK key member WITHSCORE
+    /// https://valkey.io/commands/zrevrank/
+    zrevrank-withscore: async func(connection: borrow<connection>, key: string, member: string) -> result<option<tuple<integer, double>>, error>;
+
+    /// Incrementally iterate over the members of the sorted set stored at key, and their scores.
+    ///
+    /// See also `zscan-noscores`.
+    ///
+    /// ZSCAN key cursor [ MATCH pattern ] [ COUNT count ]
+    /// https://valkey.io/commands/zscan/
+    zscan: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<tuple<string, double>>>, error>;
+
+    /// Incrementally iterate over the members of the sorted set stored at key.
+    ///
+    /// See also `zscan`.
+    ///
+    /// ZSCAN key cursor [ MATCH pattern ] [ COUNT count ] NOSCORES
+    /// https://valkey.io/commands/zscan/
+    zscan-noscores: async func(connection: borrow<connection>, key: string, cursor: option<cursor>, match: option<string>, count: option<integer>) -> result<tuple<cursor, list<string>>, error>;
+
+    /// The score of the member in the sorted set stored at key, none when it is not a member.
+    ///
+    /// ZSCORE key member
+    /// https://valkey.io/commands/zscore/
+    zscore: async func(connection: borrow<connection>, key: string, member: string) -> result<option<double>, error>;
+
+    /// The members in any of the sorted sets.
+    ///
+    /// The weights, when given, multiply the scores of each sorted set, one for each key.
+    ///
+    /// See also `zunion-withscores`.
+    ///
+    /// ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
+    /// https://valkey.io/commands/zunion/
+    zunion: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<string>, error>;
+
+    /// The members, and their combined scores, in any of the sorted sets.
+    ///
+    /// See also `zunion`.
+    ///
+    /// ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES
+    /// https://valkey.io/commands/zunion/
+    zunion-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<list<tuple<string, double>>, error>;
+
+    /// Stores the members in any of the sorted sets, with their combined scores, returning how many.
+    ///
+    /// ZUNIONSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
+    /// https://valkey.io/commands/zunionstore/
+    zunionstore: async func(connection: borrow<connection>, destination: string, keys: list<string>, weights: option<list<double>>, aggregate: option<aggregate>) -> result<integer, error>;
 
 
     // stream commands

@@ -64,6 +64,8 @@ interface connection {
         /// SUBSCRIBE, PSUBSCRIBE, SSUBSCRIBE and their UNSUBSCRIBE counterparts have no reply, the
         /// server confirms them with push messages, see `pushes`. Their exchange resolves to null
         /// once the command is written.
+        ///
+        /// A command has at least one word, an empty command fails with a client error.
         exchange: async func(command: list<string>) -> result<value, error>;
 
         /// Sends the commands one after another, with no other command sent between them, and waits
@@ -79,6 +81,8 @@ interface connection {
         /// The server still replies, the reply is discarded when it arrives and an error it reports
         /// is not returned. An implementation may instead ask the server not to reply, e.g. with
         /// `CLIENT REPLY SKIP`.
+        ///
+        /// A command has at least one word, an empty command fails with a client error.
         emit: async func(command: list<string>) -> result<_, error>;
 
         /// Marks the keys to watch, EXEC aborts the next transaction when any of them changed.
@@ -89,6 +93,8 @@ interface connection {
         ///
         /// WATCH key [ key ... ]
         /// https://valkey.io/commands/watch/
+        ///
+        /// At least one key, no keys fails with a client error.
         watch: async func(keys: list<string>) -> result<_, error>;
 
         /// Forgets all the watched keys.

@@ -1,11 +1,16 @@
-use crate::command::{Flag, Milliseconds, NamedOption, Seconds, emit, query};
-use crate::exports::componentized::valkey::commands::{
-    Connection, Cursor, Double, Duration, Error, GetexTtl, Guest, Instant, Integer, LcsIdxReply,
-    MsetexPrecondition, MsetexTtl, Rule, SetPrecondition, SetTtl, StreamId, StreamTrim, TtlMode,
-    TtlResult, Value, XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply,
-    XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary,
+use crate::command::{
+    DecimalSeconds, Flag, LexRange, Milliseconds, NamedOption, NonEmpty, NumKeys, ScoreRange,
+    Seconds, Zrange, emit, query,
 };
-use crate::value::OrZeroId;
+use crate::exports::componentized::valkey::commands::{
+    Aggregate, Connection, Cursor, DbRule, Double, Duration, Error, GetexTtl, Guest, Instant,
+    Integer, LcsIdxReply, LexBound, Limit, MsetexPrecondition, MsetexTtl, PopEnd, Rule,
+    RuleSelector, ScoreBound, SetPrecondition, SetTtl, SortOpts, StreamId, StreamTrim, TtlMode,
+    TtlResult, UserRule, Value, XclaimOpts, XinfoConsumer, XinfoGroup, XinfoStreamReply,
+    XinfoStreamReplyFull, XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition,
+    ZrangeBy, ZrangeWithscoresBy,
+};
+use crate::value::{FlatPairs, OrNever, OrZeroId, ScoredMembers};
 
 use wit_bindgen::rt::Map;
 
@@ -13,6 +18,39 @@ mod command;
 mod value;
 
 struct Commands;
+
+/// The number of values SORT returns for each element, one for each GET pattern, or the element.
+fn sort_row_len(opts: &Option<SortOpts>) -> usize {
+    opts.as_ref()
+        .and_then(|opts| opts.get.as_ref())
+        .map_or(1, Vec::len)
+}
+
+/// The GET patterns of SORT, when given, at least one.
+fn check_sort_opts(opts: &Option<SortOpts>) -> Result<(), Error> {
+    match opts.as_ref().and_then(|opts| opts.get.as_ref()) {
+        Some(get) if get.is_empty() => {
+            Err(Error::Client("get requires at least one item".to_string()))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// The databases of a `db=` rule, at least one, including those of selectors.
+fn check_rules(rules: &[Rule]) -> Result<(), Error> {
+    let empty = |rule: &DbRule| matches!(rule, DbRule::Db(dbs) if dbs.is_empty());
+    let invalid = rules.iter().any(|rule| match rule {
+        Rule::Db(rule) => empty(rule),
+        Rule::User(UserRule::Selector(selectors)) => selectors
+            .iter()
+            .any(|selector| matches!(selector, RuleSelector::Db(rule) if empty(rule))),
+        _ => false,
+    });
+    if invalid {
+        return Err(Error::Client("db requires at least one item".to_string()));
+    }
+    Ok(())
+}
 
 impl Guest for Commands {
     #[doc = " admin commands"]
@@ -25,6 +63,7 @@ impl Guest for Commands {
         connection: &Connection,
         usernames: Vec<String>,
     ) -> Result<Integer, Error> {
+        let usernames = NonEmpty::new("usernames", usernames)?;
         query(connection, ("ACL", "DELUSER", usernames)).await
     }
 
@@ -45,8 +84,12 @@ impl Guest for Commands {
     async fn acl_setuser(
         connection: &Connection,
         username: String,
-        rules: Vec<Rule>,
+        rules: Option<Vec<Rule>>,
     ) -> Result<(), Error> {
+        if let Some(rules) = &rules {
+            check_rules(rules)?;
+        }
+        let rules = NonEmpty::optional("rules", rules)?;
         query(connection, ("ACL", "SETUSER", username, rules)).await
     }
 
@@ -111,6 +154,7 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Integer, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
         query(connection, ("HDEL", key, fields)).await
     }
 
@@ -135,6 +179,7 @@ impl Guest for Commands {
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
             (
@@ -162,6 +207,7 @@ impl Guest for Commands {
         mode: Option<TtlMode>,
         fields: Vec<String>,
     ) -> Result<Vec<TtlResult>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
         query(
             connection,
             (
@@ -255,6 +301,7 @@ impl Guest for Commands {
         key: String,
         fields: Vec<String>,
     ) -> Result<Vec<Option<String>>, Error> {
+        let fields = NonEmpty::new("fields", fields)?;
         query(connection, ("HMGET", key, fields)).await
     }
 
@@ -268,6 +315,7 @@ impl Guest for Commands {
         key: String,
         field_and_values: Vec<(String, String)>,
     ) -> Result<(), Error> {
+        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
         query(connection, ("HMSET", key, field_and_values)).await
     }
 
@@ -377,6 +425,7 @@ impl Guest for Commands {
         key: String,
         field_and_values: Vec<(String, String)>,
     ) -> Result<Integer, Error> {
+        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
         query(connection, ("HSET", key, field_and_values)).await
     }
 
@@ -422,6 +471,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/del/"]
     #[allow(async_fn_in_trait)]
     async fn del(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
         query(connection, ("DEL", keys)).await
     }
 
@@ -431,6 +481,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/exists/"]
     #[allow(async_fn_in_trait)]
     async fn exists(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
         query(connection, ("EXISTS", keys)).await
     }
 
@@ -477,6 +528,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/psubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn psubscribe(connection: &Connection, patterns: Vec<String>) -> Result<(), Error> {
+        let patterns = NonEmpty::new("patterns", patterns)?;
         emit(connection, ("PSUBSCRIBE", patterns)).await
     }
 
@@ -521,8 +573,9 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn pubsub_numsub(
         connection: &Connection,
-        channels: Vec<String>,
+        channels: Option<Vec<String>>,
     ) -> Result<Map<String, Integer>, Error> {
+        let channels = NonEmpty::optional("channels", channels)?;
         query(connection, ("PUBSUB", "NUMSUB", channels)).await
     }
 
@@ -545,8 +598,9 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn pubsub_shardnumsub(
         connection: &Connection,
-        shardchannels: Vec<String>,
+        shardchannels: Option<Vec<String>>,
     ) -> Result<Map<String, Integer>, Error> {
+        let shardchannels = NonEmpty::optional("shardchannels", shardchannels)?;
         query(connection, ("PUBSUB", "SHARDNUMSUB", shardchannels)).await
     }
 
@@ -555,7 +609,11 @@ impl Guest for Commands {
     #[doc = " PUNSUBSCRIBE [ pattern [ pattern ... ] ]"]
     #[doc = " https://valkey.io/commands/punsubscribe/"]
     #[allow(async_fn_in_trait)]
-    async fn punsubscribe(connection: &Connection, patterns: Vec<String>) -> Result<(), Error> {
+    async fn punsubscribe(
+        connection: &Connection,
+        patterns: Option<Vec<String>>,
+    ) -> Result<(), Error> {
+        let patterns = NonEmpty::optional("patterns", patterns)?;
         emit(connection, ("PUNSUBSCRIBE", patterns)).await
     }
 
@@ -578,6 +636,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/ssubscribe/"]
     #[allow(async_fn_in_trait)]
     async fn ssubscribe(connection: &Connection, shardchannels: Vec<String>) -> Result<(), Error> {
+        let shardchannels = NonEmpty::new("shardchannels", shardchannels)?;
         emit(connection, ("SSUBSCRIBE", shardchannels)).await
     }
 
@@ -587,6 +646,7 @@ impl Guest for Commands {
     #[doc = " https://valkey.io/commands/subscribe/"]
     #[allow(async_fn_in_trait)]
     async fn subscribe(connection: &Connection, channels: Vec<String>) -> Result<(), Error> {
+        let channels = NonEmpty::new("channels", channels)?;
         emit(connection, ("SUBSCRIBE", channels)).await
     }
 
@@ -597,8 +657,9 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn sunsubscribe(
         connection: &Connection,
-        shardchannels: Vec<String>,
+        shardchannels: Option<Vec<String>>,
     ) -> Result<(), Error> {
+        let shardchannels = NonEmpty::optional("shardchannels", shardchannels)?;
         emit(connection, ("SUNSUBSCRIBE", shardchannels)).await
     }
 
@@ -607,7 +668,11 @@ impl Guest for Commands {
     #[doc = " UNSUBSCRIBE [ channel ] [ [ channel ] ... ]"]
     #[doc = " https://valkey.io/commands/unsubscribe/"]
     #[allow(async_fn_in_trait)]
-    async fn unsubscribe(connection: &Connection, channels: Vec<String>) -> Result<(), Error> {
+    async fn unsubscribe(
+        connection: &Connection,
+        channels: Option<Vec<String>>,
+    ) -> Result<(), Error> {
+        let channels = NonEmpty::optional("channels", channels)?;
         emit(connection, ("UNSUBSCRIBE", channels)).await
     }
 
@@ -807,6 +872,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
     ) -> Result<Vec<Option<String>>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
         query(connection, ("MGET", keys)).await
     }
 
@@ -819,6 +885,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys_and_values: Vec<(String, String)>,
     ) -> Result<(), Error> {
+        let keys_and_values = NonEmpty::new("keys-and-values", keys_and_values)?;
         query(connection, ("MSET", keys_and_values)).await
     }
 
@@ -833,6 +900,7 @@ impl Guest for Commands {
         precondition: Option<MsetexPrecondition>,
         ttl: Option<MsetexTtl>,
     ) -> Result<bool, Error> {
+        let keys_and_values = NonEmpty::new("keys-and-values", keys_and_values)?;
         query(
             connection,
             (
@@ -855,6 +923,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys_and_values: Vec<(String, String)>,
     ) -> Result<bool, Error> {
+        let keys_and_values = NonEmpty::new("keys-and-values", keys_and_values)?;
         query(connection, ("MSETNX", keys_and_values)).await
     }
 
@@ -981,6 +1050,7 @@ impl Guest for Commands {
         group: String,
         ids: Vec<StreamId>,
     ) -> Result<Integer, Error> {
+        let ids = NonEmpty::new("ids", ids)?;
         query(connection, ("XACK", key, group, ids)).await
     }
 
@@ -997,6 +1067,7 @@ impl Guest for Commands {
         id: StreamId,
         field_and_values: Vec<(String, String)>,
     ) -> Result<Option<StreamId>, Error> {
+        let field_and_values = NonEmpty::new("field-and-values", field_and_values)?;
         query(
             connection,
             (
@@ -1099,6 +1170,7 @@ impl Guest for Commands {
         ids: Vec<StreamId>,
         opts: Option<XclaimOpts>,
     ) -> Result<Vec<(StreamId, Map<String, String>)>, Error> {
+        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
             ("XCLAIM", key, group, consumer, min_idle_time, ids, opts),
@@ -1122,6 +1194,7 @@ impl Guest for Commands {
         ids: Vec<StreamId>,
         opts: Option<XclaimOpts>,
     ) -> Result<Vec<StreamId>, Error> {
+        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
             ("XCLAIM", key, group, consumer, min_idle_time, ids, opts),
@@ -1139,6 +1212,7 @@ impl Guest for Commands {
         key: String,
         ids: Vec<StreamId>,
     ) -> Result<Integer, Error> {
+        let ids = NonEmpty::new("ids", ids)?;
         query(connection, ("XDEL", key, ids)).await
     }
 
@@ -1381,6 +1455,8 @@ impl Guest for Commands {
         keys: Vec<String>,
         ids: Vec<StreamId>,
     ) -> Result<Option<Map<String, Vec<(StreamId, Map<String, String>)>>>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
             (
@@ -1413,6 +1489,8 @@ impl Guest for Commands {
         keys: Vec<String>,
         ids: Vec<StreamId>,
     ) -> Result<Option<Map<String, Vec<(StreamId, Option<Map<String, String>>)>>>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let ids = NonEmpty::new("ids", ids)?;
         query(
             connection,
             (
@@ -1486,6 +1564,1124 @@ impl Guest for Commands {
         trim: StreamTrim,
     ) -> Result<Integer, Error> {
         query(connection, ("XTRIM", key, trim)).await
+    }
+
+    #[doc = " Adds the members to the set stored at key, returning how many were not already members."]
+    #[doc = ""]
+    #[doc = " SADD key member [ member ... ]"]
+    #[doc = " https://valkey.io/commands/sadd/"]
+    #[allow(async_fn_in_trait)]
+    async fn sadd(
+        connection: &Connection,
+        key: String,
+        members: Vec<String>,
+    ) -> Result<Integer, Error> {
+        let members = NonEmpty::new("members", members)?;
+        query(connection, ("SADD", key, members)).await
+    }
+
+    #[doc = " The number of members in the set stored at key."]
+    #[doc = ""]
+    #[doc = " SCARD key"]
+    #[doc = " https://valkey.io/commands/scard/"]
+    #[allow(async_fn_in_trait)]
+    async fn scard(connection: &Connection, key: String) -> Result<Integer, Error> {
+        query(connection, ("SCARD", key)).await
+    }
+
+    #[doc = " The members of the first set that are not in any of the others."]
+    #[doc = ""]
+    #[doc = " SDIFF key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/sdiff/"]
+    #[allow(async_fn_in_trait)]
+    async fn sdiff(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("SDIFF", keys)).await
+    }
+
+    #[doc = " Stores the members of the first set that are not in any of the others, returning how many."]
+    #[doc = ""]
+    #[doc = " SDIFFSTORE destination key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/sdiffstore/"]
+    #[allow(async_fn_in_trait)]
+    async fn sdiffstore(
+        connection: &Connection,
+        destination: String,
+        keys: Vec<String>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("SDIFFSTORE", destination, keys)).await
+    }
+
+    #[doc = " The members in all of the sets."]
+    #[doc = ""]
+    #[doc = " SINTER key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/sinter/"]
+    #[allow(async_fn_in_trait)]
+    async fn sinter(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("SINTER", keys)).await
+    }
+
+    #[doc = " The number of members in all of the sets, counting stops at the limit."]
+    #[doc = ""]
+    #[doc = " SINTERCARD numkeys key [ key ... ] [ LIMIT limit ]"]
+    #[doc = " https://valkey.io/commands/sintercard/"]
+    #[allow(async_fn_in_trait)]
+    async fn sintercard(
+        connection: &Connection,
+        keys: Vec<String>,
+        limit: Option<Integer>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(
+            connection,
+            ("SINTERCARD", NumKeys(keys), NamedOption("LIMIT", limit)),
+        )
+        .await
+    }
+
+    #[doc = " Stores the members in all of the sets, returning how many."]
+    #[doc = ""]
+    #[doc = " SINTERSTORE destination key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/sinterstore/"]
+    #[allow(async_fn_in_trait)]
+    async fn sinterstore(
+        connection: &Connection,
+        destination: String,
+        keys: Vec<String>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("SINTERSTORE", destination, keys)).await
+    }
+
+    #[doc = " Whether the member is in the set stored at key, false when the key does not exist."]
+    #[doc = ""]
+    #[doc = " See also `sismember-xx`."]
+    #[doc = ""]
+    #[doc = " SISMEMBER key member"]
+    #[doc = " https://valkey.io/commands/sismember/"]
+    #[allow(async_fn_in_trait)]
+    async fn sismember(
+        connection: &Connection,
+        key: String,
+        member: String,
+    ) -> Result<bool, Error> {
+        query(connection, ("SISMEMBER", key, member)).await
+    }
+
+    #[doc = " Whether the member is in the set stored at key, none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " See also `sismember`."]
+    #[doc = ""]
+    #[doc = " SISMEMBER key member XX"]
+    #[doc = " https://valkey.io/commands/sismember/"]
+    #[allow(async_fn_in_trait)]
+    async fn sismember_xx(
+        connection: &Connection,
+        key: String,
+        member: String,
+    ) -> Result<Option<bool>, Error> {
+        // -1 when the key does not exist
+        let member: OrNever<bool> = query(connection, ("SISMEMBER", key, member, "XX")).await?;
+        Ok(member.0)
+    }
+
+    #[doc = " The members of the set stored at key."]
+    #[doc = ""]
+    #[doc = " SMEMBERS key"]
+    #[doc = " https://valkey.io/commands/smembers/"]
+    #[allow(async_fn_in_trait)]
+    async fn smembers(connection: &Connection, key: String) -> Result<Vec<String>, Error> {
+        query(connection, ("SMEMBERS", key)).await
+    }
+
+    #[doc = " Whether each of the members is in the set stored at key."]
+    #[doc = ""]
+    #[doc = " SMISMEMBER key member [ member ... ]"]
+    #[doc = " https://valkey.io/commands/smismember/"]
+    #[allow(async_fn_in_trait)]
+    async fn smismember(
+        connection: &Connection,
+        key: String,
+        members: Vec<String>,
+    ) -> Result<Vec<bool>, Error> {
+        let members = NonEmpty::new("members", members)?;
+        query(connection, ("SMISMEMBER", key, members)).await
+    }
+
+    #[doc = " Moves the member from one set to another, false when it was not in the source set."]
+    #[doc = ""]
+    #[doc = " SMOVE source destination member"]
+    #[doc = " https://valkey.io/commands/smove/"]
+    #[allow(async_fn_in_trait)]
+    async fn smove(
+        connection: &Connection,
+        source: String,
+        destination: String,
+        member: String,
+    ) -> Result<bool, Error> {
+        query(connection, ("SMOVE", source, destination, member)).await
+    }
+
+    #[doc = " Removes and returns random members of the set stored at key, up to the count."]
+    #[doc = ""]
+    #[doc = " Without a count, one member, or none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " SPOP key [ count ]"]
+    #[doc = " https://valkey.io/commands/spop/"]
+    #[allow(async_fn_in_trait)]
+    async fn spop(
+        connection: &Connection,
+        key: String,
+        count: Option<Integer>,
+    ) -> Result<Vec<String>, Error> {
+        if count.is_some() {
+            return query(connection, ("SPOP", key, count)).await;
+        }
+        // without a count the reply is the member itself, or null
+        let member: Option<String> = query(connection, ("SPOP", key)).await?;
+        Ok(member.into_iter().collect())
+    }
+
+    #[doc = " Random members of the set stored at key, up to the count."]
+    #[doc = ""]
+    #[doc = " Without a count, one member, or none when the key does not exist. A negative count may return"]
+    #[doc = " the same member more than once, its absolute value is the number of members returned."]
+    #[doc = ""]
+    #[doc = " SRANDMEMBER key [ count ]"]
+    #[doc = " https://valkey.io/commands/srandmember/"]
+    #[allow(async_fn_in_trait)]
+    async fn srandmember(
+        connection: &Connection,
+        key: String,
+        count: Option<Integer>,
+    ) -> Result<Vec<String>, Error> {
+        if count.is_some() {
+            return query(connection, ("SRANDMEMBER", key, count)).await;
+        }
+        // without a count the reply is the member itself, or null
+        let member: Option<String> = query(connection, ("SRANDMEMBER", key)).await?;
+        Ok(member.into_iter().collect())
+    }
+
+    #[doc = " Removes the members from the set stored at key, returning how many were members."]
+    #[doc = ""]
+    #[doc = " SREM key member [ member ... ]"]
+    #[doc = " https://valkey.io/commands/srem/"]
+    #[allow(async_fn_in_trait)]
+    async fn srem(
+        connection: &Connection,
+        key: String,
+        members: Vec<String>,
+    ) -> Result<Integer, Error> {
+        let members = NonEmpty::new("members", members)?;
+        query(connection, ("SREM", key, members)).await
+    }
+
+    #[doc = " Incrementally iterate over the members of the set stored at key."]
+    #[doc = ""]
+    #[doc = " SSCAN key cursor [ MATCH pattern ] [ COUNT count ]"]
+    #[doc = " https://valkey.io/commands/sscan/"]
+    #[allow(async_fn_in_trait)]
+    async fn sscan(
+        connection: &Connection,
+        key: String,
+        cursor: Option<Cursor>,
+        match_: Option<String>,
+        count: Option<Integer>,
+    ) -> Result<(Cursor, Vec<String>), Error> {
+        query(
+            connection,
+            (
+                "SSCAN",
+                key,
+                cursor.unwrap_or(Cursor::from("0")),
+                NamedOption("MATCH", match_),
+                NamedOption("COUNT", count),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The members in any of the sets."]
+    #[doc = ""]
+    #[doc = " SUNION key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/sunion/"]
+    #[allow(async_fn_in_trait)]
+    async fn sunion(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("SUNION", keys)).await
+    }
+
+    #[doc = " Stores the members in any of the sets, returning how many."]
+    #[doc = ""]
+    #[doc = " SUNIONSTORE destination key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/sunionstore/"]
+    #[allow(async_fn_in_trait)]
+    async fn sunionstore(
+        connection: &Connection,
+        destination: String,
+        keys: Vec<String>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("SUNIONSTORE", destination, keys)).await
+    }
+
+    #[doc = " Sorts the elements of the list, set or sorted set stored at key."]
+    #[doc = ""]
+    #[doc = " Each row is the element, or with `get`, the value of each pattern, none when its key does not"]
+    #[doc = " exist."]
+    #[doc = ""]
+    #[doc = " SORT key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]"]
+    #[doc = " https://valkey.io/commands/sort/"]
+    #[allow(async_fn_in_trait)]
+    async fn sort(
+        connection: &Connection,
+        key: String,
+        opts: Option<SortOpts>,
+    ) -> Result<Vec<Vec<Option<String>>>, Error> {
+        check_sort_opts(&opts)?;
+        let row = sort_row_len(&opts);
+        let values: Vec<Option<String>> = query(connection, ("SORT", key, opts)).await?;
+        Ok(values.chunks(row).map(<[_]>::to_vec).collect())
+    }
+
+    #[doc = " Sorts the elements of the list, set or sorted set stored at key, storing them as a list,"]
+    #[doc = " returning how many."]
+    #[doc = ""]
+    #[doc = " SORT key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ] STORE destination"]
+    #[doc = " https://valkey.io/commands/sort/"]
+    #[allow(async_fn_in_trait)]
+    async fn sort_store(
+        connection: &Connection,
+        key: String,
+        opts: Option<SortOpts>,
+        destination: String,
+    ) -> Result<Integer, Error> {
+        check_sort_opts(&opts)?;
+        query(connection, ("SORT", key, opts, "STORE", destination)).await
+    }
+
+    #[doc = " The read-only variant of `sort`, e.g. for replicas."]
+    #[doc = ""]
+    #[doc = " SORT_RO key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]"]
+    #[doc = " https://valkey.io/commands/sort_ro/"]
+    #[allow(async_fn_in_trait)]
+    async fn sort_ro(
+        connection: &Connection,
+        key: String,
+        opts: Option<SortOpts>,
+    ) -> Result<Vec<Vec<Option<String>>>, Error> {
+        check_sort_opts(&opts)?;
+        let row = sort_row_len(&opts);
+        let values: Vec<Option<String>> = query(connection, ("SORT_RO", key, opts)).await?;
+        Ok(values.chunks(row).map(<[_]>::to_vec).collect())
+    }
+
+    #[doc = " Removes the members with the lowest or highest scores from the first non-empty sorted set,"]
+    #[doc = " waiting up to the timeout for one, returning its key and the members and their scores."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " BZMPOP timeout numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]"]
+    #[doc = " https://valkey.io/commands/bzmpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn bzmpop(
+        connection: &Connection,
+        timeout: Duration,
+        keys: Vec<String>,
+        end: PopEnd,
+        count: Option<Integer>,
+    ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let command = (
+            "BZMPOP",
+            DecimalSeconds(timeout),
+            NumKeys(keys),
+            end,
+            NamedOption("COUNT", count),
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " Removes the member with the highest score from the first non-empty sorted set, waiting up to"]
+    #[doc = " the timeout for one, returning its key, the member and its score."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " BZPOPMAX key [ key ... ] timeout"]
+    #[doc = " https://valkey.io/commands/bzpopmax/"]
+    #[allow(async_fn_in_trait)]
+    async fn bzpopmax(
+        connection: &Connection,
+        keys: Vec<String>,
+        timeout: Duration,
+    ) -> Result<Option<(String, String, Double)>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("BZPOPMAX", keys, DecimalSeconds(timeout))).await
+    }
+
+    #[doc = " Removes the member with the lowest score from the first non-empty sorted set, waiting up to"]
+    #[doc = " the timeout for one, returning its key, the member and its score."]
+    #[doc = ""]
+    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
+    #[doc = ""]
+    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
+    #[doc = " it. Use a connection of your own."]
+    #[doc = ""]
+    #[doc = " BZPOPMIN key [ key ... ] timeout"]
+    #[doc = " https://valkey.io/commands/bzpopmin/"]
+    #[allow(async_fn_in_trait)]
+    async fn bzpopmin(
+        connection: &Connection,
+        keys: Vec<String>,
+        timeout: Duration,
+    ) -> Result<Option<(String, String, Double)>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("BZPOPMIN", keys, DecimalSeconds(timeout))).await
+    }
+
+    #[doc = " Adds the members with their scores to the sorted set stored at key, or updates their scores,"]
+    #[doc = " returning how many were added, or with `changed`, added or updated."]
+    #[doc = ""]
+    #[doc = " See also `zadd-incr`."]
+    #[doc = ""]
+    #[doc = " ZADD key [ NX | XX ] [ GT | LT ] [ CH ] score member [ score member ... ]"]
+    #[doc = " https://valkey.io/commands/zadd/"]
+    #[allow(async_fn_in_trait)]
+    async fn zadd(
+        connection: &Connection,
+        key: String,
+        condition: Option<ZaddCondition>,
+        comparison: Option<ZaddComparison>,
+        changed: bool,
+        score_and_members: Vec<(Double, String)>,
+    ) -> Result<Option<Integer>, Error> {
+        let score_and_members = NonEmpty::new("score-and-members", score_and_members)?;
+        let command = (
+            "ZADD",
+            key,
+            condition,
+            comparison,
+            Flag("CH", changed),
+            score_and_members,
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " Increments the score of the member in the sorted set stored at key, returning the new score,"]
+    #[doc = " none when the condition or comparison prevented it."]
+    #[doc = ""]
+    #[doc = " See also `zadd` and `zincrby`."]
+    #[doc = ""]
+    #[doc = " ZADD key [ NX | XX ] [ GT | LT ] INCR score member"]
+    #[doc = " https://valkey.io/commands/zadd/"]
+    #[allow(async_fn_in_trait)]
+    async fn zadd_incr(
+        connection: &Connection,
+        key: String,
+        condition: Option<ZaddCondition>,
+        comparison: Option<ZaddComparison>,
+        increment: Double,
+        member: String,
+    ) -> Result<Option<Double>, Error> {
+        let command = (
+            "ZADD", key, condition, comparison, "INCR", increment, member,
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " The number of members in the sorted set stored at key."]
+    #[doc = ""]
+    #[doc = " ZCARD key"]
+    #[doc = " https://valkey.io/commands/zcard/"]
+    #[allow(async_fn_in_trait)]
+    async fn zcard(connection: &Connection, key: String) -> Result<Integer, Error> {
+        query(connection, ("ZCARD", key)).await
+    }
+
+    #[doc = " The number of members of the sorted set stored at key with scores in the range."]
+    #[doc = ""]
+    #[doc = " ZCOUNT key min max"]
+    #[doc = " https://valkey.io/commands/zcount/"]
+    #[allow(async_fn_in_trait)]
+    async fn zcount(
+        connection: &Connection,
+        key: String,
+        min: ScoreBound,
+        max: ScoreBound,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            (
+                "ZCOUNT",
+                key,
+                ScoreRange {
+                    start: min,
+                    stop: max,
+                    rev: false,
+                },
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The members of the first sorted set that are not in any of the others."]
+    #[doc = ""]
+    #[doc = " See also `zdiff-withscores`."]
+    #[doc = ""]
+    #[doc = " ZDIFF numkeys key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/zdiff/"]
+    #[allow(async_fn_in_trait)]
+    async fn zdiff(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("ZDIFF", NumKeys(keys))).await
+    }
+
+    #[doc = " The members, and their scores, of the first sorted set that are not in any of the others."]
+    #[doc = ""]
+    #[doc = " See also `zdiff`."]
+    #[doc = ""]
+    #[doc = " ZDIFF numkeys key [ key ... ] WITHSCORES"]
+    #[doc = " https://valkey.io/commands/zdiff/"]
+    #[allow(async_fn_in_trait)]
+    async fn zdiff_withscores(
+        connection: &Connection,
+        keys: Vec<String>,
+    ) -> Result<Vec<(String, Double)>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("ZDIFF", NumKeys(keys), "WITHSCORES")).await
+    }
+
+    #[doc = " Stores the members of the first sorted set that are not in any of the others, returning how"]
+    #[doc = " many."]
+    #[doc = ""]
+    #[doc = " ZDIFFSTORE destination numkeys key [ key ... ]"]
+    #[doc = " https://valkey.io/commands/zdiffstore/"]
+    #[allow(async_fn_in_trait)]
+    async fn zdiffstore(
+        connection: &Connection,
+        destination: String,
+        keys: Vec<String>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(connection, ("ZDIFFSTORE", destination, NumKeys(keys))).await
+    }
+
+    #[doc = " Increments the score of the member in the sorted set stored at key, returning the new score."]
+    #[doc = ""]
+    #[doc = " ZINCRBY key increment member"]
+    #[doc = " https://valkey.io/commands/zincrby/"]
+    #[allow(async_fn_in_trait)]
+    async fn zincrby(
+        connection: &Connection,
+        key: String,
+        increment: Double,
+        member: String,
+    ) -> Result<Double, Error> {
+        query(connection, ("ZINCRBY", key, increment, member)).await
+    }
+
+    #[doc = " The members in all of the sorted sets."]
+    #[doc = ""]
+    #[doc = " The weights, when given, multiply the scores of each sorted set, one for each key."]
+    #[doc = ""]
+    #[doc = " See also `zinter-withscores`."]
+    #[doc = ""]
+    #[doc = " ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]"]
+    #[doc = " https://valkey.io/commands/zinter/"]
+    #[allow(async_fn_in_trait)]
+    async fn zinter(
+        connection: &Connection,
+        keys: Vec<String>,
+        weights: Option<Vec<Double>>,
+        aggregate: Option<Aggregate>,
+    ) -> Result<Vec<String>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let weights = NonEmpty::optional("weights", weights)?;
+        query(
+            connection,
+            (
+                "ZINTER",
+                NumKeys(keys),
+                NamedOption("WEIGHTS", weights),
+                aggregate,
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The members, and their combined scores, in all of the sorted sets."]
+    #[doc = ""]
+    #[doc = " See also `zinter`."]
+    #[doc = ""]
+    #[doc = " ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES"]
+    #[doc = " https://valkey.io/commands/zinter/"]
+    #[allow(async_fn_in_trait)]
+    async fn zinter_withscores(
+        connection: &Connection,
+        keys: Vec<String>,
+        weights: Option<Vec<Double>>,
+        aggregate: Option<Aggregate>,
+    ) -> Result<Vec<(String, Double)>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let weights = NonEmpty::optional("weights", weights)?;
+        let command = (
+            "ZINTER",
+            NumKeys(keys),
+            NamedOption("WEIGHTS", weights),
+            aggregate,
+            "WITHSCORES",
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " The number of members in all of the sorted sets, counting stops at the limit."]
+    #[doc = ""]
+    #[doc = " ZINTERCARD numkeys key [ key ... ] [ LIMIT limit ]"]
+    #[doc = " https://valkey.io/commands/zintercard/"]
+    #[allow(async_fn_in_trait)]
+    async fn zintercard(
+        connection: &Connection,
+        keys: Vec<String>,
+        limit: Option<Integer>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(
+            connection,
+            ("ZINTERCARD", NumKeys(keys), NamedOption("LIMIT", limit)),
+        )
+        .await
+    }
+
+    #[doc = " Stores the members in all of the sorted sets, with their combined scores, returning how many."]
+    #[doc = ""]
+    #[doc = " ZINTERSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]"]
+    #[doc = " https://valkey.io/commands/zinterstore/"]
+    #[allow(async_fn_in_trait)]
+    async fn zinterstore(
+        connection: &Connection,
+        destination: String,
+        keys: Vec<String>,
+        weights: Option<Vec<Double>>,
+        aggregate: Option<Aggregate>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let weights = NonEmpty::optional("weights", weights)?;
+        let command = (
+            "ZINTERSTORE",
+            destination,
+            NumKeys(keys),
+            NamedOption("WEIGHTS", weights),
+            aggregate,
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " The number of members of the sorted set stored at key in the range, for members of equal"]
+    #[doc = " score."]
+    #[doc = ""]
+    #[doc = " ZLEXCOUNT key min max"]
+    #[doc = " https://valkey.io/commands/zlexcount/"]
+    #[allow(async_fn_in_trait)]
+    async fn zlexcount(
+        connection: &Connection,
+        key: String,
+        min: LexBound,
+        max: LexBound,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            (
+                "ZLEXCOUNT",
+                key,
+                LexRange {
+                    start: min,
+                    stop: max,
+                    rev: false,
+                },
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Removes the members with the lowest or highest scores from the first non-empty sorted set,"]
+    #[doc = " returning its key and the members and their scores, none when every sorted set is empty."]
+    #[doc = ""]
+    #[doc = " ZMPOP numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]"]
+    #[doc = " https://valkey.io/commands/zmpop/"]
+    #[allow(async_fn_in_trait)]
+    async fn zmpop(
+        connection: &Connection,
+        keys: Vec<String>,
+        end: PopEnd,
+        count: Option<Integer>,
+    ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        query(
+            connection,
+            ("ZMPOP", NumKeys(keys), end, NamedOption("COUNT", count)),
+        )
+        .await
+    }
+
+    #[doc = " The score of each of the members of the sorted set stored at key, none for a member that is"]
+    #[doc = " not in it."]
+    #[doc = ""]
+    #[doc = " ZMSCORE key member [ member ... ]"]
+    #[doc = " https://valkey.io/commands/zmscore/"]
+    #[allow(async_fn_in_trait)]
+    async fn zmscore(
+        connection: &Connection,
+        key: String,
+        members: Vec<String>,
+    ) -> Result<Vec<Option<Double>>, Error> {
+        let members = NonEmpty::new("members", members)?;
+        query(connection, ("ZMSCORE", key, members)).await
+    }
+
+    #[doc = " Removes and returns the members with the highest scores, and their scores, up to the count,"]
+    #[doc = " one without a count."]
+    #[doc = ""]
+    #[doc = " ZPOPMAX key [ count ]"]
+    #[doc = " https://valkey.io/commands/zpopmax/"]
+    #[allow(async_fn_in_trait)]
+    async fn zpopmax(
+        connection: &Connection,
+        key: String,
+        count: Option<Integer>,
+    ) -> Result<Vec<(String, Double)>, Error> {
+        let members: ScoredMembers = query(connection, ("ZPOPMAX", key, count)).await?;
+        Ok(members.0)
+    }
+
+    #[doc = " Removes and returns the members with the lowest scores, and their scores, up to the count,"]
+    #[doc = " one without a count."]
+    #[doc = ""]
+    #[doc = " ZPOPMIN key [ count ]"]
+    #[doc = " https://valkey.io/commands/zpopmin/"]
+    #[allow(async_fn_in_trait)]
+    async fn zpopmin(
+        connection: &Connection,
+        key: String,
+        count: Option<Integer>,
+    ) -> Result<Vec<(String, Double)>, Error> {
+        let members: ScoredMembers = query(connection, ("ZPOPMIN", key, count)).await?;
+        Ok(members.0)
+    }
+
+    #[doc = " Random members of the sorted set stored at key, up to the count."]
+    #[doc = ""]
+    #[doc = " Without a count, one member, or none when the key does not exist. A negative count may return"]
+    #[doc = " the same member more than once, its absolute value is the number of members returned."]
+    #[doc = ""]
+    #[doc = " See also `zrandmember-withscores`."]
+    #[doc = ""]
+    #[doc = " ZRANDMEMBER key [ count ]"]
+    #[doc = " https://valkey.io/commands/zrandmember/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrandmember(
+        connection: &Connection,
+        key: String,
+        count: Option<Integer>,
+    ) -> Result<Vec<String>, Error> {
+        if count.is_some() {
+            return query(connection, ("ZRANDMEMBER", key, count)).await;
+        }
+        // without a count the reply is the member itself, or null
+        let member: Option<String> = query(connection, ("ZRANDMEMBER", key)).await?;
+        Ok(member.into_iter().collect())
+    }
+
+    #[doc = " Random members of the sorted set stored at key, and their scores, up to the count."]
+    #[doc = ""]
+    #[doc = " A negative count may return the same member more than once, its absolute value is the number"]
+    #[doc = " of members returned."]
+    #[doc = ""]
+    #[doc = " See also `zrandmember`."]
+    #[doc = ""]
+    #[doc = " ZRANDMEMBER key count WITHSCORES"]
+    #[doc = " https://valkey.io/commands/zrandmember/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrandmember_withscores(
+        connection: &Connection,
+        key: String,
+        count: Integer,
+    ) -> Result<Vec<(String, Double)>, Error> {
+        query(connection, ("ZRANDMEMBER", key, count, "WITHSCORES")).await
+    }
+
+    #[doc = " The members of the sorted set stored at key in the range, from the lowest score, or the"]
+    #[doc = " highest with `rev`."]
+    #[doc = ""]
+    #[doc = " The limit is a range of the members in the range, only with BYSCORE or BYLEX. With `xx`,"]
+    #[doc = " returns none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " Also covers the deprecated ZRANGEBYLEX, ZRANGEBYSCORE, ZREVRANGE, ZREVRANGEBYLEX and"]
+    #[doc = " ZREVRANGEBYSCORE. See also `zrange-withscores`."]
+    #[doc = ""]
+    #[doc = " ZRANGE key start stop [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ] [ XX ]"]
+    #[doc = " https://valkey.io/commands/zrange/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrange(
+        connection: &Connection,
+        key: String,
+        range: ZrangeBy,
+        rev: bool,
+        limit: Option<Limit>,
+        xx: bool,
+    ) -> Result<Option<Vec<String>>, Error> {
+        let range = Zrange { range, rev, limit };
+        query(connection, ("ZRANGE", key, range, Flag("XX", xx))).await
+    }
+
+    #[doc = " The members of the sorted set stored at key in the range, and their scores, from the lowest"]
+    #[doc = " score, or the highest with `rev`."]
+    #[doc = ""]
+    #[doc = " The limit is a range of the members in the range, only with BYSCORE. With `xx`, returns none"]
+    #[doc = " when the key does not exist."]
+    #[doc = ""]
+    #[doc = " See also `zrange`."]
+    #[doc = ""]
+    #[doc = " ZRANGE key start stop [ BYSCORE ] [ REV ] [ LIMIT offset count ] WITHSCORES [ XX ]"]
+    #[doc = " https://valkey.io/commands/zrange/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrange_withscores(
+        connection: &Connection,
+        key: String,
+        range: ZrangeWithscoresBy,
+        rev: bool,
+        limit: Option<Limit>,
+        xx: bool,
+    ) -> Result<Option<Vec<(String, Double)>>, Error> {
+        let range = match range {
+            ZrangeWithscoresBy::Rank(rank) => ZrangeBy::Rank(rank),
+            ZrangeWithscoresBy::Score(score) => ZrangeBy::Score(score),
+        };
+        let range = Zrange { range, rev, limit };
+        let command = ("ZRANGE", key, range, "WITHSCORES", Flag("XX", xx));
+        query(connection, command).await
+    }
+
+    #[doc = " Stores the members of the sorted set stored at source in the range, returning how many."]
+    #[doc = ""]
+    #[doc = " The limit is a range of the members in the range, only with BYSCORE or BYLEX."]
+    #[doc = ""]
+    #[doc = " ZRANGESTORE dst src min max [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ]"]
+    #[doc = " https://valkey.io/commands/zrangestore/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrangestore(
+        connection: &Connection,
+        destination: String,
+        source: String,
+        range: ZrangeBy,
+        rev: bool,
+        limit: Option<Limit>,
+    ) -> Result<Integer, Error> {
+        let range = Zrange { range, rev, limit };
+        query(connection, ("ZRANGESTORE", destination, source, range)).await
+    }
+
+    #[doc = " The position of the member in the sorted set stored at key, from the lowest score, none when"]
+    #[doc = " it is not a member."]
+    #[doc = ""]
+    #[doc = " See also `zrank-withscore` and `zrevrank`."]
+    #[doc = ""]
+    #[doc = " ZRANK key member"]
+    #[doc = " https://valkey.io/commands/zrank/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrank(
+        connection: &Connection,
+        key: String,
+        member: String,
+    ) -> Result<Option<Integer>, Error> {
+        query(connection, ("ZRANK", key, member)).await
+    }
+
+    #[doc = " The position, and the score, of the member in the sorted set stored at key, from the lowest"]
+    #[doc = " score, none when it is not a member."]
+    #[doc = ""]
+    #[doc = " See also `zrank`."]
+    #[doc = ""]
+    #[doc = " ZRANK key member WITHSCORE"]
+    #[doc = " https://valkey.io/commands/zrank/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrank_withscore(
+        connection: &Connection,
+        key: String,
+        member: String,
+    ) -> Result<Option<(Integer, Double)>, Error> {
+        query(connection, ("ZRANK", key, member, "WITHSCORE")).await
+    }
+
+    #[doc = " Removes the members from the sorted set stored at key, returning how many were members."]
+    #[doc = ""]
+    #[doc = " ZREM key member [ member ... ]"]
+    #[doc = " https://valkey.io/commands/zrem/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrem(
+        connection: &Connection,
+        key: String,
+        members: Vec<String>,
+    ) -> Result<Integer, Error> {
+        let members = NonEmpty::new("members", members)?;
+        query(connection, ("ZREM", key, members)).await
+    }
+
+    #[doc = " Removes the members of the sorted set stored at key in the range, for members of equal score,"]
+    #[doc = " returning how many."]
+    #[doc = ""]
+    #[doc = " ZREMRANGEBYLEX key min max"]
+    #[doc = " https://valkey.io/commands/zremrangebylex/"]
+    #[allow(async_fn_in_trait)]
+    async fn zremrangebylex(
+        connection: &Connection,
+        key: String,
+        min: LexBound,
+        max: LexBound,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            (
+                "ZREMRANGEBYLEX",
+                key,
+                LexRange {
+                    start: min,
+                    stop: max,
+                    rev: false,
+                },
+            ),
+        )
+        .await
+    }
+
+    #[doc = " Removes the members of the sorted set stored at key at the positions, both included,"]
+    #[doc = " negative from the end, returning how many."]
+    #[doc = ""]
+    #[doc = " ZREMRANGEBYRANK key start stop"]
+    #[doc = " https://valkey.io/commands/zremrangebyrank/"]
+    #[allow(async_fn_in_trait)]
+    async fn zremrangebyrank(
+        connection: &Connection,
+        key: String,
+        start: Integer,
+        stop: Integer,
+    ) -> Result<Integer, Error> {
+        query(connection, ("ZREMRANGEBYRANK", key, start, stop)).await
+    }
+
+    #[doc = " Removes the members of the sorted set stored at key with scores in the range, returning how"]
+    #[doc = " many."]
+    #[doc = ""]
+    #[doc = " ZREMRANGEBYSCORE key min max"]
+    #[doc = " https://valkey.io/commands/zremrangebyscore/"]
+    #[allow(async_fn_in_trait)]
+    async fn zremrangebyscore(
+        connection: &Connection,
+        key: String,
+        min: ScoreBound,
+        max: ScoreBound,
+    ) -> Result<Integer, Error> {
+        query(
+            connection,
+            (
+                "ZREMRANGEBYSCORE",
+                key,
+                ScoreRange {
+                    start: min,
+                    stop: max,
+                    rev: false,
+                },
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The position of the member in the sorted set stored at key, from the highest score, none"]
+    #[doc = " when it is not a member."]
+    #[doc = ""]
+    #[doc = " See also `zrevrank-withscore` and `zrank`."]
+    #[doc = ""]
+    #[doc = " ZREVRANK key member"]
+    #[doc = " https://valkey.io/commands/zrevrank/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrevrank(
+        connection: &Connection,
+        key: String,
+        member: String,
+    ) -> Result<Option<Integer>, Error> {
+        query(connection, ("ZREVRANK", key, member)).await
+    }
+
+    #[doc = " The position, and the score, of the member in the sorted set stored at key, from the highest"]
+    #[doc = " score, none when it is not a member."]
+    #[doc = ""]
+    #[doc = " See also `zrevrank`."]
+    #[doc = ""]
+    #[doc = " ZREVRANK key member WITHSCORE"]
+    #[doc = " https://valkey.io/commands/zrevrank/"]
+    #[allow(async_fn_in_trait)]
+    async fn zrevrank_withscore(
+        connection: &Connection,
+        key: String,
+        member: String,
+    ) -> Result<Option<(Integer, Double)>, Error> {
+        query(connection, ("ZREVRANK", key, member, "WITHSCORE")).await
+    }
+
+    #[doc = " Incrementally iterate over the members of the sorted set stored at key, and their scores."]
+    #[doc = ""]
+    #[doc = " See also `zscan-noscores`."]
+    #[doc = ""]
+    #[doc = " ZSCAN key cursor [ MATCH pattern ] [ COUNT count ]"]
+    #[doc = " https://valkey.io/commands/zscan/"]
+    #[allow(async_fn_in_trait)]
+    async fn zscan(
+        connection: &Connection,
+        key: String,
+        cursor: Option<Cursor>,
+        match_: Option<String>,
+        count: Option<Integer>,
+    ) -> Result<(Cursor, Vec<(String, Double)>), Error> {
+        // the members and scores are a flat array, the scores bulk strings
+        let (cursor, members): (Cursor, FlatPairs<String, Double>) = query(
+            connection,
+            (
+                "ZSCAN",
+                key,
+                cursor.unwrap_or(Cursor::from("0")),
+                NamedOption("MATCH", match_),
+                NamedOption("COUNT", count),
+            ),
+        )
+        .await?;
+        Ok((cursor, members.0))
+    }
+
+    #[doc = " Incrementally iterate over the members of the sorted set stored at key."]
+    #[doc = ""]
+    #[doc = " See also `zscan`."]
+    #[doc = ""]
+    #[doc = " ZSCAN key cursor [ MATCH pattern ] [ COUNT count ] NOSCORES"]
+    #[doc = " https://valkey.io/commands/zscan/"]
+    #[allow(async_fn_in_trait)]
+    async fn zscan_noscores(
+        connection: &Connection,
+        key: String,
+        cursor: Option<Cursor>,
+        match_: Option<String>,
+        count: Option<Integer>,
+    ) -> Result<(Cursor, Vec<String>), Error> {
+        query(
+            connection,
+            (
+                "ZSCAN",
+                key,
+                cursor.unwrap_or(Cursor::from("0")),
+                NamedOption("MATCH", match_),
+                NamedOption("COUNT", count),
+                "NOSCORES",
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The score of the member in the sorted set stored at key, none when it is not a member."]
+    #[doc = ""]
+    #[doc = " ZSCORE key member"]
+    #[doc = " https://valkey.io/commands/zscore/"]
+    #[allow(async_fn_in_trait)]
+    async fn zscore(
+        connection: &Connection,
+        key: String,
+        member: String,
+    ) -> Result<Option<Double>, Error> {
+        query(connection, ("ZSCORE", key, member)).await
+    }
+
+    #[doc = " The members in any of the sorted sets."]
+    #[doc = ""]
+    #[doc = " The weights, when given, multiply the scores of each sorted set, one for each key."]
+    #[doc = ""]
+    #[doc = " See also `zunion-withscores`."]
+    #[doc = ""]
+    #[doc = " ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]"]
+    #[doc = " https://valkey.io/commands/zunion/"]
+    #[allow(async_fn_in_trait)]
+    async fn zunion(
+        connection: &Connection,
+        keys: Vec<String>,
+        weights: Option<Vec<Double>>,
+        aggregate: Option<Aggregate>,
+    ) -> Result<Vec<String>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let weights = NonEmpty::optional("weights", weights)?;
+        query(
+            connection,
+            (
+                "ZUNION",
+                NumKeys(keys),
+                NamedOption("WEIGHTS", weights),
+                aggregate,
+            ),
+        )
+        .await
+    }
+
+    #[doc = " The members, and their combined scores, in any of the sorted sets."]
+    #[doc = ""]
+    #[doc = " See also `zunion`."]
+    #[doc = ""]
+    #[doc = " ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES"]
+    #[doc = " https://valkey.io/commands/zunion/"]
+    #[allow(async_fn_in_trait)]
+    async fn zunion_withscores(
+        connection: &Connection,
+        keys: Vec<String>,
+        weights: Option<Vec<Double>>,
+        aggregate: Option<Aggregate>,
+    ) -> Result<Vec<(String, Double)>, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let weights = NonEmpty::optional("weights", weights)?;
+        let command = (
+            "ZUNION",
+            NumKeys(keys),
+            NamedOption("WEIGHTS", weights),
+            aggregate,
+            "WITHSCORES",
+        );
+        query(connection, command).await
+    }
+
+    #[doc = " Stores the members in any of the sorted sets, with their combined scores, returning how many."]
+    #[doc = ""]
+    #[doc = " ZUNIONSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]"]
+    #[doc = " https://valkey.io/commands/zunionstore/"]
+    #[allow(async_fn_in_trait)]
+    async fn zunionstore(
+        connection: &Connection,
+        destination: String,
+        keys: Vec<String>,
+        weights: Option<Vec<Double>>,
+        aggregate: Option<Aggregate>,
+    ) -> Result<Integer, Error> {
+        let keys = NonEmpty::new("keys", keys)?;
+        let weights = NonEmpty::optional("weights", weights)?;
+        let command = (
+            "ZUNIONSTORE",
+            destination,
+            NumKeys(keys),
+            NamedOption("WEIGHTS", weights),
+            aggregate,
+        );
+        query(connection, command).await
     }
 }
 

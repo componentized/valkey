@@ -267,6 +267,43 @@ impl FromValue for XpendingExtendedEntry {
     }
 }
 
+/// Members and their scores, e.g. from ZPOPMIN, which replies with one pair, or none, without a
+/// count, and a list of pairs with one.
+pub struct ScoredMembers(pub Vec<(String, Double)>);
+
+impl FromValue for ScoredMembers {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        let items = items(value)?;
+        match items.first() {
+            None => Ok(ScoredMembers(vec![])),
+            Some(Value::Array(_)) => items
+                .into_iter()
+                .map(FromValue::from_value)
+                .collect::<Result<_, _>>()
+                .map(ScoredMembers),
+            Some(_) => match <[Value; 2]>::try_from(items) {
+                Ok([member, score]) => Ok(ScoredMembers(vec![(
+                    String::from_value(member)?,
+                    Double::from_value(score)?,
+                )])),
+                Err(items) => Err(Error::Client(format!(
+                    "unexpected number of items, expected a member and its score: {}",
+                    items.len()
+                ))),
+            },
+        }
+    }
+}
+
+/// Pairs in a flat array, `[key, value, key, value...]`, e.g. the members and scores of ZSCAN.
+pub struct FlatPairs<K, V>(pub Vec<(K, V)>);
+
+impl<K: FromValue, V: FromValue> FromValue for FlatPairs<K, V> {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        entries(value).map(FlatPairs)
+    }
+}
+
 impl FromValue for TtlResult {
     fn from_value(value: Value) -> Result<Self, Error> {
         match Integer::from_value(value)? {

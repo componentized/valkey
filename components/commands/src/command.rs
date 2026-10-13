@@ -1,7 +1,8 @@
 use crate::exports::componentized::valkey::commands::{
-    ChannelRule, CommandRule, Connection, DbRule, Duration, Error, GetexTtl, Instant, KeyRule,
-    MsetexPrecondition, Rule, RuleSelector, SetPrecondition, SetTtl, StreamTrim,
-    StreamTrimEfficiency, TtlMode, UserRule, Value, XclaimOpts,
+    Aggregate, ChannelRule, CommandRule, Connection, DbRule, Duration, Error, GetexTtl, Instant,
+    KeyRule, LexBound, Limit, MsetexPrecondition, PopEnd, Rule, RuleSelector, ScoreBound,
+    SetPrecondition, SetTtl, SortOpts, SortOrder, StreamTrim, StreamTrimEfficiency, TtlMode,
+    UserRule, Value, XclaimOpts, ZaddComparison, ZaddCondition, ZrangeBy,
 };
 use crate::value::{FromValue, OrZeroId, ZERO_ID};
 
@@ -401,6 +402,191 @@ impl IntoCommand for XclaimOpts {
             NamedOption("RETRYCOUNT", self.retrycount),
             Flag("FORCE", self.force),
             NamedOption("LASTID", self.lastid),
+        )
+            .into_command()
+    }
+}
+
+/// A duration in seconds with a fraction, e.g. the timeout of BZPOPMIN.
+pub struct DecimalSeconds(pub Duration);
+
+impl IntoCommand for DecimalSeconds {
+    fn into_command(self) -> Vec<String> {
+        vec![(self.0 as f64 / 1_000_000_000.0).to_string()]
+    }
+}
+
+/// A list the command requires at least one item of, e.g. the keys of DEL.
+pub struct NonEmpty<T>(Vec<T>);
+
+impl<T> NonEmpty<T> {
+    /// Fails, before anything is sent, when there are no items.
+    pub fn new(name: &str, items: Vec<T>) -> Result<Self, Error> {
+        if items.is_empty() {
+            return Err(Error::Client(format!("{name} requires at least one item")));
+        }
+        Ok(NonEmpty(items))
+    }
+
+    /// A list the command allows to be left out, none rather than empty.
+    pub fn optional(name: &str, items: Option<Vec<T>>) -> Result<Option<Self>, Error> {
+        items.map(|items| NonEmpty::new(name, items)).transpose()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<T: IntoCommand> IntoCommand for NonEmpty<T> {
+    fn into_command(self) -> Vec<String> {
+        self.0.into_command()
+    }
+}
+
+/// The keys preceded by how many there are, e.g. for ZINTER.
+pub struct NumKeys(pub NonEmpty<String>);
+
+impl IntoCommand for NumKeys {
+    fn into_command(self) -> Vec<String> {
+        (self.0.len(), self.0).into_command()
+    }
+}
+
+impl IntoCommand for Limit {
+    fn into_command(self) -> Vec<String> {
+        ("LIMIT", self.offset, self.count).into_command()
+    }
+}
+
+/// The start and stop of a range of scores, as given, the start is the maximum with REV.
+pub struct ScoreRange {
+    pub start: ScoreBound,
+    pub stop: ScoreBound,
+    pub rev: bool,
+}
+
+impl IntoCommand for ScoreRange {
+    fn into_command(self) -> Vec<String> {
+        let bound = |bound, unbounded: &str| match bound {
+            ScoreBound::Inclusive(score) => score.to_string(),
+            ScoreBound::Exclusive(score) => format!("({score}"),
+            ScoreBound::Unbounded => unbounded.to_string(),
+        };
+        let (low, high) = ("-inf", "+inf");
+        let (start, stop) = if self.rev { (high, low) } else { (low, high) };
+        vec![bound(self.start, start), bound(self.stop, stop)]
+    }
+}
+
+/// The start and stop of a range of members, as given, the start is the maximum with REV.
+pub struct LexRange {
+    pub start: LexBound,
+    pub stop: LexBound,
+    pub rev: bool,
+}
+
+impl IntoCommand for LexRange {
+    fn into_command(self) -> Vec<String> {
+        let bound = |bound, unbounded: &str| match bound {
+            LexBound::Inclusive(member) => format!("[{member}"),
+            LexBound::Exclusive(member) => format!("({member}"),
+            LexBound::Unbounded => unbounded.to_string(),
+        };
+        let (low, high) = ("-", "+");
+        let (start, stop) = if self.rev { (high, low) } else { (low, high) };
+        vec![bound(self.start, start), bound(self.stop, stop)]
+    }
+}
+
+/// ZRANGE and ZRANGESTORE, `start stop [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ]`.
+pub struct Zrange {
+    pub range: ZrangeBy,
+    pub rev: bool,
+    pub limit: Option<Limit>,
+}
+
+impl IntoCommand for Zrange {
+    fn into_command(self) -> Vec<String> {
+        let Zrange { range, rev, limit } = self;
+        let (range, by) = match range {
+            ZrangeBy::Rank((start, stop)) => ((start, stop).into_command(), None),
+            ZrangeBy::Score((start, stop)) => (
+                ScoreRange { start, stop, rev }.into_command(),
+                Some("BYSCORE"),
+            ),
+            ZrangeBy::Lex((start, stop)) => {
+                (LexRange { start, stop, rev }.into_command(), Some("BYLEX"))
+            }
+        };
+        (range, by, Flag("REV", rev), limit).into_command()
+    }
+}
+
+impl IntoCommand for Aggregate {
+    fn into_command(self) -> Vec<String> {
+        let aggregate = match self {
+            Aggregate::Sum => "SUM",
+            Aggregate::Min => "MIN",
+            Aggregate::Max => "MAX",
+        };
+        ("AGGREGATE", aggregate).into_command()
+    }
+}
+
+impl IntoCommand for PopEnd {
+    fn into_command(self) -> Vec<String> {
+        match self {
+            PopEnd::Min => "MIN",
+            PopEnd::Max => "MAX",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ZaddCondition {
+    fn into_command(self) -> Vec<String> {
+        match self {
+            ZaddCondition::Nx => "NX",
+            ZaddCondition::Xx => "XX",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for ZaddComparison {
+    fn into_command(self) -> Vec<String> {
+        match self {
+            ZaddComparison::Gt => "GT",
+            ZaddComparison::Lt => "LT",
+        }
+        .into_command()
+    }
+}
+
+impl IntoCommand for SortOrder {
+    fn into_command(self) -> Vec<String> {
+        match self {
+            SortOrder::Asc => "ASC",
+            SortOrder::Desc => "DESC",
+        }
+        .into_command()
+    }
+}
+
+/// `[ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]`
+impl IntoCommand for SortOpts {
+    fn into_command(self) -> Vec<String> {
+        (
+            NamedOption("BY", self.by),
+            self.limit,
+            self.get
+                .into_iter()
+                .flatten()
+                .map(|pattern| ("GET", pattern))
+                .collect::<Vec<_>>(),
+            self.order,
+            Flag("ALPHA", self.alpha),
         )
             .into_command()
     }
