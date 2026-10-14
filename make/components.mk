@@ -57,8 +57,8 @@ ${COMPONENTS_DIR}/$1/$1.wasm: Cargo.toml Cargo.lock components/wit/deps $(shell 
 	$(WASM_TOOLS) component new target/wasm32-unknown-unknown/release/$(subst -,_,$1).wasm -o ${COMPONENTS_DIR}/$1/$1.wasm
 
 ${COMPONENTS_DIR}/$1/$1.debug.wasm: Cargo.toml Cargo.lock components/wit/deps $(shell find components/$1 -type f) $(shell find crates -type f 2> /dev/null) ${COMPONENTS_DIR}/$1/README.md | $(call tool,wasm-tools)
-	cargo build --target wasm32-unknown-unknown -p $1
-	$(WASM_TOOLS) component new target/wasm32-unknown-unknown/debug/$(subst -,_,$1).wasm -o ${COMPONENTS_DIR}/$1/$1.debug.wasm
+	cargo build -p $1 --target wasm32-unknown-unknown --profile component-debug
+	$(WASM_TOOLS) component new target/wasm32-unknown-unknown/component-debug/$(subst -,_,$1).wasm -o ${COMPONENTS_DIR}/$1/$1.debug.wasm
 
 endif
 
