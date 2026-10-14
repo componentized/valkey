@@ -38,6 +38,7 @@ A [dev container](https://containers.dev) is available that contains the necessa
 Prereqs:
 - a rust toolchain
 - [`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall), optional, to download prebuilt tools instead of building them
+- Docker, to run the integration tests `make test-valkey`
 
 ```sh
 make components
