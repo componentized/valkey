@@ -4,6 +4,7 @@ members = [
     "components/as-keyvalue",
     "components/commands",
     "components/connection",
+    "components/connection-minimal",
     "components/dep-cli",
     "components/dep-test-commands",
     "components/sample-http-incrementor",

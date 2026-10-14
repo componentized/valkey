@@ -400,7 +400,7 @@ async fn commands_the_connection_manages_are_rejected() -> wasmtime::Result<()> 
                 .call_exchange(accessor, connection, words(&["SUBSCRIBE", "raw"]))
                 .await?;
             assert_eq!(result, Ok(RespValue::Null));
-            let _subscription = guest.call_subscription(accessor, connection).await?;
+            let _subscription = guest.call_subscription(accessor, connection).await??;
             let result = guest
                 .call_exchange(accessor, connection, words(&["unsubscribe"]))
                 .await?;
@@ -425,7 +425,7 @@ async fn subscriptions_are_confirmed_by_push_messages() -> wasmtime::Result<()> 
             let guest = exports.connection();
             let subscriptions = exports.subscription();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let subscription = guest.call_subscription(accessor, connection).await?;
+            let subscription = guest.call_subscription(accessor, connection).await??;
             let (events, _ended) = subscriptions.call_events(accessor, subscription).await?;
             let mut events = receive(accessor, events)?;
             let dead_letters = guest.call_dead_letters(accessor, connection).await?;
@@ -520,7 +520,7 @@ async fn error_replies_fail_a_subscribe() -> wasmtime::Result<()> {
             let guest = exports.connection();
             let subscriptions = exports.subscription();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let subscription = guest.call_subscription(accessor, connection).await?;
+            let subscription = guest.call_subscription(accessor, connection).await??;
             let subscribe =
                 subscriptions.call_subscribe(accessor, subscription, vec![channel("secret")]);
             let get = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
@@ -558,7 +558,7 @@ async fn dropping_a_subscription_unsubscribes() -> wasmtime::Result<()> {
             let guest = exports.connection();
             let subscriptions = exports.subscription();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let subscription = guest.call_subscription(accessor, connection).await?;
+            let subscription = guest.call_subscription(accessor, connection).await??;
             let call = subscriptions.call_subscribe(accessor, subscription, vec![channel("news")]);
             let server = async {
                 transport.request().await;
@@ -812,7 +812,7 @@ async fn mixed_kinds_are_subscribed_with_a_command_each() -> wasmtime::Result<()
             let guest = exports.connection();
             let subscriptions = exports.subscription();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let subscription = guest.call_subscription(accessor, connection).await?;
+            let subscription = guest.call_subscription(accessor, connection).await??;
             let (events, _ended) = subscriptions.call_events(accessor, subscription).await?;
             let mut events = receive(accessor, events)?;
 
@@ -893,8 +893,8 @@ async fn overlapping_subscriptions_share_the_servers() -> wasmtime::Result<()> {
             let guest = exports.connection();
             let subscriptions = exports.subscription();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let first = guest.call_subscription(accessor, connection).await?;
-            let second = guest.call_subscription(accessor, connection).await?;
+            let first = guest.call_subscription(accessor, connection).await??;
+            let second = guest.call_subscription(accessor, connection).await??;
             let (first_events, _) = subscriptions.call_events(accessor, first).await?;
             let mut first_events = receive(accessor, first_events)?;
             let (second_events, _) = subscriptions.call_events(accessor, second).await?;
@@ -953,7 +953,7 @@ async fn pattern_messages_carry_the_channel() -> wasmtime::Result<()> {
             let guest = exports.connection();
             let subscriptions = exports.subscription();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let subscription = guest.call_subscription(accessor, connection).await?;
+            let subscription = guest.call_subscription(accessor, connection).await??;
             let (events, _) = subscriptions.call_events(accessor, subscription).await?;
             let mut events = receive(accessor, events)?;
             let call = subscriptions.call_subscribe(accessor, subscription, vec![pattern("n*")]);
@@ -987,7 +987,7 @@ async fn targets_end_by_the_server_reset_and_closing() -> wasmtime::Result<()> {
             let guest = exports.connection();
             let subscriptions = exports.subscription();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let subscription = guest.call_subscription(accessor, connection).await?;
+            let subscription = guest.call_subscription(accessor, connection).await??;
             let (events, ended) = subscriptions.call_events(accessor, subscription).await?;
             let mut events = receive(accessor, events)?;
             let targets = vec![shardchannel("orders"), channel("news")];
@@ -1097,7 +1097,7 @@ mod with_valkey {
                 let subscription = exports
                     .connection()
                     .call_subscription(accessor, connection)
-                    .await?;
+                    .await??;
                 let (events, ended) = subscriptions.call_events(accessor, subscription).await?;
                 let mut events = receive(accessor, events)?;
 
@@ -1155,7 +1155,7 @@ mod with_valkey {
                 let other = exports
                     .connection()
                     .call_subscription(accessor, connection)
-                    .await?;
+                    .await??;
                 subscriptions
                     .call_subscribe(accessor, other, vec![channel("t:conn:a")])
                     .await??;
@@ -1223,7 +1223,7 @@ mod with_valkey {
                     let subscription = exports
                         .connection()
                         .call_subscription(accessor, connection)
-                        .await?;
+                        .await??;
                     let targets = vec![
                         pattern("t:conn:no*"),
                         channel("t:conn:ok"),
@@ -1276,7 +1276,7 @@ mod with_valkey {
                     &["SET", "t:conn:reset", "db1"],
                 )
                 .await??;
-                let subscription = guest.call_subscription(accessor, connection).await?;
+                let subscription = guest.call_subscription(accessor, connection).await??;
                 let (events, _ended) = subscriptions.call_events(accessor, subscription).await?;
                 let mut events = receive(accessor, events)?;
                 subscriptions
@@ -1402,7 +1402,7 @@ mod with_valkey {
                 let subscription = exports
                     .connection()
                     .call_subscription(accessor, connection)
-                    .await?;
+                    .await??;
                 let (events, ended) = subscriptions.call_events(accessor, subscription).await?;
                 let mut events = receive(accessor, events)?;
                 let targets = vec![channel("t:conn:k"), pattern("t:conn:k*")];
@@ -1425,6 +1425,79 @@ mod with_valkey {
                     .call_subscribe(accessor, subscription, vec![channel("t:conn:k2")])
                     .await?;
                 assert!(matches!(result, Err(Error::Closed(_))));
+                Ok(())
+            })
+            .await
+    }
+}
+
+/// The tests of `connection-minimal`, the same component built without pub/sub.
+mod minimal {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn subscriptions_are_not_supported() -> wasmtime::Result<()> {
+        let mut harness = Harness::new("connection-minimal").await?;
+        harness
+            .run(async |accessor, exports| {
+                let guest = exports.connection();
+                let (mut transport, connection) = establish(accessor, exports).await?;
+                let result = guest.call_subscription(accessor, connection).await?;
+                assert_eq!(
+                    result.err(),
+                    Some(Error::Client(
+                        "subscriptions are not supported by this build of the connection, push messages arrive in dead-letters"
+                            .to_string()
+                    ))
+                );
+
+                // SUBSCRIBE and the like may be sent with exchange, every push message is a dead
+                // letter
+                let dead_letters = guest.call_dead_letters(accessor, connection).await?;
+                let mut dead_letters = receive(accessor, dead_letters)?;
+                let result = guest
+                    .call_exchange(accessor, connection, words(&["SUBSCRIBE", "news"]))
+                    .await?;
+                assert_eq!(result, Ok(RespValue::Null));
+                assert_eq!(
+                    transport.request().await,
+                    Some(command(&["SUBSCRIBE", "news"]))
+                );
+                let confirmation = confirm("subscribe", "news");
+                let message = push(vec![bulk("message"), bulk("news"), bulk("hello")]);
+                transport.reply(confirmation.clone());
+                transport.reply(message.clone());
+                assert_eq!(dead_letters.recv().await, Some(confirmation));
+                assert_eq!(dead_letters.recv().await, Some(message));
+                Ok(())
+            })
+            .await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn exchanges_and_resets() -> wasmtime::Result<()> {
+        let mut harness = Harness::new("connection-minimal").await?;
+        harness
+            .run(async |accessor, exports| {
+                let guest = exports.connection();
+                let (mut transport, connection) = establish(accessor, exports).await?;
+                let call = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
+                let server = async {
+                    assert_eq!(transport.request().await, Some(command(&["GET", "a"])));
+                    transport.reply(bulk("1"));
+                };
+                let (result, ()) = tokio::join!(call, server);
+                assert_eq!(result?, Ok(bulk("1")));
+
+                let call = guest.call_reset(accessor, connection);
+                let server = async {
+                    assert_eq!(transport.request().await, Some(command(&["RESET"])));
+                    assert_eq!(transport.request().await, Some(command(&["HELLO", "3"])));
+                    transport.reply(simple("RESET"));
+                    transport.reply(hello_reply());
+                };
+                let (result, ()) = tokio::join!(call, server);
+                assert_eq!(result?, Ok(()));
                 Ok(())
             })
             .await

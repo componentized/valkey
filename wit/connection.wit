@@ -110,7 +110,11 @@ interface connection {
         /// fail with a client error, so the server's subscriptions stay in step with the
         /// connection's. Subscriptions made with `exchange` before are unsupported. They may keep
         /// delivering to `dead-letters`, the exact behavior is undocumented.
-        subscription: func() -> subscription;
+        ///
+        /// Fails with a client error when the connection component was built without pub/sub,
+        /// e.g. `connection-minimal`. Its push messages are then all dead letters, and SUBSCRIBE and
+        /// the like may still be sent with `exchange`.
+        subscription: func() -> result<subscription, error>;
 
         /// The values nothing else claims, kept apart from replies.
         ///

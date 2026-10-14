@@ -180,6 +180,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "connection-minimal"
+version = "0.3.0-dev"
+dependencies = [
+ "componentized-valkey",
+ "futures-channel",
+ "futures-core",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "core_detect"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

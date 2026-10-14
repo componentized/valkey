@@ -1,0 +1,20 @@
+[package]
+name = "connection-minimal"
+version.workspace = true
+edition = "2024"
+license = "Apache-2.0"
+
+# the source of `connection`, built without its default features, e.g. pub/sub
+[lib]
+crate-type = ["cdylib"]
+path = "../connection/src/lib.rs"
+
+[features]
+# off, see `connection`
+pubsub = []
+
+[dependencies]
+futures-channel = { workspace = true }
+futures-core = { workspace = true }
+componentized-valkey = { workspace = true }
+wit-bindgen = { workspace = true, features = ["async-spawn", "inter-task-wakeup"] }
