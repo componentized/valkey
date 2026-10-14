@@ -1,6 +1,6 @@
 //! The hash commands: HEXPIRE, HPERSIST, HSETEX and the like.
 
-use crate::command::{IntoCommand, NonEmpty, NumKeys};
+use crate::command::{IntoCommand, NonEmpty, NumKeys, Words};
 use crate::types::{
     Error, HexpireResult, HpersistResult, HsetexCondition, HsetexFieldCondition, Integer, RespValue,
 };
@@ -10,7 +10,7 @@ use crate::value::FromValue;
 pub struct Fields<T>(pub NonEmpty<T>);
 
 impl<T: IntoCommand> IntoCommand for Fields<T> {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         ("FIELDS", NumKeys(self.0)).into_command()
     }
 }
@@ -40,7 +40,7 @@ impl FromValue for HpersistResult {
 }
 
 impl IntoCommand for HsetexCondition {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             HsetexCondition::Nx => "NX",
             HsetexCondition::Xx => "XX",
@@ -50,7 +50,7 @@ impl IntoCommand for HsetexCondition {
 }
 
 impl IntoCommand for HsetexFieldCondition {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             HsetexFieldCondition::Fnx => "FNX",
             HsetexFieldCondition::Fxx => "FXX",

@@ -1,7 +1,10 @@
 //! Converting Rust values into the words of a command, the impls for Rust's own types and the
 //! helpers the commands share. The impls for the package's types are in [`crate::commands`].
 
-use crate::types::Error;
+use crate::types::{Error, StringOrBytes};
+
+/// The words of a command, each a string, or bytes, e.g. a binary value.
+pub type Words = Vec<StringOrBytes>;
 
 /// Converts a Rust type into the words of a command, e.g. `Option<String>` into no word, or one.
 ///
@@ -11,24 +14,31 @@ use crate::types::Error;
 /// A value the command does not accept, e.g. an empty list where it requires an item, fails with a
 /// client error, and the command is not sent.
 pub trait IntoCommand {
-    fn into_command(self) -> Result<Vec<String>, Error>;
+    fn into_command(self) -> Result<Words, Error>;
 }
 
-impl IntoCommand for &str {
-    fn into_command(self) -> Result<Vec<String>, Error> {
-        Ok(vec![self.to_string()])
-    }
-}
-
-impl IntoCommand for String {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+/// A value as given, UTF-8 or not.
+impl IntoCommand for StringOrBytes {
+    fn into_command(self) -> Result<Words, Error> {
         Ok(vec![self])
     }
 }
 
+impl IntoCommand for &str {
+    fn into_command(self) -> Result<Words, Error> {
+        Ok(vec![self.into()])
+    }
+}
+
+impl IntoCommand for String {
+    fn into_command(self) -> Result<Words, Error> {
+        Ok(vec![self.into()])
+    }
+}
+
 impl IntoCommand for &String {
-    fn into_command(self) -> Result<Vec<String>, Error> {
-        Ok(vec![self.clone()])
+    fn into_command(self) -> Result<Words, Error> {
+        Ok(vec![self.as_str().into()])
     }
 }
 
@@ -37,8 +47,8 @@ macro_rules! into_command_numbers {
     ($($number:ty),*) => {
         $(
             impl IntoCommand for $number {
-                fn into_command(self) -> Result<Vec<String>, Error> {
-                    Ok(vec![self.to_string()])
+                fn into_command(self) -> Result<Words, Error> {
+                    Ok(vec![self.to_string().into()])
                 }
             }
         )*
@@ -49,13 +59,13 @@ into_command_numbers!(i32, i64, u8, u16, u32, u64, usize, f64);
 
 /// No word for none.
 impl<T: IntoCommand> IntoCommand for Option<T> {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         self.map_or(Ok(vec![]), IntoCommand::into_command)
     }
 }
 
 impl<T: IntoCommand> IntoCommand for Vec<T> {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let mut command = vec![];
         for item in self {
             command.extend(item.into_command()?);
@@ -65,7 +75,7 @@ impl<T: IntoCommand> IntoCommand for Vec<T> {
 }
 
 impl<T: IntoCommand, const N: usize> IntoCommand for [T; N] {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let mut command = vec![];
         for item in self {
             command.extend(item.into_command()?);
@@ -80,7 +90,7 @@ macro_rules! into_command_tuples {
         $(
             impl<$($item: IntoCommand),+> IntoCommand for ($($item,)+) {
                 #[allow(non_snake_case)]
-                fn into_command(self) -> Result<Vec<String>, Error> {
+                fn into_command(self) -> Result<Words, Error> {
                     let ($($item,)+) = self;
                     let mut command = vec![];
                     $(command.extend($item.into_command()?);)+
@@ -110,13 +120,9 @@ into_command_tuples!(
 pub struct Flag(pub &'static str, pub bool);
 
 impl IntoCommand for Flag {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let Flag(word, present) = self;
-        Ok(if present {
-            vec![word.to_string()]
-        } else {
-            vec![]
-        })
+        Ok(if present { vec![word.into()] } else { vec![] })
     }
 }
 
@@ -124,7 +130,7 @@ impl IntoCommand for Flag {
 pub struct NamedOption<T>(pub &'static str, pub Option<T>);
 
 impl<T: IntoCommand> IntoCommand for NamedOption<T> {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let NamedOption(name, value) = self;
         match value {
             Some(_) => (name, value).into_command(),
@@ -153,7 +159,7 @@ impl<T> NonEmpty<T> {
 }
 
 impl<T: IntoCommand> IntoCommand for NonEmpty<T> {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let NonEmpty(name, items) = self;
         if items.is_empty() {
             return Err(Error::Client(format!("{name} requires at least one item")));
@@ -167,7 +173,7 @@ impl<T: IntoCommand> IntoCommand for NonEmpty<T> {
 pub struct NumKeys<T>(pub NonEmpty<T>);
 
 impl<T: IntoCommand> IntoCommand for NumKeys<T> {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         (self.0.len(), self.0).into_command()
     }
 }

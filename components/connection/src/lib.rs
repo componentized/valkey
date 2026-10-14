@@ -28,7 +28,7 @@ use std::future::{Future, poll_fn};
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 
-use componentized_valkey::types::{RespNestedValue, RespValue};
+use componentized_valkey::types::{RespValue, StringOrBytes};
 use exports::componentized::valkey::connection::{
     ConnectOpts, Connection, DurationMilliseconds, Error, Guest, GuestConnection, Subscription,
 };
@@ -41,6 +41,9 @@ use wit_bindgen::{FutureReader, FutureWriter, StreamReader, StreamWriter, spawn_
 const LIB_NAME: &str = "componentized:valkey";
 /// The version the connection reports to the server, that of the package.
 const LIB_VER: &str = env!("CARGO_PKG_VERSION");
+
+/// A word of a command, as sent, UTF-8 or not.
+type Word = Vec<u8>;
 
 /// How many values a reader may fall behind before its stream is closed, and how many events a
 /// subscription keeps while no stream is open.
@@ -109,7 +112,7 @@ struct State {
     /// The server's properties from the reply to HELLO.
     server_properties: Vec<(String, RespValue)>,
     /// The HELLO the connection was established with, repeated after RESET.
-    hello: Vec<String>,
+    hello: Vec<Word>,
     /// Bumped each time the keep-alive is set, a keep-alive task stops once it is outdated.
     keep_alive_generation: u64,
     /// Set by the first `subscription`, and never cleared: from then on the connection
@@ -163,23 +166,27 @@ impl GuestConnection for ConnectionImpl {
         self.0.state.borrow().server_properties.clone()
     }
 
-    async fn exchange(&self, command: Vec<String>) -> Result<RespValue, Error> {
-        exchange(&self.0, command).await
+    async fn exchange(&self, command: Vec<StringOrBytes>) -> Result<RespValue, Error> {
+        exchange(&self.0, bytes(command)).await
     }
 
-    async fn exchange_all(&self, commands: Vec<Vec<String>>) -> Vec<Result<RespValue, Error>> {
-        exchange_all(&self.0, commands).await
+    async fn exchange_all(
+        &self,
+        commands: Vec<Vec<StringOrBytes>>,
+    ) -> Vec<Result<RespValue, Error>> {
+        exchange_all(&self.0, commands.into_iter().map(bytes).collect()).await
     }
 
-    async fn emit(&self, command: Vec<String>) -> Result<(), Error> {
-        emit(&self.0, command).await
+    async fn emit(&self, command: Vec<StringOrBytes>) -> Result<(), Error> {
+        emit(&self.0, bytes(command)).await
     }
 
     async fn watch(&self, keys: Vec<String>) -> Result<(), Error> {
         if keys.is_empty() {
             return Err(Error::Client("keys requires at least one item".to_string()));
         }
-        let command = std::iter::once("WATCH".to_string()).chain(keys).collect();
+        let keys = keys.into_iter().map(String::into_bytes);
+        let command = std::iter::once(b"WATCH".to_vec()).chain(keys).collect();
         ok(exchange(&self.0, command).await?)
     }
 
@@ -189,9 +196,9 @@ impl GuestConnection for ConnectionImpl {
 
     async fn transaction(
         &self,
-        commands: Vec<Vec<String>>,
+        commands: Vec<Vec<StringOrBytes>>,
     ) -> Result<Option<Vec<RespValue>>, Error> {
-        transaction(&self.0, commands).await
+        transaction(&self.0, commands.into_iter().map(bytes).collect()).await
     }
 
     fn subscription(&self) -> Result<Subscription, Error> {
@@ -287,7 +294,7 @@ async fn reset(inner: &Inner) -> Result<(), Error> {
 /// A command without a reply takes no place in the order.
 fn enqueue(
     inner: &Inner,
-    command: Vec<String>,
+    command: Vec<Word>,
     reply: Option<Reply>,
     written: Option<oneshot::Sender<()>>,
 ) -> Result<(), Error> {
@@ -319,7 +326,7 @@ fn enqueue(
     Ok(())
 }
 
-async fn exchange(inner: &Inner, command: Vec<String>) -> Result<RespValue, Error> {
+async fn exchange(inner: &Inner, command: Vec<Word>) -> Result<RespValue, Error> {
     reject_managed(inner, &command)?;
     if replies_with_pushes(&command) {
         return emit(inner, command).await.map(|()| RespValue::Null);
@@ -329,7 +336,7 @@ async fn exchange(inner: &Inner, command: Vec<String>) -> Result<RespValue, Erro
 
 /// Send a command and wait for its reply, for the commands the connection sends itself, e.g. HELLO,
 /// which callers may not.
-async fn request(inner: &Inner, command: Vec<String>) -> Result<RespValue, Error> {
+async fn request(inner: &Inner, command: Vec<Word>) -> Result<RespValue, Error> {
     let (reply_tx, reply_rx) = oneshot::channel();
     enqueue(inner, command, Some(Reply::Call(reply_tx)), None)?;
     // the reply is dropped unsent when the connection closes, the reader fails it first
@@ -339,7 +346,7 @@ async fn request(inner: &Inner, command: Vec<String>) -> Result<RespValue, Error
 }
 
 /// Queue every command before waiting for any reply, so no other command is sent between them.
-async fn exchange_all(inner: &Inner, commands: Vec<Vec<String>>) -> Vec<Result<RespValue, Error>> {
+async fn exchange_all(inner: &Inner, commands: Vec<Vec<Word>>) -> Vec<Result<RespValue, Error>> {
     // no await until every command is queued
     let queued: Vec<Result<Option<oneshot::Receiver<_>>, Error>> = commands
         .into_iter()
@@ -370,7 +377,7 @@ async fn exchange_all(inner: &Inner, commands: Vec<Vec<String>>) -> Vec<Result<R
 /// MULTI, the commands, then EXEC, with no other command between them.
 async fn transaction(
     inner: &Inner,
-    commands: Vec<Vec<String>>,
+    commands: Vec<Vec<Word>>,
 ) -> Result<Option<Vec<RespValue>>, Error> {
     // before MULTI is sent, so an invalid command fails the transaction rather than being left out
     if commands.iter().any(Vec::is_empty) {
@@ -397,14 +404,14 @@ async fn transaction(
         RespValue::Null => Ok(None),
         RespValue::Array(replies) => replies
             .into_iter()
-            .map(|reply| componentized_valkey::resp::decode(reply).map_err(Error::Resp))
+            .map(|reply| decode(&reply))
             .collect::<Result<_, _>>()
             .map(Some),
         reply => Err(unexpected(&reply)),
     }
 }
 
-async fn emit(inner: &Inner, command: Vec<String>) -> Result<(), Error> {
+async fn emit(inner: &Inner, command: Vec<Word>) -> Result<(), Error> {
     reject_managed(inner, &command)?;
     let reply = (!replies_with_pushes(&command)).then_some(Reply::Discard);
     let (written_tx, written_rx) = oneshot::channel();
@@ -420,23 +427,28 @@ async fn emit(inner: &Inner, command: Vec<String>) -> Result<(), Error> {
 /// - CLIENT REPLY, which stops replies from pairing with commands
 /// - SUBSCRIBE and the like once the connection owns the subscriptions, see
 ///   `State::owns_subscriptions`, e.g. an UNSUBSCRIBE would end a subscription without it asking
-fn reject_managed(inner: &Inner, command: &[String]) -> Result<(), Error> {
-    let word = |index: usize| command.get(index).map(|word| word.to_uppercase());
-    let name = word(0).unwrap_or_default();
-    let reason = match (name.as_str(), word(1).as_deref()) {
-        ("RESET", _) => Some("RESET is rejected, use the connection's reset"),
-        ("HELLO", _) => Some(
+fn reject_managed(inner: &Inner, command: &[Word]) -> Result<(), Error> {
+    let is = |index: usize, word: &str| {
+        command
+            .get(index)
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(word.as_bytes()))
+    };
+    let reason = if is(0, "RESET") {
+        Some("RESET is rejected, use the connection's reset")
+    } else if is(0, "HELLO") {
+        Some(
             "HELLO is rejected, the connection sent it when it was established, see its server-properties",
-        ),
-        ("CLIENT", Some("REPLY")) => {
-            Some("CLIENT REPLY is rejected, every command has a reply, see the connection's emit")
-        }
-        _ => None,
+        )
+    } else if is(0, "CLIENT") && is(1, "REPLY") {
+        Some("CLIENT REPLY is rejected, every command has a reply, see the connection's emit")
+    } else {
+        None
     };
     if let Some(reason) = reason {
         return Err(Error::Client(reason.to_string()));
     }
     if replies_with_pushes(command) && inner.state.borrow().owns_subscriptions {
+        let name = String::from_utf8_lossy(&command[0]).to_uppercase();
         return Err(Error::Client(format!(
             "{name} is rejected once the connection has a subscription, use the subscription's methods"
         )));
@@ -449,14 +461,14 @@ fn reject_managed(inner: &Inner, command: &[String]) -> Result<(), Error> {
 /// In RESP3 the server confirms each channel subscribed to, or unsubscribed from, with a push
 /// message. An error, e.g. for a command missing its channels, is a reply the server sends
 /// unprompted.
-fn replies_with_pushes(command: &[String]) -> bool {
-    const COMMANDS: [&str; 6] = [
-        "SUBSCRIBE",
-        "PSUBSCRIBE",
-        "SSUBSCRIBE",
-        "UNSUBSCRIBE",
-        "PUNSUBSCRIBE",
-        "SUNSUBSCRIBE",
+fn replies_with_pushes(command: &[Word]) -> bool {
+    const COMMANDS: [&[u8]; 6] = [
+        b"SUBSCRIBE",
+        b"PSUBSCRIBE",
+        b"SSUBSCRIBE",
+        b"UNSUBSCRIBE",
+        b"PUNSUBSCRIBE",
+        b"SUNSUBSCRIBE",
     ];
     command.first().is_some_and(|name| {
         COMMANDS
@@ -500,8 +512,20 @@ async fn next<S: Stream + Unpin>(stream: &mut S) -> Option<S::Item> {
     poll_fn(|cx| Pin::new(&mut *stream).poll_next(cx)).await
 }
 
-fn words(words: &[&str]) -> Vec<String> {
-    words.iter().map(|word| word.to_string()).collect()
+/// The words of a command the connection sends itself, e.g. `words(&["PING"])`.
+fn words(words: &[&str]) -> Vec<Word> {
+    words.iter().map(|word| word.as_bytes().to_vec()).collect()
+}
+
+/// The words of a command, taken from strings or bytes as they are, without copying.
+fn bytes(command: Vec<StringOrBytes>) -> Vec<Word> {
+    command
+        .into_iter()
+        .map(|word| match word {
+            StringOrBytes::String(text) => text.into_bytes(),
+            StringOrBytes::Bytes(bytes) => bytes,
+        })
+        .collect()
 }
 
 /// Write each queued command to the requests stream, closing it once the connection is dropped.
@@ -695,10 +719,14 @@ async fn establish(
 
     let mut hello = words(&["HELLO", "3"]);
     if let Some((username, password)) = auth {
-        hello.extend(["AUTH".to_string(), username, password]);
+        hello.extend([
+            b"AUTH".to_vec(),
+            username.into_bytes(),
+            password.into_bytes(),
+        ]);
     }
     if let Some(client_name) = client_name {
-        hello.extend(["SETNAME".to_string(), client_name]);
+        hello.extend([b"SETNAME".to_vec(), client_name.into_bytes()]);
     }
 
     inner.state.borrow_mut().hello = hello.clone();
@@ -737,27 +765,29 @@ async fn establish(
 /// The server's properties from the reply to HELLO, a map of property names to values.
 fn server_properties(reply: RespValue) -> Result<Vec<(String, RespValue)>, Error> {
     let RespValue::Map(entries) = reply else {
-        return Err(Error::Client(format!(
-            "unexpected reply to HELLO: {reply:?}"
-        )));
+        return Err(Error::Client(format!("unexpected reply to HELLO: {reply}")));
     };
     entries
         .into_iter()
         .map(|(name, value)| {
-            let name = match decode(name)? {
-                RespValue::String(name) | RespValue::BulkString(name) => name,
-                name => {
-                    return Err(Error::Client(format!(
-                        "unexpected property name in reply to HELLO: {name:?}"
-                    )));
-                }
+            let invalid = |name: RespValue| {
+                Error::Client(format!(
+                    "unexpected property name in reply to HELLO: {name}"
+                ))
             };
-            Ok((name, decode(value)?))
+            let name = match decode(&name)? {
+                RespValue::String(name) => name,
+                // the bytes come back with the error, for its message
+                RespValue::BulkString(bytes) => String::from_utf8(bytes)
+                    .map_err(|error| invalid(RespValue::BulkString(error.into_bytes())))?,
+                name => return Err(invalid(name)),
+            };
+            Ok((name, decode(&value)?))
         })
         .collect()
 }
 
-fn decode(value: RespNestedValue) -> Result<RespValue, Error> {
+fn decode(value: &[u8]) -> Result<RespValue, Error> {
     componentized_valkey::resp::decode(value).map_err(Error::Resp)
 }
 

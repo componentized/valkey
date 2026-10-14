@@ -40,6 +40,7 @@ pub use bindings::componentized::valkey::types;
 pub mod command;
 pub mod commands;
 pub mod resp;
+mod string_or_bytes;
 pub mod value;
 
 #[cfg(test)]

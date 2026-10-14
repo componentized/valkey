@@ -46,7 +46,7 @@ fn buf_encode(value: RespValue, buf: &mut Vec<u8>) {
             buf.push(b'$');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
-            buf.extend_from_slice(val.as_bytes());
+            buf.extend(val);
             buf.extend_from_slice(CRLF_BYTES);
         }
         RespValue::Array(val) => {
@@ -127,12 +127,12 @@ fn buf_encode(value: RespValue, buf: &mut Vec<u8>) {
 /// ```
 /// # use componentized_valkey::resp::{decode, encode};
 /// # use componentized_valkey::types::RespValue;
-/// let value = RespValue::BulkString("Hello".to_string());
-/// assert_eq!(decode(encode(value.clone())), Ok(value));
+/// let value = RespValue::BulkString(b"Hello".to_vec());
+/// assert_eq!(decode(&encode(value.clone())), Ok(value));
 /// ```
-pub fn decode(value: Vec<u8>) -> Result<RespValue, Error> {
-    match frame_end(&value, 0)? {
-        Some(end) if end == value.len() => decode_frame(&value),
+pub fn decode(value: &[u8]) -> Result<RespValue, Error> {
+    match frame_end(value, 0)? {
+        Some(end) if end == value.len() => decode_frame(value),
         Some(end) => Err(format!(
             "unexpected bytes after the RESP value: {}",
             value.len() - end
@@ -250,7 +250,7 @@ fn decode_frame(buf: &[u8]) -> Result<RespValue, Error> {
         b'$' => match parse_integer(header)? {
             // a null bulk string, RESP2's null
             -1 => Ok(RespValue::Null),
-            _ => parse_string(blob()?).map(RespValue::BulkString),
+            _ => Ok(RespValue::BulkString(blob()?.to_vec())),
         },
         b'!' => parse_string(blob()?).map(RespValue::BulkError),
         b'=' => {
@@ -279,6 +279,69 @@ fn decode_frame(buf: &[u8]) -> Result<RespValue, Error> {
             Ok(RespValue::Map(map))
         }
         prefix => Err(format!("invalid RESP type: {prefix:?}")),
+    }
+}
+
+/// RESP values for people to read, e.g. in errors, each with its type, e.g. `integer<1>` and
+/// `array<bulk-string<"a">, null>`. A bulk string that is not UTF-8 is shown escaped, e.g.
+/// `bulk-string<b"\x80">`.
+impl std::fmt::Display for RespValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(value) => write!(f, "string<{value:?}>"),
+            Self::Error(value) => write!(f, "error<{value:?}>"),
+            Self::Integer(value) => write!(f, "integer<{value}>"),
+            Self::BulkString(value) => match std::str::from_utf8(value) {
+                Ok(text) => write!(f, "bulk-string<{text:?}>"),
+                Err(_) => write!(f, "bulk-string<b\"{}\">", value.escape_ascii()),
+            },
+            Self::Array(items) => write_items(f, "array", items),
+            Self::Null => f.write_str("null"),
+            Self::Boolean(value) => write!(f, "boolean<{value}>"),
+            Self::Double(value) => write!(f, "double<{value}>"),
+            Self::BigNumber(value) => write!(f, "big-number<{value}>"),
+            Self::BulkError(value) => write!(f, "bulk-error<{value:?}>"),
+            Self::VerbatimString((format, value)) => {
+                write!(f, "verbatim-string<{format}, {value:?}>")
+            }
+            Self::Map(entries) => {
+                f.write_str("map<")?;
+                for (index, (key, value)) in entries.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write_nested(f, key)?;
+                    f.write_str(": ")?;
+                    write_nested(f, value)?;
+                }
+                f.write_str(">")
+            }
+            Self::Set(items) => write_items(f, "set", items),
+            Self::Push(items) => write_items(f, "push", items),
+        }
+    }
+}
+
+/// The nested values of an aggregate, e.g. `array<integer<1>, null>`.
+fn write_items(
+    f: &mut std::fmt::Formatter<'_>,
+    kind: &str,
+    items: &[RespNestedValue],
+) -> std::fmt::Result {
+    write!(f, "{kind}<")?;
+    for (index, item) in items.iter().enumerate() {
+        if index > 0 {
+            f.write_str(", ")?;
+        }
+        write_nested(f, item)?;
+    }
+    f.write_str(">")
+}
+
+fn write_nested(f: &mut std::fmt::Formatter<'_>, value: &[u8]) -> std::fmt::Result {
+    match decode(value) {
+        Ok(value) => write!(f, "{value}"),
+        Err(_) => f.write_str("--invalid-resp--"),
     }
 }
 
@@ -360,7 +423,7 @@ mod tests {
             RespValue::String("OK".to_string()),
             RespValue::Error("ERR oops".to_string()),
             RespValue::Integer(-42),
-            RespValue::BulkString("a\r\nb".to_string()),
+            RespValue::BulkString(b"a\r\nb".to_vec()),
             RespValue::Null,
             RespValue::Boolean(false),
             RespValue::Double(1.5),
@@ -376,14 +439,14 @@ mod tests {
             )]),
         ];
         for value in values {
-            assert_eq!(decode(encode(value.clone())), Ok(value));
+            assert_eq!(decode(&encode(value.clone())), Ok(value));
         }
     }
 
     #[test]
     fn decode_keeps_elements_as_received() {
         // a nested array, kept as its RESP rather than decoded and encoded again
-        let decoded = decode(b"*2\r\n*1\r\n:1\r\n$1\r\na\r\n".to_vec());
+        let decoded = decode(b"*2\r\n*1\r\n:1\r\n$1\r\na\r\n");
         assert_eq!(
             decoded,
             Ok(RespValue::Array(vec![
@@ -395,32 +458,111 @@ mod tests {
 
     #[test]
     fn decode_resp2_nulls() {
-        assert_eq!(decode(b"$-1\r\n".to_vec()), Ok(RespValue::Null));
-        assert_eq!(decode(b"*-1\r\n".to_vec()), Ok(RespValue::Null));
+        assert_eq!(decode(b"$-1\r\n"), Ok(RespValue::Null));
+        assert_eq!(decode(b"*-1\r\n"), Ok(RespValue::Null));
     }
 
     #[test]
     fn decode_needs_exactly_one_value() {
-        assert!(decode(b"+OK\r\n:1\r\n".to_vec()).is_err());
-        assert!(decode(b"*2\r\n:1\r\n".to_vec()).is_err());
-        assert!(decode(vec![]).is_err());
+        assert!(decode(b"+OK\r\n:1\r\n").is_err());
+        assert!(decode(b"*2\r\n:1\r\n").is_err());
+        assert!(decode(&[]).is_err());
     }
 
     #[test]
     fn decode_invalid_values() {
-        assert!(decode(b"$3\r\nabcde\r\n".to_vec()).is_err());
-        assert!(decode(b"#x\r\n".to_vec()).is_err());
-        assert!(decode(b"=3\r\ntxt\r\n".to_vec()).is_err());
-        assert!(decode(b":one\r\n".to_vec()).is_err());
+        assert!(decode(b"$3\r\nabcde\r\n").is_err());
+        assert!(decode(b"#x\r\n").is_err());
+        assert!(decode(b"=3\r\ntxt\r\n").is_err());
+        assert!(decode(b":one\r\n").is_err());
     }
 
     #[test]
     fn frame_len_matches_encode() {
         let value = RespValue::Array(vec![
-            encode(RespValue::BulkString("a\r\nb".to_string())),
+            encode(RespValue::BulkString(b"a\r\nb".to_vec())),
             encode(RespValue::Integer(-3)),
         ]);
         let encoded = encode(value);
         assert_eq!(frame_len(&encoded).unwrap(), Some(encoded.len()));
+    }
+
+    #[test]
+    fn decode_binary_bulk_strings() {
+        let value = RespValue::BulkString(vec![0x80, 0x00, b'\r', b'\n', 0xff]);
+        assert_eq!(decode(&encode(value.clone())), Ok(value));
+    }
+
+    #[test]
+    fn display_scalars() {
+        let display = |value: RespValue| value.to_string();
+        assert_eq!(
+            display(RespValue::String("OK".to_string())),
+            r#"string<"OK">"#
+        );
+        assert_eq!(
+            display(RespValue::Error("ERR x".to_string())),
+            r#"error<"ERR x">"#
+        );
+        assert_eq!(display(RespValue::Integer(-1)), "integer<-1>");
+        assert_eq!(
+            display(RespValue::BulkString(b"a\"b".to_vec())),
+            r#"bulk-string<"a\"b">"#
+        );
+        // bytes that are not UTF-8 are escaped
+        assert_eq!(
+            display(RespValue::BulkString(vec![0x80, b'a'])),
+            r#"bulk-string<b"\x80a">"#
+        );
+        assert_eq!(display(RespValue::Null), "null");
+        assert_eq!(display(RespValue::Boolean(true)), "boolean<true>");
+        assert_eq!(display(RespValue::Double(1.5)), "double<1.5>");
+        assert_eq!(
+            display(RespValue::BigNumber("1".to_string())),
+            "big-number<1>"
+        );
+        assert_eq!(
+            display(RespValue::BulkError("SYNTAX".to_string())),
+            r#"bulk-error<"SYNTAX">"#
+        );
+        assert_eq!(
+            display(RespValue::VerbatimString((
+                "txt".to_string(),
+                "hi".to_string()
+            ))),
+            r#"verbatim-string<txt, "hi">"#
+        );
+    }
+
+    #[test]
+    fn display_aggregates() {
+        let bulk = |text: &str| encode(RespValue::BulkString(text.as_bytes().to_vec()));
+        let int = |value: i64| encode(RespValue::Integer(value));
+        assert_eq!(RespValue::Array(vec![]).to_string(), "array<>");
+        assert_eq!(
+            RespValue::Array(vec![bulk("a"), int(1)]).to_string(),
+            r#"array<bulk-string<"a">, integer<1>>"#
+        );
+        let nested = encode(RespValue::Array(vec![int(1), int(2)]));
+        assert_eq!(
+            RespValue::Array(vec![nested]).to_string(),
+            "array<array<integer<1>, integer<2>>>"
+        );
+        assert_eq!(
+            RespValue::Map(vec![(bulk("k"), int(1)), (bulk("j"), int(2))]).to_string(),
+            r#"map<bulk-string<"k">: integer<1>, bulk-string<"j">: integer<2>>"#
+        );
+        assert_eq!(
+            RespValue::Set(vec![bulk("a")]).to_string(),
+            r#"set<bulk-string<"a">>"#
+        );
+        assert_eq!(
+            RespValue::Push(vec![bulk("message"), bulk("news")]).to_string(),
+            r#"push<bulk-string<"message">, bulk-string<"news">>"#
+        );
+        assert_eq!(
+            RespValue::Array(vec![b"?".to_vec()]).to_string(),
+            "array<--invalid-resp-->"
+        );
     }
 }

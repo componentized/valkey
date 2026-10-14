@@ -1,14 +1,14 @@
 //! The scripting commands: EVAL, FCALL, FUNCTION and SCRIPT, and the FLUSH modes they share.
 
-use crate::command::{IntoCommand, NonEmpty};
+use crate::command::{IntoCommand, NonEmpty, Words};
 use crate::types::{
     Error, FlushMode, FunctionListFunction, FunctionListLibrary, FunctionStatsEngine,
-    FunctionStatsReply, FunctionStatsRunning, RespValue,
+    FunctionRestorePolicy, FunctionStatsReply, FunctionStatsRunning, RespValue, StringOrBytes,
 };
 use crate::value::{Fields, FromValue};
 
 impl IntoCommand for FlushMode {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             FlushMode::Async => "ASYNC",
             FlushMode::Sync => "SYNC",
@@ -17,11 +17,22 @@ impl IntoCommand for FlushMode {
     }
 }
 
+impl IntoCommand for FunctionRestorePolicy {
+    fn into_command(self) -> Result<Words, Error> {
+        match self {
+            FunctionRestorePolicy::Flush => "FLUSH",
+            FunctionRestorePolicy::Append => "APPEND",
+            FunctionRestorePolicy::Replace => "REPLACE",
+        }
+        .into_command()
+    }
+}
+
 /// `numkeys [ key ... ] [ arg ... ]`, e.g. for EVAL, `0` without keys.
-pub struct KeysAndArgs(pub Option<Vec<String>>, pub Option<Vec<String>>);
+pub struct KeysAndArgs(pub Option<Vec<String>>, pub Option<Vec<StringOrBytes>>);
 
 impl IntoCommand for KeysAndArgs {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let KeysAndArgs(keys, args) = self;
         let numkeys = keys.as_ref().map_or(0, Vec::len);
         (
@@ -95,6 +106,18 @@ mod tests {
     use crate::types::DurationMilliseconds;
 
     #[test]
+    fn function_restore_policy() {
+        assert_eq!(
+            words([
+                FunctionRestorePolicy::Flush,
+                FunctionRestorePolicy::Append,
+                FunctionRestorePolicy::Replace,
+            ]),
+            ["FLUSH", "APPEND", "REPLACE"]
+        );
+    }
+
+    #[test]
     fn flush_mode() {
         assert_eq!(
             words([FlushMode::Async, FlushMode::Sync]),
@@ -108,14 +131,11 @@ mod tests {
         assert_eq!(
             words(KeysAndArgs(
                 Some(vec!["a".to_string(), "b".to_string()]),
-                Some(vec!["x".to_string()])
+                Some(vec!["x".into()])
             )),
             ["2", "a", "b", "x"]
         );
-        assert_eq!(
-            words(KeysAndArgs(None, Some(vec!["x".to_string()]))),
-            ["0", "x"]
-        );
+        assert_eq!(words(KeysAndArgs(None, Some(vec!["x".into()]))), ["0", "x"]);
         assert_eq!(
             words_error(KeysAndArgs(Some(vec![]), None)),
             "keys requires at least one item"

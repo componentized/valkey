@@ -3,12 +3,12 @@
 use std::time::Duration;
 
 use test_harness::types::{
-    DurationMilliseconds, SubscriptionEvent, SubscriptionMessage, SubscriptionTarget,
-    UnsubscribeReason,
+    DurationMilliseconds, StringOrBytes, SubscriptionEvent, SubscriptionMessage,
+    SubscriptionTarget, UnsubscribeReason,
 };
 use test_harness::{
     ConnectOpts, Error, Harness, RespValue, Transport, bulk, command, connect, establish,
-    handshake, hello_reply, ok, push, receive, resolve, words,
+    handshake, hello_reply, ok, push, receive, resolve, strings, words,
 };
 
 /// Long enough for the connection to act on what it was given, short enough to keep tests quick.
@@ -37,7 +37,7 @@ fn confirm(kind: &str, name: &str) -> RespValue {
 
 fn message(payload: &str, channel: &str, target: SubscriptionTarget) -> Option<SubscriptionEvent> {
     Some(SubscriptionEvent::Message(SubscriptionMessage {
-        payload: payload.to_string(),
+        payload: StringOrBytes::String(payload.to_string()),
         channel: channel.to_string(),
         target,
     }))
@@ -166,6 +166,59 @@ async fn exchanges_are_paired_with_replies_in_order() -> wasmtime::Result<()> {
             let (first, second, ()) = tokio::join!(first, second, server);
             assert_eq!(first?, Ok(bulk("first")));
             assert_eq!(second?, Ok(bulk("second")));
+            Ok(())
+        })
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn binary_words_are_sent_as_given() -> wasmtime::Result<()> {
+    let mut harness = Harness::new("connection").await?;
+    harness
+        .run(async |accessor, exports| {
+            let guest = exports.connection();
+            let (mut transport, connection) = establish(accessor, exports).await?;
+            let value = vec![0x80, 0x00, b'\r', b'\n', 0xff];
+            let command = vec![
+                StringOrBytes::String("SET".to_string()),
+                StringOrBytes::Bytes(b"key".to_vec()),
+                StringOrBytes::Bytes(value.clone()),
+            ];
+            let call = guest.call_exchange(accessor, connection, command);
+            let server = async {
+                assert_eq!(
+                    transport.request().await,
+                    Some(vec![bulk("SET"), bulk("key"), RespValue::BulkString(value)])
+                );
+                transport.reply(ok());
+            };
+            let (result, ()) = tokio::join!(call, server);
+            assert_eq!(result?, Ok(ok()));
+
+            // the commands the connection manages are recognized as bytes too
+            let reset = vec![StringOrBytes::Bytes(b"reset".to_vec())];
+            let result = guest.call_emit(accessor, connection, reset).await?;
+            assert_eq!(
+                result,
+                Err(Error::Client(
+                    "RESET is rejected, use the connection's reset".to_string()
+                ))
+            );
+            // a name that is not UTF-8 is sent for the server to refuse
+            let call =
+                guest.call_exchange(accessor, connection, vec![StringOrBytes::Bytes(vec![0xff])]);
+            let server = async {
+                assert_eq!(
+                    transport.request().await,
+                    Some(vec![RespValue::BulkString(vec![0xff])])
+                );
+                transport.reply(RespValue::Error("ERR unknown command".to_string()));
+            };
+            let (result, ()) = tokio::join!(call, server);
+            assert_eq!(
+                result?,
+                Err(Error::Valkey("ERR unknown command".to_string()))
+            );
             Ok(())
         })
         .await
@@ -474,7 +527,7 @@ async fn subscriptions_are_confirmed_by_push_messages() -> wasmtime::Result<()> 
             assert_eq!(
                 events.recv().await,
                 Some(SubscriptionEvent::Message(SubscriptionMessage {
-                    payload: "hello".to_string(),
+                    payload: StringOrBytes::String("hello".to_string()),
                     channel: "news".to_string(),
                     target: channel("news"),
                 }))
@@ -506,6 +559,92 @@ async fn subscriptions_are_confirmed_by_push_messages() -> wasmtime::Result<()> 
             assert_eq!(
                 subscriptions.call_targets(accessor, subscription).await?,
                 vec![channel("sports")]
+            );
+            Ok(())
+        })
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn binary_messages_are_delivered() -> wasmtime::Result<()> {
+    let mut harness = Harness::new("connection").await?;
+    harness
+        .run(async |accessor, exports| {
+            let guest = exports.connection();
+            let subscriptions = exports.subscription();
+            let (mut transport, connection) = establish(accessor, exports).await?;
+            let subscription = guest.call_subscription(accessor, connection).await??;
+            let (events, _) = subscriptions.call_events(accessor, subscription).await?;
+            let mut events = receive(accessor, events)?;
+            let dead_letters = guest.call_dead_letters(accessor, connection).await?;
+            let mut dead_letters = receive(accessor, dead_letters)?;
+            let call = subscriptions.call_subscribe(accessor, subscription, vec![channel("news")]);
+            let server = async {
+                transport.request().await;
+                transport.reply(confirm("subscribe", "news"));
+            };
+            let (result, ()) = tokio::join!(call, server);
+            assert_eq!(result?, Ok(()));
+            assert_eq!(
+                events.recv().await,
+                Some(SubscriptionEvent::Subscribed(channel("news")))
+            );
+
+            // not UTF-8, the bytes
+            let payload = vec![0x80, 0x00, b'\r', b'\n', 0xff];
+            transport.reply(push(vec![
+                bulk("message"),
+                bulk("news"),
+                RespValue::BulkString(payload.clone()),
+            ]));
+            assert_eq!(
+                events.recv().await,
+                Some(SubscriptionEvent::Message(SubscriptionMessage {
+                    payload: StringOrBytes::Bytes(payload),
+                    channel: "news".to_string(),
+                    target: channel("news"),
+                }))
+            );
+            // UTF-8, even with control characters and beyond ASCII, a string
+            transport.reply(push(vec![
+                bulk("message"),
+                bulk("news"),
+                RespValue::BulkString("a\r\n€".as_bytes().to_vec()),
+            ]));
+            assert_eq!(
+                events.recv().await,
+                message("a\r\n€", "news", channel("news"))
+            );
+            assert!(
+                tokio::time::timeout(SETTLE, dead_letters.recv())
+                    .await
+                    .is_err(),
+                "a dead letter"
+            );
+            Ok(())
+        })
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn binary_property_names_fail_to_establish() -> wasmtime::Result<()> {
+    let mut harness = Harness::new("connection").await?;
+    harness
+        .run(async |accessor, exports| {
+            let (mut transport, connection) = connect(accessor, exports, None).await?;
+            for _ in 0..3 {
+                transport.request().await;
+            }
+            transport.reply(test_harness::map(vec![(
+                RespValue::BulkString(vec![0x80]),
+                bulk("valkey"),
+            )]));
+            assert_eq!(
+                resolve(accessor, connection).await?.err(),
+                Some(Error::Client(
+                    r#"unexpected property name in reply to HELLO: bulk-string<b"\x80">"#
+                        .to_string()
+                ))
             );
             Ok(())
         })
@@ -696,11 +835,25 @@ async fn transactions_wrap_the_commands_in_multi_and_exec() -> wasmtime::Result<
             let call = guest.call_transaction(
                 accessor,
                 connection,
-                vec![words(&["SET", "a", "1"]), words(&["INCR", "text"])],
+                vec![
+                    vec![
+                        StringOrBytes::String("SET".to_string()),
+                        StringOrBytes::String("a".to_string()),
+                        StringOrBytes::Bytes(vec![0x80, 0xff]),
+                    ],
+                    words(&["INCR", "text"]),
+                ],
             );
             let server = async {
                 assert_eq!(transport.request().await, Some(command(&["MULTI"])));
-                assert_eq!(transport.request().await, Some(command(&["SET", "a", "1"])));
+                assert_eq!(
+                    transport.request().await,
+                    Some(vec![
+                        bulk("SET"),
+                        bulk("a"),
+                        RespValue::BulkString(vec![0x80, 0xff])
+                    ])
+                );
                 assert_eq!(transport.request().await, Some(command(&["INCR", "text"])));
                 assert_eq!(transport.request().await, Some(command(&["EXEC"])));
                 transport.reply(ok());
@@ -775,7 +928,7 @@ async fn watch_and_unwatch() -> wasmtime::Result<()> {
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let call = guest.call_watch(accessor, connection, words(&["a", "b"]));
+            let call = guest.call_watch(accessor, connection, strings(&["a", "b"]));
             let server = async {
                 assert_eq!(
                     transport.request().await,
@@ -1191,6 +1344,61 @@ mod with_valkey {
                     "the stream closed"
                 );
                 drop(ended);
+                Ok(())
+            })
+            .await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "needs a Valkey server, see make test-valkey"]
+    async fn binary_values_against_valkey() -> wasmtime::Result<()> {
+        let mut harness = Harness::with_valkey("test-tcp", &[]).await?;
+        harness
+            .run(async |accessor, exports| {
+                let guest = exports.connection();
+                let subscriptions = exports.subscription();
+                let connection = connect(accessor, exports).await?;
+                let publisher = connect(accessor, exports).await?;
+                let binary = vec![0x80, 0x00, b'\r', b'\n', 0xff];
+                let key = vec![b't', b':', 0xfe];
+                let word = |bytes: &[u8]| StringOrBytes::Bytes(bytes.to_vec());
+
+                let set = vec![
+                    StringOrBytes::String("SET".to_string()),
+                    word(&key),
+                    word(&binary),
+                ];
+                guest.call_exchange(accessor, publisher, set).await??;
+                let get = vec![StringOrBytes::String("GET".to_string()), word(&key)];
+                assert_eq!(
+                    guest.call_exchange(accessor, publisher, get).await?,
+                    Ok(RespValue::BulkString(binary.clone()))
+                );
+                let del = vec![StringOrBytes::String("DEL".to_string()), word(&key)];
+                guest.call_exchange(accessor, publisher, del).await??;
+
+                // a binary message, published and delivered as given
+                let subscription = guest.call_subscription(accessor, connection).await??;
+                let (events, _) = subscriptions.call_events(accessor, subscription).await?;
+                let mut events = receive(accessor, events)?;
+                subscriptions
+                    .call_subscribe(accessor, subscription, vec![channel("t:conn:bin")])
+                    .await??;
+                events.recv().await;
+                let publish = vec![
+                    StringOrBytes::String("PUBLISH".to_string()),
+                    StringOrBytes::String("t:conn:bin".to_string()),
+                    word(&binary),
+                ];
+                guest.call_exchange(accessor, publisher, publish).await??;
+                assert_eq!(
+                    events.recv().await,
+                    Some(SubscriptionEvent::Message(SubscriptionMessage {
+                        payload: StringOrBytes::Bytes(binary),
+                        channel: "t:conn:bin".to_string(),
+                        target: channel("t:conn:bin"),
+                    }))
+                );
                 Ok(())
             })
             .await

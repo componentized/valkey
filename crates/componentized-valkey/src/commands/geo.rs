@@ -1,15 +1,15 @@
 //! The geo commands: GEOADD, GEODIST, GEOPOS, GEOSEARCH and the like.
 
-use crate::command::{Flag, IntoCommand, NonEmpty, NumKeys};
+use crate::command::{Flag, IntoCommand, NonEmpty, NumKeys, Words};
 use crate::types::{
     Double, Error, GeoCoordinates, GeoUnit, GeoaddCondition, GeosearchCount, GeosearchFrom,
-    GeosearchShape, GeosearchWithResult, RespValue,
+    GeosearchShape, GeosearchWithResult, RespValue, StringOrBytes,
 };
 use crate::value::{FromValue, items, unexpected};
 
 /// `longitude latitude`
 impl IntoCommand for GeoCoordinates {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         (self.longitude, self.latitude).into_command()
     }
 }
@@ -26,7 +26,7 @@ impl FromValue for GeoCoordinates {
 }
 
 impl IntoCommand for GeoUnit {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             GeoUnit::M => "m",
             GeoUnit::Km => "km",
@@ -38,7 +38,7 @@ impl IntoCommand for GeoUnit {
 }
 
 impl IntoCommand for GeoaddCondition {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             GeoaddCondition::Nx => "NX",
             GeoaddCondition::Xx => "XX",
@@ -48,7 +48,7 @@ impl IntoCommand for GeoaddCondition {
 }
 
 impl IntoCommand for GeosearchFrom {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             GeosearchFrom::Member(member) => ("FROMMEMBER", member).into_command(),
             GeosearchFrom::Lonlat(coordinates) => ("FROMLONLAT", coordinates).into_command(),
@@ -58,7 +58,7 @@ impl IntoCommand for GeosearchFrom {
 
 /// The center, when the shape has one, then the shape. Also `GeosearchstoreShape`, the same type.
 impl IntoCommand for GeosearchShape {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             GeosearchShape::Radius(circle) => {
                 (circle.from, "BYRADIUS", circle.radius, circle.unit).into_command()
@@ -80,7 +80,7 @@ impl IntoCommand for GeosearchShape {
 
 /// `COUNT count [ ANY ]`, also `GeosearchstoreCount`, the same type.
 impl IntoCommand for GeosearchCount {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         ("COUNT", self.count, Flag("ANY", self.any)).into_command()
     }
 }
@@ -90,7 +90,7 @@ impl IntoCommand for GeosearchCount {
 impl FromValue for GeosearchWithResult {
     fn from_value(value: RespValue) -> Result<Self, Error> {
         let mut result = GeosearchWithResult {
-            member: String::new(),
+            member: StringOrBytes::String(String::new()),
             distance: None,
             hash: None,
             coordinates: None,
@@ -101,7 +101,7 @@ impl FromValue for GeosearchWithResult {
             value => vec![value],
         };
         let mut items = items.into_iter();
-        result.member = String::from_value(items.next().unwrap_or(RespValue::Null))?;
+        result.member = StringOrBytes::from_value(items.next().unwrap_or(RespValue::Null))?;
         for item in items {
             match item {
                 // a bulk string, as RESP3 has no other way to send a fixed precision double
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn geosearch_from() {
         assert_eq!(
-            words(GeosearchFrom::Member("Palermo".to_string())),
+            words(GeosearchFrom::Member("Palermo".into())),
             ["FROMMEMBER", "Palermo"]
         );
         assert_eq!(
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn geosearch_shape() {
         let radius = GeosearchShape::Radius(GeosearchRadius {
-            from: GeosearchFrom::Member("Palermo".to_string()),
+            from: GeosearchFrom::Member("Palermo".into()),
             radius: 200.5,
             unit: GeoUnit::Km,
         });
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(
             from::<GeosearchWithResult>(bulk("Palermo")),
             GeosearchWithResult {
-                member: "Palermo".to_string(),
+                member: "Palermo".into(),
                 distance: None,
                 hash: None,
                 coordinates: None,
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(
             from::<GeosearchWithResult>(value),
             GeosearchWithResult {
-                member: "Palermo".to_string(),
+                member: "Palermo".into(),
                 distance: Some(190.4424),
                 hash: Some(3479099956230698),
                 coordinates: Some(coordinates(13.5, 38.25)),
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(
             from::<GeosearchWithResult>(value),
             GeosearchWithResult {
-                member: "Palermo".to_string(),
+                member: "Palermo".into(),
                 distance: None,
                 hash: Some(3479099956230698),
                 coordinates: None,
@@ -263,7 +263,7 @@ mod tests {
                 bulk("Palermo"),
                 RespValue::Boolean(true)
             ])),
-            "unexpected reply: RespValue::Boolean(true)"
+            "unexpected reply: boolean<true>"
         );
     }
 }

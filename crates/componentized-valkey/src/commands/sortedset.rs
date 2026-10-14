@@ -1,9 +1,9 @@
 //! The sorted set commands: ZADD, ZINTER, ZMPOP, ZRANGE, ZUNION and the like.
 
-use crate::command::{Flag, IntoCommand};
+use crate::command::{Flag, IntoCommand, Words};
 use crate::types::{
-    Double, Error, LexBound, Limit, RespValue, ScoreBound, ZaddComparison, ZaddCondition, ZmpopEnd,
-    ZrangeBy, ZsetAggregate,
+    Double, Error, LexBound, Limit, RespValue, ScoreBound, StringOrBytes, ZaddComparison,
+    ZaddCondition, ZmpopEnd, ZrangeBy, ZsetAggregate,
 };
 use crate::value::{FromValue, items};
 
@@ -15,11 +15,11 @@ pub struct ScoreRange {
 }
 
 impl IntoCommand for ScoreRange {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let bound = |bound, unbounded: &str| match bound {
-            ScoreBound::Inclusive(score) => score.to_string(),
-            ScoreBound::Exclusive(score) => format!("({score}"),
-            ScoreBound::Unbounded => unbounded.to_string(),
+            ScoreBound::Inclusive(score) => score.to_string().into(),
+            ScoreBound::Exclusive(score) => format!("({score}").into(),
+            ScoreBound::Unbounded => unbounded.into(),
         };
         let (low, high) = ("-inf", "+inf");
         let (start, stop) = if self.rev { (high, low) } else { (low, high) };
@@ -35,11 +35,12 @@ pub struct LexRange {
 }
 
 impl IntoCommand for LexRange {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
+        // a member may be bytes, the prefix keeps it so
         let bound = |bound, unbounded: &str| match bound {
-            LexBound::Inclusive(member) => format!("[{member}"),
-            LexBound::Exclusive(member) => format!("({member}"),
-            LexBound::Unbounded => unbounded.to_string(),
+            LexBound::Inclusive(member) => StringOrBytes::prefixed(member, "["),
+            LexBound::Exclusive(member) => StringOrBytes::prefixed(member, "("),
+            LexBound::Unbounded => unbounded.into(),
         };
         let (low, high) = ("-", "+");
         let (start, stop) = if self.rev { (high, low) } else { (low, high) };
@@ -55,7 +56,7 @@ pub struct Zrange {
 }
 
 impl IntoCommand for Zrange {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let Zrange { range, rev, limit } = self;
         let (range, by) = match range {
             ZrangeBy::Rank((start, stop)) => ((start, stop).into_command()?, None),
@@ -72,7 +73,7 @@ impl IntoCommand for Zrange {
 }
 
 impl IntoCommand for ZsetAggregate {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let aggregate = match self {
             ZsetAggregate::Sum => "SUM",
             ZsetAggregate::Min => "MIN",
@@ -84,7 +85,7 @@ impl IntoCommand for ZsetAggregate {
 
 /// Also `BzmpopEnd`, the same type.
 impl IntoCommand for ZmpopEnd {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ZmpopEnd::Min => "MIN",
             ZmpopEnd::Max => "MAX",
@@ -94,7 +95,7 @@ impl IntoCommand for ZmpopEnd {
 }
 
 impl IntoCommand for ZaddCondition {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ZaddCondition::Nx => "NX",
             ZaddCondition::Xx => "XX",
@@ -104,7 +105,7 @@ impl IntoCommand for ZaddCondition {
 }
 
 impl IntoCommand for ZaddComparison {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ZaddComparison::Gt => "GT",
             ZaddComparison::Lt => "LT",
@@ -115,7 +116,7 @@ impl IntoCommand for ZaddComparison {
 
 /// Members and their scores, e.g. from ZPOPMIN, which replies with one pair, or none, without a
 /// count, and a list of pairs with one.
-pub struct ScoredMembers(pub Vec<(String, Double)>);
+pub struct ScoredMembers(pub Vec<(StringOrBytes, Double)>);
 
 impl FromValue for ScoredMembers {
     fn from_value(value: RespValue) -> Result<Self, Error> {
@@ -129,7 +130,7 @@ impl FromValue for ScoredMembers {
                 .map(ScoredMembers),
             Some(_) => match <[RespValue; 2]>::try_from(items) {
                 Ok([member, score]) => Ok(ScoredMembers(vec![(
-                    String::from_value(member)?,
+                    StringOrBytes::from_value(member)?,
                     Double::from_value(score)?,
                 )])),
                 Err(items) => Err(Error::Client(format!(
@@ -173,8 +174,8 @@ mod tests {
         let range = |start, stop, rev| LexRange { start, stop, rev };
         assert_eq!(
             words(range(
-                LexBound::Inclusive("a".to_string()),
-                LexBound::Exclusive("c".to_string()),
+                LexBound::Inclusive("a".into()),
+                LexBound::Exclusive("c".into()),
                 false
             )),
             ["[a", "(c"]
@@ -210,7 +211,7 @@ mod tests {
             ["+inf", "(1", "BYSCORE", "REV", "LIMIT", "0", "5"]
         );
         let by_lex = Zrange {
-            range: ZrangeBy::Lex((LexBound::Inclusive("a".to_string()), LexBound::Unbounded)),
+            range: ZrangeBy::Lex((LexBound::Inclusive("a".into()), LexBound::Unbounded)),
             rev: false,
             limit: None,
         };
@@ -237,7 +238,7 @@ mod tests {
         // one pair, flat
         assert_eq!(
             from::<ScoredMembers>(array(vec![bulk("a"), double(1.5)])).0,
-            [("a".to_string(), 1.5)]
+            [(StringOrBytes::from("a"), 1.5)]
         );
         // a list of pairs, the scores as doubles or, with RESP2, bulk strings
         assert_eq!(
@@ -246,7 +247,10 @@ mod tests {
                 bulks(&["b", "2"]),
             ]))
             .0,
-            [("a".to_string(), 1.0), ("b".to_string(), 2.0)]
+            [
+                (StringOrBytes::from("a"), 1.0),
+                (StringOrBytes::from("b"), 2.0)
+            ]
         );
         assert_eq!(
             from_error::<ScoredMembers>(bulks(&["a", "1", "b"])),

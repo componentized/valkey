@@ -12,7 +12,7 @@ use std::task::Poll;
 
 use componentized::valkey::connection::{Connection, Error};
 use componentized::valkey::connector;
-use componentized_valkey::types::{RespNestedValue, RespValue};
+use componentized_valkey::types::{RespNestedValue, RespValue, StringOrBytes};
 use exports::wasi::cli::run::Guest;
 use futures_channel::mpsc;
 use futures_core::Stream;
@@ -39,8 +39,12 @@ struct Cli;
 
 impl Guest for Cli {
     async fn run() -> Result<(), ()> {
-        let command: Vec<String> = environment::get_arguments().into_iter().skip(1).collect();
-        if let [flag] = command.as_slice()
+        let command: Vec<StringOrBytes> = environment::get_arguments()
+            .into_iter()
+            .skip(1)
+            .map(StringOrBytes::String)
+            .collect();
+        if let [StringOrBytes::String(flag)] = command.as_slice()
             && (flag == "-h" || flag == "--help")
         {
             print(stdout::write_via_stream, USAGE).await;
@@ -63,11 +67,11 @@ impl Guest for Cli {
 }
 
 /// Sends the command, printing its reply, or the push messages a command without one causes.
-async fn exec(command: Vec<String>, out: &mut Output) -> Result<(), Error> {
+async fn exec(command: Vec<StringOrBytes>, out: &mut Output) -> Result<(), Error> {
     let connection = connector::connect().await?;
     // before the command is sent, so none of the push messages it causes are missed
     let mut pushes = connection.dead_letters();
-    let name = command[0].to_ascii_uppercase();
+    let name = name(&command);
     let channels = command.len() - 1;
 
     if SUBSCRIBE.contains(&name.as_str()) {
@@ -162,16 +166,17 @@ async fn send_lines(
 ) -> Result<(), Error> {
     let mut input = Lines::new(stdin);
     while let Some(line) = input.next().await {
-        let words = match split(&line) {
-            Ok(words) => words,
+        let words: Vec<StringOrBytes> = match split(&line) {
+            Ok(words) => words.into_iter().map(StringOrBytes::Bytes).collect(),
             Err(message) => {
                 let _ = lines.unbounded_send(format!("(error) {message}"));
                 continue;
             }
         };
-        let Some(name) = words.first().map(|name| name.to_ascii_uppercase()) else {
+        if words.is_empty() {
             continue;
-        };
+        }
+        let name = name(&words);
         if SUBSCRIBE.contains(&name.as_str()) || UNSUBSCRIBE.contains(&name.as_str()) {
             // no reply, the push messages confirming it are printed as they arrive
             connection.emit(words).await?;
@@ -254,8 +259,9 @@ impl Lines {
 /// Splits a line into words, like valkey-cli.
 ///
 /// Words are separated by whitespace. A double quoted word may contain whitespace and escapes, e.g.
-/// `\"`, `\n` and `\x41`, a single quoted word is taken as is, except for `\'`.
-fn split(line: &str) -> Result<Vec<String>, String> {
+/// `\"`, `\n` and `\x41`, a single quoted word is taken as is, except for `\'`. A `\x` escape is a
+/// byte, so a word may be binary, e.g. `"\x80\xff"`.
+fn split(line: &str) -> Result<Vec<Vec<u8>>, String> {
     let mut words = vec![];
     let mut chars = line.chars().peekable();
     loop {
@@ -263,18 +269,18 @@ fn split(line: &str) -> Result<Vec<String>, String> {
         let Some(&first) = chars.peek() else {
             return Ok(words);
         };
-        let mut word = String::new();
+        let mut word = vec![];
         if first == '"' || first == '\'' {
             chars.next();
             loop {
                 match (chars.next(), first) {
                     (None, _) => return Err("unbalanced quotes".to_string()),
                     (Some(c), quote) if c == quote => break,
-                    (Some('\\'), '"') => word.push(unescape(&mut chars)?),
+                    (Some('\\'), '"') => unescape(&mut chars, &mut word)?,
                     (Some('\\'), '\'') if chars.peek() == Some(&'\'') => {
-                        word.push(chars.next().unwrap_or_default())
+                        push(&mut word, chars.next().unwrap_or_default())
                     }
-                    (Some(c), _) => word.push(c),
+                    (Some(c), _) => push(&mut word, c),
                 }
             }
             if chars.peek().is_some_and(|c| !c.is_whitespace()) {
@@ -282,32 +288,46 @@ fn split(line: &str) -> Result<Vec<String>, String> {
             }
         } else {
             while let Some(c) = chars.next_if(|c| !c.is_whitespace()) {
-                word.push(c);
+                push(&mut word, c);
             }
         }
         words.push(word);
     }
 }
 
-/// The character of an escape in a double quoted word, after its `\`.
-fn unescape(chars: &mut impl Iterator<Item = char>) -> Result<char, String> {
-    Ok(match chars.next() {
-        Some('n') => '\n',
-        Some('r') => '\r',
-        Some('t') => '\t',
-        Some('b') => '\u{8}',
-        Some('a') => '\u{7}',
+/// Appends the character, as UTF-8.
+fn push(word: &mut Vec<u8>, c: char) {
+    word.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
+}
+
+/// Appends the escape in a double quoted word, after its `\`.
+fn unescape(chars: &mut impl Iterator<Item = char>, word: &mut Vec<u8>) -> Result<(), String> {
+    match chars.next() {
+        Some('n') => word.push(b'\n'),
+        Some('r') => word.push(b'\r'),
+        Some('t') => word.push(b'\t'),
+        Some('b') => word.push(0x08),
+        Some('a') => word.push(0x07),
         Some('x') => {
             let hex: String = chars.take(2).collect();
             match u8::from_str_radix(&hex, 16) {
-                // a string holds UTF-8, a byte on its own is only a character when it is ASCII
-                Ok(byte) if byte.is_ascii() => byte as char,
+                Ok(byte) if hex.len() == 2 => word.push(byte),
                 _ => return Err(format!("unsupported escape: \\x{hex}")),
             }
         }
-        Some(c) => c,
+        Some(c) => push(word, c),
         None => return Err("unbalanced quotes".to_string()),
-    })
+    }
+    Ok(())
+}
+
+/// The name of a command, to tell those that need handling apart, e.g. `SUBSCRIBE`.
+fn name(command: &[StringOrBytes]) -> String {
+    match command.first() {
+        Some(StringOrBytes::String(name)) => name.to_ascii_uppercase(),
+        Some(StringOrBytes::Bytes(name)) => String::from_utf8_lossy(name).to_ascii_uppercase(),
+        None => String::new(),
+    }
 }
 
 /// A stream to stdout or stderr.
@@ -364,8 +384,8 @@ fn render(value: RespValue) -> String {
         RespValue::String(text) => text,
         RespValue::Error(message) | RespValue::BulkError(message) => format!("(error) {message}"),
         RespValue::Integer(value) => format!("(integer) {value}"),
-        // quoted, with special characters escaped
-        RespValue::BulkString(text) => format!("{text:?}"),
+        // quoted, bytes outside printable ASCII escaped as valkey-cli does, binary or not
+        RespValue::BulkString(bytes) => format!("\"{}\"", bytes.escape_ascii()),
         RespValue::Null => "(nil)".to_string(),
         RespValue::Boolean(value) => format!("({value})"),
         RespValue::Double(value) => format!("(double) {value}"),
@@ -395,7 +415,7 @@ fn render(value: RespValue) -> String {
 }
 
 fn render_nested(value: RespNestedValue) -> String {
-    match componentized_valkey::resp::decode(value) {
+    match componentized_valkey::resp::decode(&value) {
         Ok(value) => render(value),
         Err(error) => format!("(invalid) {error}"),
     }
@@ -444,18 +464,19 @@ mod tests {
     }
 
     fn bulk(text: &str) -> RespValue {
-        RespValue::BulkString(text.to_string())
+        RespValue::BulkString(text.as_bytes().to_vec())
+    }
+
+    /// The words a line splits into, as bytes.
+    fn split_words(words: &[&str]) -> Result<Vec<Vec<u8>>, String> {
+        Ok(words.iter().map(|word| word.as_bytes().to_vec()).collect())
     }
 
     #[test]
     fn split_on_whitespace() {
         assert_eq!(
             split("  SET  key\tvalue "),
-            Ok(vec![
-                "SET".to_string(),
-                "key".to_string(),
-                "value".to_string()
-            ])
+            split_words(&["SET", "key", "value"])
         );
         assert_eq!(split(""), Ok(vec![]));
         assert_eq!(split("   "), Ok(vec![]));
@@ -464,29 +485,39 @@ mod tests {
     #[test]
     fn split_double_quotes() {
         assert_eq!(
-            split(r#"SET key "hello world" "a\"b" "\n\r\t\b\a" "\x41\x7a" "\q""#),
-            Ok(vec![
-                "SET".to_string(),
-                "key".to_string(),
-                "hello world".to_string(),
-                "a\"b".to_string(),
-                "\n\r\t\u{8}\u{7}".to_string(),
-                "Az".to_string(),
-                "q".to_string(),
+            split(r#"SET key "hello world" "a\"b" "\n\r\t\b\a" "\x41\x7a" "\q" "€""#),
+            split_words(&[
+                "SET",
+                "key",
+                "hello world",
+                "a\"b",
+                "\n\r\t\u{8}\u{7}",
+                "Az",
+                "q",
+                "€",
             ])
         );
-        assert_eq!(split(r#""""#), Ok(vec![String::new()]));
+        assert_eq!(split(r#""""#), Ok(vec![vec![]]));
+    }
+
+    #[test]
+    fn split_binary_escapes() {
+        // a `\x` escape is a byte, UTF-8 or not
+        assert_eq!(
+            split(r#"SET key "\x80\x00\xff""#),
+            Ok(vec![
+                b"SET".to_vec(),
+                b"key".to_vec(),
+                vec![0x80, 0x00, 0xff]
+            ])
+        );
     }
 
     #[test]
     fn split_single_quotes() {
         assert_eq!(
             split(r#"'hello world' 'it\'s' 'a\nb'"#),
-            Ok(vec![
-                "hello world".to_string(),
-                "it's".to_string(),
-                "a\\nb".to_string()
-            ])
+            split_words(&["hello world", "it's", "a\\nb"])
         );
     }
 
@@ -499,14 +530,13 @@ mod tests {
             split(r#""key"value"#),
             Err("closing quote must be followed by a space".to_string())
         );
-        // a byte on its own is only a character when it is ASCII
-        assert_eq!(
-            split(r#""\xff""#),
-            Err("unsupported escape: \\xff".to_string())
-        );
         assert_eq!(
             split(r#""\xzz""#),
             Err("unsupported escape: \\xzz".to_string())
+        );
+        assert_eq!(
+            split(r#""\x4""#),
+            Err("unsupported escape: \\x4\"".to_string())
         );
     }
 
@@ -537,6 +567,17 @@ mod tests {
             ))),
             "line 1\nline 2"
         );
+    }
+
+    #[test]
+    fn render_bulk_strings_like_valkey_cli() {
+        // bytes outside printable ASCII are escaped, like valkey-cli, binary or not
+        assert_eq!(
+            render(RespValue::BulkString(vec![0x80, b'a', 0x00])),
+            r#""\x80a\x00""#
+        );
+        assert_eq!(render(bulk("€")), r#""\xe2\x82\xac""#);
+        assert_eq!(render(bulk("tab\tquote\"")), r#""tab\tquote\"""#);
     }
 
     #[test]

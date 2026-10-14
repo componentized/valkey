@@ -1,6 +1,6 @@
 //! The string commands: GETEX, LCS, MSETEX, SET and the like.
 
-use crate::command::IntoCommand;
+use crate::command::{IntoCommand, Words};
 use crate::types::{
     Error, GetexTtl, LcsIdxMatch, LcsIdxReply, MsetexPrecondition, RespValue, SetPrecondition,
     SetTtl,
@@ -9,7 +9,7 @@ use crate::value::{Fields, FromValue, items};
 
 /// Also `HgetexTtl`, the same type.
 impl IntoCommand for GetexTtl {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             GetexTtl::Ex(duration) => ("EX", duration).into_command(),
             GetexTtl::Px(duration) => ("PX", duration).into_command(),
@@ -51,7 +51,7 @@ impl FromValue for LcsIdxMatch {
 }
 
 impl IntoCommand for MsetexPrecondition {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             MsetexPrecondition::Nx => "NX".into_command(),
             MsetexPrecondition::Xx => "XX".into_command(),
@@ -60,7 +60,7 @@ impl IntoCommand for MsetexPrecondition {
 }
 
 impl IntoCommand for SetPrecondition {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             SetPrecondition::Nx => "NX".into_command(),
             SetPrecondition::Xx => "XX".into_command(),
@@ -72,7 +72,7 @@ impl IntoCommand for SetPrecondition {
 
 /// Also `MsetexTtl` and `HsetexTtl`, the same type.
 impl IntoCommand for SetTtl {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             SetTtl::Ex(duration) => ("EX", duration).into_command(),
             SetTtl::Px(duration) => ("PX", duration).into_command(),
@@ -153,8 +153,8 @@ mod tests {
             words(vec![
                 SetPrecondition::Nx,
                 SetPrecondition::Xx,
-                SetPrecondition::Ifeq("old".to_string()),
-                SetPrecondition::Ifne("other".to_string()),
+                SetPrecondition::Ifeq("old".into()),
+                SetPrecondition::Ifne("other".into()),
             ]),
             ["NX", "XX", "IFEQ", "old", "IFNE", "other"]
         );

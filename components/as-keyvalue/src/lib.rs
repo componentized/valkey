@@ -1,4 +1,4 @@
-use componentized::valkey::commands::{self, Cursor, DurationMilliseconds};
+use componentized::valkey::commands::{self, Cursor, DurationMilliseconds, StringOrBytes};
 use componentized::valkey::connection::{Connection, Error as ValkeyError};
 use componentized::valkey::connector;
 use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
@@ -43,10 +43,11 @@ struct KeyvalueToValkeyBucket {
 
 impl GuestBucket for KeyvalueToValkeyBucket {
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
-        match commands::hget(&self.connection, self.hash_key.clone(), key).await? {
-            Some(value) => Ok(Some(value.into_bytes())),
-            None => Ok(None),
-        }
+        let value = commands::hget(&self.connection, self.hash_key.clone(), key).await?;
+        Ok(value.map(|value| match value {
+            StringOrBytes::String(value) => value.into_bytes(),
+            StringOrBytes::Bytes(value) => value,
+        }))
     }
 
     async fn set(
@@ -55,7 +56,7 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         value: Vec<u8>,
         options: Option<SetOptions>,
     ) -> Result<(), Error> {
-        let value = String::from_utf8(value).map_err(|e| Error::Other(e.to_string()))?;
+        let value = StringOrBytes::Bytes(value);
         let options = options.unwrap_or(SetOptions {
             ttl_ms: None,
             if_not_exists: false,

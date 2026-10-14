@@ -41,7 +41,8 @@ interface commands {
         xinfo-consumers-entry, xinfo-groups-entry, xinfo-stream-reply, xinfo-stream-reply-full,
         xinfo-stream-reply-full-group, xinfo-stream-reply-full-consumer, xpending-summary,
         xpending-extended-entry, getex-ttl, hgetex-ttl, lcs-idx-reply, lcs-idx-match,
-        msetex-precondition, msetex-ttl, set-precondition, set-ttl, hsetex-ttl
+        msetex-precondition, msetex-ttl, set-precondition, set-ttl, hsetex-ttl, bytes,
+        string-or-bytes, restore-ttl, function-restore-policy
     };
 
 
@@ -665,13 +666,13 @@ interface commands {
     ///
     /// ECHO message
     /// https://valkey.io/commands/echo/
-    echo: async func(connection: borrow<connection>, message: string) -> result<string, error>;
+    echo: async func(connection: borrow<connection>, message: string-or-bytes) -> result<string-or-bytes, error>;
 
     /// Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk.
     ///
     /// PING [ message ]
     /// https://valkey.io/commands/ping/
-    ping: async func(connection: borrow<connection>, message: option<string>) -> result<_, error>;
+    ping: async func(connection: borrow<connection>, message: option<string-or-bytes>) -> result<_, error>;
 
     /// Allows the connection to read from a replica of a cluster, for the slots of its primary.
     ///
@@ -726,25 +727,25 @@ interface commands {
     ///
     /// GEOADD key [ NX | XX ] [ CH ] longitude latitude member [ longitude latitude member ... ]
     /// https://valkey.io/commands/geoadd/
-    geoadd: async func(connection: borrow<connection>, key: string, condition: option<geoadd-condition>, changed: bool, coordinates-and-members: list<tuple<geo-coordinates, string>>) -> result<integer, error>;
+    geoadd: async func(connection: borrow<connection>, key: string, condition: option<geoadd-condition>, changed: bool, coordinates-and-members: list<tuple<geo-coordinates, string-or-bytes>>) -> result<integer, error>;
 
     /// The distance between the members, in meters or the unit, none when either is not a member.
     ///
     /// GEODIST key member1 member2 [ m | km | ft | mi ]
     /// https://valkey.io/commands/geodist/
-    geodist: async func(connection: borrow<connection>, key: string, member1: string, member2: string, unit: option<geo-unit>) -> result<option<double>, error>;
+    geodist: async func(connection: borrow<connection>, key: string, member1: string-or-bytes, member2: string-or-bytes, unit: option<geo-unit>) -> result<option<double>, error>;
 
     /// The geohash of each of the members, none for a member that is not in the index.
     ///
     /// GEOHASH key [ member [ member ... ] ]
     /// https://valkey.io/commands/geohash/
-    geohash: async func(connection: borrow<connection>, key: string, members: option<list<string>>) -> result<list<option<string>>, error>;
+    geohash: async func(connection: borrow<connection>, key: string, members: option<list<string-or-bytes>>) -> result<list<option<string>>, error>;
 
     /// The position of each of the members, none for a member that is not in the index.
     ///
     /// GEOPOS key [ member [ member ... ] ]
     /// https://valkey.io/commands/geopos/
-    geopos: async func(connection: borrow<connection>, key: string, members: option<list<string>>) -> result<list<option<geo-coordinates>>, error>;
+    geopos: async func(connection: borrow<connection>, key: string, members: option<list<string-or-bytes>>) -> result<list<option<geo-coordinates>>, error>;
 
     /// The members of the geospatial index stored at key in the shape.
     ///
@@ -752,7 +753,7 @@ interface commands {
     ///
     /// GEOSEARCH key [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ]
     /// https://valkey.io/commands/geosearch/
-    geosearch: async func(connection: borrow<connection>, key: string, shape: geosearch-shape, order: option<sort-order>, count: option<geosearch-count>) -> result<list<string>, error>;
+    geosearch: async func(connection: borrow<connection>, key: string, shape: geosearch-shape, order: option<sort-order>, count: option<geosearch-count>) -> result<list<string-or-bytes>, error>;
 
     /// The members of the geospatial index stored at key in the shape, with the details asked for.
     ///
@@ -809,26 +810,26 @@ interface commands {
     ///
     /// HGET key field
     /// https://valkey.io/commands/hget/
-    hget: async func(connection: borrow<connection>, key: string, field: string) -> result<option<string>, error>;
+    hget: async func(connection: borrow<connection>, key: string, field: string) -> result<option<string-or-bytes>, error>;
 
     /// Returns all fields and values of the hash stored at key.
     ///
     /// HGETALL key
     /// https://valkey.io/commands/hgetall/
-    hgetall: async func(connection: borrow<connection>, key: string) -> result<map<string, string>, error>;
+    hgetall: async func(connection: borrow<connection>, key: string) -> result<map<string, string-or-bytes>, error>;
 
     /// The values of the hash fields, none for a field that does not exist, deleting the fields.
     ///
     /// HGETDEL key FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hgetdel/
-    hgetdel: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<option<string>>, error>;
+    hgetdel: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<option<string-or-bytes>>, error>;
 
     /// The values of the hash fields, none for a field that does not exist, optionally setting or
     /// removing their expiration.
     ///
     /// HGETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ] FIELDS numfields field [ field ... ]
     /// https://valkey.io/commands/hgetex/
-    hgetex: async func(connection: borrow<connection>, key: string, ttl: option<hgetex-ttl>, fields: list<string>) -> result<list<option<string>>, error>;
+    hgetex: async func(connection: borrow<connection>, key: string, ttl: option<hgetex-ttl>, fields: list<string>) -> result<list<option<string-or-bytes>>, error>;
 
     /// Increments the number stored at field in the hash stored at key by increment.
     ///
@@ -858,13 +859,13 @@ interface commands {
     ///
     /// HMGET key field [ field ... ]
     /// https://valkey.io/commands/hmget/
-    hmget: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<option<string>>, error>;
+    hmget: async func(connection: borrow<connection>, key: string, fields: list<string>) -> result<list<option<string-or-bytes>>, error>;
 
     /// Sets the specified fields to their respective values in the hash stored at key.
     ///
     /// HMSET key field value [ field value ... ]
     /// https://valkey.io/commands/hmset/
-    hmset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string>>) -> result<_, error>;
+    hmset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string-or-bytes>>) -> result<_, error>;
 
     /// Removes the expiration of the hash fields.
     ///
@@ -920,7 +921,7 @@ interface commands {
     ///
     /// HRANDFIELD key count WITHVALUES
     /// https://valkey.io/commands/hrandfield/
-    hrandfield-withvalues: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<tuple<string, string>>, error>;
+    hrandfield-withvalues: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<tuple<string, string-or-bytes>>, error>;
 
     /// Incrementally iterate over a collection of elements.
     ///
@@ -928,7 +929,7 @@ interface commands {
     ///
     /// HSCAN key cursor [ MATCH pattern ] [ COUNT count ]
     /// https://valkey.io/commands/hscan/
-    hscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, map<string, string>>, error>;
+    hscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, map<string, string-or-bytes>>, error>;
 
     /// Incrementally iterate over a collection of keys.
     ///
@@ -942,20 +943,20 @@ interface commands {
     ///
     /// HSET key field value [ field value ... ]
     /// https://valkey.io/commands/hset/
-    hset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string>>) -> result<integer, error>;
+    hset: async func(connection: borrow<connection>, key: string, field-and-values: list<tuple<string, string-or-bytes>>) -> result<integer, error>;
 
     /// Sets the fields to their values in the hash stored at key, optionally setting their
     /// expiration, returning whether they were set, false when a condition prevented it.
     ///
     /// HSETEX key [ NX | XX ] [ FNX | FXX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ] FIELDS numfields field value [ field value ... ]
     /// https://valkey.io/commands/hsetex/
-    hsetex: async func(connection: borrow<connection>, key: string, condition: option<hsetex-condition>, field-condition: option<hsetex-field-condition>, ttl: option<hsetex-ttl>, field-and-values: list<tuple<string, string>>) -> result<bool, error>;
+    hsetex: async func(connection: borrow<connection>, key: string, condition: option<hsetex-condition>, field-condition: option<hsetex-field-condition>, ttl: option<hsetex-ttl>, field-and-values: list<tuple<string, string-or-bytes>>) -> result<bool, error>;
 
     /// Sets field in the hash stored at key to value, only if field does not yet exist.
     ///
     /// HSETNX key field value
     /// https://valkey.io/commands/hsetnx/
-    hsetnx: async func(connection: borrow<connection>, key: string, field: string, value: string) -> result<bool, error>;
+    hsetnx: async func(connection: borrow<connection>, key: string, field: string, value: string-or-bytes) -> result<bool, error>;
 
     /// Returns the string length of the value associated with field in the hash stored at key.
     ///
@@ -975,7 +976,7 @@ interface commands {
     ///
     /// HVALS key
     /// https://valkey.io/commands/hvals/
-    hvals: async func(connection: borrow<connection>, key: string) -> result<list<string>, error>;
+    hvals: async func(connection: borrow<connection>, key: string) -> result<list<string-or-bytes>, error>;
 
 
     // hyperloglog commands
@@ -987,7 +988,7 @@ interface commands {
     ///
     /// PFADD key [ element [ element ... ] ]
     /// https://valkey.io/commands/pfadd/
-    pfadd: async func(connection: borrow<connection>, key: string, elements: option<list<string>>) -> result<bool, error>;
+    pfadd: async func(connection: borrow<connection>, key: string, elements: option<list<string-or-bytes>>) -> result<bool, error>;
 
     /// The approximate number of unique elements added to the HyperLogLogs, of their union for
     /// more than one, 0 for a key that does not exist.
@@ -1044,6 +1045,13 @@ interface commands {
     /// DEL key [ key ... ]
     /// https://valkey.io/commands/del/
     del: async func(connection: borrow<connection>, keys: list<string>) -> result<integer, error>;
+
+    /// The value of the key serialized in Valkey's own format, with its version and a checksum, see
+    /// `restore`, none when the key does not exist.
+    ///
+    /// DUMP key
+    /// https://valkey.io/commands/dump/
+    dump: async func(connection: borrow<connection>, key: string) -> result<option<bytes>, error>;
 
     /// If key exists.
     ///
@@ -1184,6 +1192,20 @@ interface commands {
     /// https://valkey.io/commands/renamenx/
     renamenx: async func(connection: borrow<connection>, key: string, newkey: string) -> result<bool, error>;
 
+    /// Creates the key from a value serialized with `dump`, without an expiration when `ttl` is
+    /// none. Fails when the key exists, unless `replace`. `idletime` and `freq` set what eviction
+    /// knows of the key, its idle time for an LRU policy, or its access frequency for an LFU policy.
+    ///
+    /// RESTORE key ttl serialized-value [ REPLACE ] [ ABSTTL ] [ IDLETIME seconds ] [ FREQ frequency ]
+    /// https://valkey.io/commands/restore/
+    restore: async func(connection: borrow<connection>, key: string, ttl: option<restore-ttl>, serialized-value: bytes, replace: bool, idletime: option<duration-seconds>, freq: option<integer>) -> result<_, error>;
+
+    /// `restore` on a node a key is migrated to, for a slot being imported, see `cluster-setslot`.
+    ///
+    /// RESTORE-ASKING key ttl serialized-value [ REPLACE ] [ ABSTTL ] [ IDLETIME seconds ] [ FREQ frequency ]
+    /// https://valkey.io/commands/restore-asking/
+    restore-asking: async func(connection: borrow<connection>, key: string, ttl: option<restore-ttl>, serialized-value: bytes, replace: bool, idletime: option<duration-seconds>, freq: option<integer>) -> result<_, error>;
+
     /// Incrementally iterate over the keys of the current database.
     ///
     /// SCAN cursor [ MATCH pattern ] [ COUNT count ] [ TYPE type ]
@@ -1222,12 +1244,6 @@ interface commands {
     /// https://valkey.io/commands/unlink/
     unlink: async func(connection: borrow<connection>, keys: list<string>) -> result<integer, error>;
 
-    // not implemented, from the @keyspace category:
-    //   DUMP, needs binary support, the payload is not a string
-    //   RESTORE, needs binary support, the payload is not a string
-    //   RESTORE-ASKING, needs binary support, the payload is not a string
-
-
     // list commands
 
     /// Moves an element from one end of the source list to an end of the destination list, waiting
@@ -1240,7 +1256,7 @@ interface commands {
     ///
     /// BLMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉 timeout
     /// https://valkey.io/commands/blmove/
-    blmove: async func(connection: borrow<connection>, source: string, destination: string, wherefrom: list-side, whereto: list-side, timeout: duration-milliseconds) -> result<option<string>, error>;
+    blmove: async func(connection: borrow<connection>, source: string, destination: string, wherefrom: list-side, whereto: list-side, timeout: duration-milliseconds) -> result<option<string-or-bytes>, error>;
 
     /// Removes elements from an end of the first non-empty list, waiting up to the timeout for one,
     /// returning its key and the elements, one without a count.
@@ -1252,7 +1268,7 @@ interface commands {
     ///
     /// BLMPOP timeout numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]
     /// https://valkey.io/commands/blmpop/
-    blmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: list-side, count: option<integer>) -> result<option<tuple<string, list<string>>>, error>;
+    blmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: list-side, count: option<integer>) -> result<option<tuple<string, list<string-or-bytes>>>, error>;
 
     /// Removes the first element of the first non-empty list, waiting up to the timeout for one,
     /// returning its key and the element.
@@ -1264,7 +1280,7 @@ interface commands {
     ///
     /// BLPOP key [ key ... ] timeout
     /// https://valkey.io/commands/blpop/
-    blpop: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string>>, error>;
+    blpop: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string-or-bytes>>, error>;
 
     /// Removes the last element of the first non-empty list, waiting up to the timeout for one,
     /// returning its key and the element.
@@ -1276,7 +1292,7 @@ interface commands {
     ///
     /// BRPOP key [ key ... ] timeout
     /// https://valkey.io/commands/brpop/
-    brpop: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string>>, error>;
+    brpop: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string-or-bytes>>, error>;
 
     /// Moves the last element of the source list to the head of the destination list, waiting up
     /// to the timeout for the source to have one, returning it.
@@ -1290,21 +1306,21 @@ interface commands {
     ///
     /// BRPOPLPUSH source destination timeout
     /// https://valkey.io/commands/brpoplpush/
-    brpoplpush: async func(connection: borrow<connection>, source: string, destination: string, timeout: duration-milliseconds) -> result<option<string>, error>;
+    brpoplpush: async func(connection: borrow<connection>, source: string, destination: string, timeout: duration-milliseconds) -> result<option<string-or-bytes>, error>;
 
     /// The element at the index of the list stored at key, negative from the end, none when the
     /// index is out of range.
     ///
     /// LINDEX key index
     /// https://valkey.io/commands/lindex/
-    lindex: async func(connection: borrow<connection>, key: string, index: integer) -> result<option<string>, error>;
+    lindex: async func(connection: borrow<connection>, key: string, index: integer) -> result<option<string-or-bytes>, error>;
 
     /// Inserts the element before or after the first occurrence of the pivot in the list stored at
     /// key.
     ///
     /// LINSERT key 〈 BEFORE | AFTER 〉 pivot element
     /// https://valkey.io/commands/linsert/
-    linsert: async func(connection: borrow<connection>, key: string, position: linsert-position, pivot: string, element: string) -> result<linsert-result, error>;
+    linsert: async func(connection: borrow<connection>, key: string, position: linsert-position, pivot: string-or-bytes, element: string-or-bytes) -> result<linsert-result, error>;
 
     /// The length of the list stored at key, 0 when the key does not exist.
     ///
@@ -1317,21 +1333,21 @@ interface commands {
     ///
     /// LMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉
     /// https://valkey.io/commands/lmove/
-    lmove: async func(connection: borrow<connection>, source: string, destination: string, wherefrom: list-side, whereto: list-side) -> result<option<string>, error>;
+    lmove: async func(connection: borrow<connection>, source: string, destination: string, wherefrom: list-side, whereto: list-side) -> result<option<string-or-bytes>, error>;
 
     /// Removes elements from an end of the first non-empty list, returning its key and the
     /// elements, one without a count, none when every list is empty.
     ///
     /// LMPOP numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]
     /// https://valkey.io/commands/lmpop/
-    lmpop: async func(connection: borrow<connection>, keys: list<string>, end: list-side, count: option<integer>) -> result<option<tuple<string, list<string>>>, error>;
+    lmpop: async func(connection: borrow<connection>, keys: list<string>, end: list-side, count: option<integer>) -> result<option<tuple<string, list<string-or-bytes>>>, error>;
 
     /// Removes and returns the first elements of the list stored at key, up to the count, one
     /// without a count, none when the key does not exist.
     ///
     /// LPOP key [ count ]
     /// https://valkey.io/commands/lpop/
-    lpop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+    lpop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string-or-bytes>, error>;
 
     /// The positions of the element in the list stored at key, up to the count, 0 for every match,
     /// the first match without a count.
@@ -1341,28 +1357,28 @@ interface commands {
     ///
     /// LPOS key element [ RANK rank ] [ COUNT num-matches ] [ MAXLEN len ]
     /// https://valkey.io/commands/lpos/
-    lpos: async func(connection: borrow<connection>, key: string, element: string, rank: option<integer>, count: option<integer>, maxlen: option<integer>) -> result<list<integer>, error>;
+    lpos: async func(connection: borrow<connection>, key: string, element: string-or-bytes, rank: option<integer>, count: option<integer>, maxlen: option<integer>) -> result<list<integer>, error>;
 
     /// Inserts the elements at the head of the list stored at key, creating it when it does not
     /// exist, returning its length after.
     ///
     /// LPUSH key element [ element ... ]
     /// https://valkey.io/commands/lpush/
-    lpush: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
+    lpush: async func(connection: borrow<connection>, key: string, elements: list<string-or-bytes>) -> result<integer, error>;
 
     /// Inserts the elements at the head of the list stored at key, only when it exists, returning
     /// its length after, 0 when it does not exist.
     ///
     /// LPUSHX key element [ element ... ]
     /// https://valkey.io/commands/lpushx/
-    lpushx: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
+    lpushx: async func(connection: borrow<connection>, key: string, elements: list<string-or-bytes>) -> result<integer, error>;
 
     /// The elements of the list stored at key from the start to the stop, both included, negative
     /// from the end.
     ///
     /// LRANGE key start stop
     /// https://valkey.io/commands/lrange/
-    lrange: async func(connection: borrow<connection>, key: string, start: integer, stop: integer) -> result<list<string>, error>;
+    lrange: async func(connection: borrow<connection>, key: string, start: integer, stop: integer) -> result<list<string-or-bytes>, error>;
 
     /// Removes occurrences of the element from the list stored at key, returning how many.
     ///
@@ -1371,13 +1387,13 @@ interface commands {
     ///
     /// LREM key count element
     /// https://valkey.io/commands/lrem/
-    lrem: async func(connection: borrow<connection>, key: string, count: integer, element: string) -> result<integer, error>;
+    lrem: async func(connection: borrow<connection>, key: string, count: integer, element: string-or-bytes) -> result<integer, error>;
 
     /// Sets the element at the index of the list stored at key, negative from the end.
     ///
     /// LSET key index element
     /// https://valkey.io/commands/lset/
-    lset: async func(connection: borrow<connection>, key: string, index: integer, element: string) -> result<_, error>;
+    lset: async func(connection: borrow<connection>, key: string, index: integer, element: string-or-bytes) -> result<_, error>;
 
     /// Trims the list stored at key to the elements from the start to the stop, both included,
     /// negative from the end.
@@ -1391,7 +1407,7 @@ interface commands {
     ///
     /// RPOP key [ count ]
     /// https://valkey.io/commands/rpop/
-    rpop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+    rpop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string-or-bytes>, error>;
 
     /// Moves the last element of the source list to the head of the destination list, returning
     /// it, none when the source does not exist.
@@ -1400,21 +1416,21 @@ interface commands {
     ///
     /// RPOPLPUSH source destination
     /// https://valkey.io/commands/rpoplpush/
-    rpoplpush: async func(connection: borrow<connection>, source: string, destination: string) -> result<option<string>, error>;
+    rpoplpush: async func(connection: borrow<connection>, source: string, destination: string) -> result<option<string-or-bytes>, error>;
 
     /// Inserts the elements at the tail of the list stored at key, creating it when it does not
     /// exist, returning its length after.
     ///
     /// RPUSH key element [ element ... ]
     /// https://valkey.io/commands/rpush/
-    rpush: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
+    rpush: async func(connection: borrow<connection>, key: string, elements: list<string-or-bytes>) -> result<integer, error>;
 
     /// Inserts the elements at the tail of the list stored at key, only when it exists, returning
     /// its length after, 0 when it does not exist.
     ///
     /// RPUSHX key element [ element ... ]
     /// https://valkey.io/commands/rpushx/
-    rpushx: async func(connection: borrow<connection>, key: string, elements: list<string>) -> result<integer, error>;
+    rpushx: async func(connection: borrow<connection>, key: string, elements: list<string-or-bytes>) -> result<integer, error>;
 
 
     // pubsub commands
@@ -1423,7 +1439,7 @@ interface commands {
     ///
     /// PUBLISH channel message
     /// https://valkey.io/commands/publish/
-    publish: async func(connection: borrow<connection>, channel: string, message: string) -> result<integer, error>;
+    publish: async func(connection: borrow<connection>, channel: string, message: string-or-bytes) -> result<integer, error>;
 
     /// Lists the currently active channels.
     ///
@@ -1459,7 +1475,7 @@ interface commands {
     ///
     /// SPUBLISH shardchannel message
     /// https://valkey.io/commands/spublish/
-    spublish: async func(connection: borrow<connection>, shardchannel: string, message: string) -> result<integer, error>;
+    spublish: async func(connection: borrow<connection>, shardchannel: string, message: string-or-bytes) -> result<integer, error>;
 
 
     // scripting commands
@@ -1471,27 +1487,27 @@ interface commands {
     ///
     /// EVAL script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/eval/
-    eval: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
+    eval: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string-or-bytes>>) -> result<resp-value, error>;
 
     /// Runs the Lua script, which may not write, returning its result, see `eval`.
     ///
     /// EVAL_RO script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/eval_ro/
-    eval-ro: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
+    eval-ro: async func(connection: borrow<connection>, script: string, keys: option<list<string>>, args: option<list<string-or-bytes>>) -> result<resp-value, error>;
 
     /// Runs the Lua script cached with the SHA1 digest, see `script-load`, returning its result, see
     /// `eval`.
     ///
     /// EVALSHA sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/evalsha/
-    evalsha: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
+    evalsha: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string-or-bytes>>) -> result<resp-value, error>;
 
     /// Runs the Lua script cached with the SHA1 digest, which may not write, returning its result,
     /// see `eval`.
     ///
     /// EVALSHA_RO sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/evalsha_ro/
-    evalsha-ro: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
+    evalsha-ro: async func(connection: borrow<connection>, sha1: string, keys: option<list<string>>, args: option<list<string-or-bytes>>) -> result<resp-value, error>;
 
     /// Calls the function, see `function-load`, returning its result, the keys it accesses and its
     /// arguments are passed to it.
@@ -1500,19 +1516,25 @@ interface commands {
     ///
     /// FCALL function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/fcall/
-    fcall: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
+    fcall: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string-or-bytes>>) -> result<resp-value, error>;
 
     /// Calls the function, which must be flagged `no-writes`, returning its result, see `fcall`.
     ///
     /// FCALL_RO function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]
     /// https://valkey.io/commands/fcall_ro/
-    fcall-ro: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string>>) -> result<resp-value, error>;
+    fcall-ro: async func(connection: borrow<connection>, function: string, keys: option<list<string>>, args: option<list<string-or-bytes>>) -> result<resp-value, error>;
 
     /// Deletes the library and its functions.
     ///
     /// FUNCTION DELETE library-name
     /// https://valkey.io/commands/function-delete/
     function-delete: async func(connection: borrow<connection>, library-name: string) -> result<_, error>;
+
+    /// The libraries, serialized in Valkey's own format, see `function-restore`.
+    ///
+    /// FUNCTION DUMP
+    /// https://valkey.io/commands/function-dump/
+    function-dump: async func(connection: borrow<connection>) -> result<bytes, error>;
 
     /// Deletes all the libraries, in the mode, the server's `lazyfree-lazy-user-flush` without one.
     ///
@@ -1538,6 +1560,12 @@ interface commands {
     /// FUNCTION LOAD [ REPLACE ] function-code
     /// https://valkey.io/commands/function-load/
     function-load: async func(connection: borrow<connection>, replace: bool, function-code: string) -> result<string, error>;
+
+    /// Loads the libraries serialized with `function-dump`, as `policy` says, by default `append`.
+    ///
+    /// FUNCTION RESTORE serialized-value [ FLUSH | APPEND | REPLACE ]
+    /// https://valkey.io/commands/function-restore/
+    function-restore: async func(connection: borrow<connection>, serialized-value: bytes, policy: option<function-restore-policy>) -> result<_, error>;
 
     /// The function that is running, and the libraries and functions of each engine.
     ///
@@ -1577,7 +1605,6 @@ interface commands {
     script-show: async func(connection: borrow<connection>, sha1: string) -> result<string, error>;
 
     // not implemented, from the @scripting category:
-    //   FUNCTION DUMP and FUNCTION RESTORE, the payload is binary, not a string
     //   SCRIPT DEBUG, the debugger is interactive, with a protocol of its own
 
 
@@ -1587,7 +1614,7 @@ interface commands {
     ///
     /// SADD key member [ member ... ]
     /// https://valkey.io/commands/sadd/
-    sadd: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<integer, error>;
+    sadd: async func(connection: borrow<connection>, key: string, members: list<string-or-bytes>) -> result<integer, error>;
 
     /// The number of members in the set stored at key.
     ///
@@ -1599,7 +1626,7 @@ interface commands {
     ///
     /// SDIFF key [ key ... ]
     /// https://valkey.io/commands/sdiff/
-    sdiff: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+    sdiff: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string-or-bytes>, error>;
 
     /// Stores the members of the first set that are not in any of the others, returning how many.
     ///
@@ -1611,7 +1638,7 @@ interface commands {
     ///
     /// SINTER key [ key ... ]
     /// https://valkey.io/commands/sinter/
-    sinter: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+    sinter: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string-or-bytes>, error>;
 
     /// The number of members in all of the sets, counting stops at the limit.
     ///
@@ -1631,7 +1658,7 @@ interface commands {
     ///
     /// SISMEMBER key member
     /// https://valkey.io/commands/sismember/
-    sismember: async func(connection: borrow<connection>, key: string, member: string) -> result<bool, error>;
+    sismember: async func(connection: borrow<connection>, key: string, member: string-or-bytes) -> result<bool, error>;
 
     /// Whether the member is in the set stored at key, none when the key does not exist.
     ///
@@ -1639,25 +1666,25 @@ interface commands {
     ///
     /// SISMEMBER key member XX
     /// https://valkey.io/commands/sismember/
-    sismember-xx: async func(connection: borrow<connection>, key: string, member: string) -> result<option<bool>, error>;
+    sismember-xx: async func(connection: borrow<connection>, key: string, member: string-or-bytes) -> result<option<bool>, error>;
 
     /// The members of the set stored at key.
     ///
     /// SMEMBERS key
     /// https://valkey.io/commands/smembers/
-    smembers: async func(connection: borrow<connection>, key: string) -> result<list<string>, error>;
+    smembers: async func(connection: borrow<connection>, key: string) -> result<list<string-or-bytes>, error>;
 
     /// Whether each of the members is in the set stored at key.
     ///
     /// SMISMEMBER key member [ member ... ]
     /// https://valkey.io/commands/smismember/
-    smismember: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<list<bool>, error>;
+    smismember: async func(connection: borrow<connection>, key: string, members: list<string-or-bytes>) -> result<list<bool>, error>;
 
     /// Moves the member from one set to another, false when it was not in the source set.
     ///
     /// SMOVE source destination member
     /// https://valkey.io/commands/smove/
-    smove: async func(connection: borrow<connection>, source: string, destination: string, member: string) -> result<bool, error>;
+    smove: async func(connection: borrow<connection>, source: string, destination: string, member: string-or-bytes) -> result<bool, error>;
 
     /// Removes and returns random members of the set stored at key, up to the count.
     ///
@@ -1665,7 +1692,7 @@ interface commands {
     ///
     /// SPOP key [ count ]
     /// https://valkey.io/commands/spop/
-    spop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+    spop: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string-or-bytes>, error>;
 
     /// Random members of the set stored at key, up to the count.
     ///
@@ -1674,25 +1701,25 @@ interface commands {
     ///
     /// SRANDMEMBER key [ count ]
     /// https://valkey.io/commands/srandmember/
-    srandmember: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+    srandmember: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string-or-bytes>, error>;
 
     /// Removes the members from the set stored at key, returning how many were members.
     ///
     /// SREM key member [ member ... ]
     /// https://valkey.io/commands/srem/
-    srem: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<integer, error>;
+    srem: async func(connection: borrow<connection>, key: string, members: list<string-or-bytes>) -> result<integer, error>;
 
     /// Incrementally iterate over the members of the set stored at key.
     ///
     /// SSCAN key cursor [ MATCH pattern ] [ COUNT count ]
     /// https://valkey.io/commands/sscan/
-    sscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<string>>, error>;
+    sscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<string-or-bytes>>, error>;
 
     /// The members in any of the sets.
     ///
     /// SUNION key [ key ... ]
     /// https://valkey.io/commands/sunion/
-    sunion: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+    sunion: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string-or-bytes>, error>;
 
     /// Stores the members in any of the sets, returning how many.
     ///
@@ -1707,7 +1734,7 @@ interface commands {
     ///
     /// SORT key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]
     /// https://valkey.io/commands/sort/
-    sort: async func(connection: borrow<connection>, key: string, opts: option<sort-opts>) -> result<list<list<option<string>>>, error>;
+    sort: async func(connection: borrow<connection>, key: string, opts: option<sort-opts>) -> result<list<list<option<string-or-bytes>>>, error>;
 
     /// Sorts the elements of the list, set or sorted set stored at key, storing them as a list,
     /// returning how many.
@@ -1720,7 +1747,7 @@ interface commands {
     ///
     /// SORT_RO key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]
     /// https://valkey.io/commands/sort_ro/
-    sort-ro: async func(connection: borrow<connection>, key: string, opts: option<sort-ro-opts>) -> result<list<list<option<string>>>, error>;
+    sort-ro: async func(connection: borrow<connection>, key: string, opts: option<sort-ro-opts>) -> result<list<list<option<string-or-bytes>>>, error>;
 
 
     // sortedset commands
@@ -1735,7 +1762,7 @@ interface commands {
     ///
     /// BZMPOP timeout numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]
     /// https://valkey.io/commands/bzmpop/
-    bzmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: bzmpop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
+    bzmpop: async func(connection: borrow<connection>, timeout: duration-milliseconds, keys: list<string>, end: bzmpop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string-or-bytes, double>>>>, error>;
 
     /// Removes the member with the highest score from the first non-empty sorted set, waiting up to
     /// the timeout for one, returning its key, the member and its score.
@@ -1747,7 +1774,7 @@ interface commands {
     ///
     /// BZPOPMAX key [ key ... ] timeout
     /// https://valkey.io/commands/bzpopmax/
-    bzpopmax: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string, double>>, error>;
+    bzpopmax: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string-or-bytes, double>>, error>;
 
     /// Removes the member with the lowest score from the first non-empty sorted set, waiting up to
     /// the timeout for one, returning its key, the member and its score.
@@ -1759,7 +1786,7 @@ interface commands {
     ///
     /// BZPOPMIN key [ key ... ] timeout
     /// https://valkey.io/commands/bzpopmin/
-    bzpopmin: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string, double>>, error>;
+    bzpopmin: async func(connection: borrow<connection>, keys: list<string>, timeout: duration-milliseconds) -> result<option<tuple<string, string-or-bytes, double>>, error>;
 
     /// Adds the members with their scores to the sorted set stored at key, or updates their scores,
     /// returning how many were added, or with `changed`, added or updated.
@@ -1768,7 +1795,7 @@ interface commands {
     ///
     /// ZADD key [ NX | XX ] [ GT | LT ] [ CH ] score member [ score member ... ]
     /// https://valkey.io/commands/zadd/
-    zadd: async func(connection: borrow<connection>, key: string, condition: option<zadd-condition>, comparison: option<zadd-comparison>, changed: bool, score-and-members: list<tuple<double, string>>) -> result<option<integer>, error>;
+    zadd: async func(connection: borrow<connection>, key: string, condition: option<zadd-condition>, comparison: option<zadd-comparison>, changed: bool, score-and-members: list<tuple<double, string-or-bytes>>) -> result<option<integer>, error>;
 
     /// Increments the score of the member in the sorted set stored at key, returning the new score,
     /// none when the condition or comparison prevented it.
@@ -1777,7 +1804,7 @@ interface commands {
     ///
     /// ZADD key [ NX | XX ] [ GT | LT ] INCR score member
     /// https://valkey.io/commands/zadd/
-    zadd-incr: async func(connection: borrow<connection>, key: string, condition: option<zadd-condition>, comparison: option<zadd-comparison>, increment: double, member: string) -> result<option<double>, error>;
+    zadd-incr: async func(connection: borrow<connection>, key: string, condition: option<zadd-condition>, comparison: option<zadd-comparison>, increment: double, member: string-or-bytes) -> result<option<double>, error>;
 
     /// The number of members in the sorted set stored at key.
     ///
@@ -1797,7 +1824,7 @@ interface commands {
     ///
     /// ZDIFF numkeys key [ key ... ]
     /// https://valkey.io/commands/zdiff/
-    zdiff: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string>, error>;
+    zdiff: async func(connection: borrow<connection>, keys: list<string>) -> result<list<string-or-bytes>, error>;
 
     /// The members, and their scores, of the first sorted set that are not in any of the others.
     ///
@@ -1805,7 +1832,7 @@ interface commands {
     ///
     /// ZDIFF numkeys key [ key ... ] WITHSCORES
     /// https://valkey.io/commands/zdiff/
-    zdiff-withscores: async func(connection: borrow<connection>, keys: list<string>) -> result<list<tuple<string, double>>, error>;
+    zdiff-withscores: async func(connection: borrow<connection>, keys: list<string>) -> result<list<tuple<string-or-bytes, double>>, error>;
 
     /// Stores the members of the first sorted set that are not in any of the others, returning how
     /// many.
@@ -1818,7 +1845,7 @@ interface commands {
     ///
     /// ZINCRBY key increment member
     /// https://valkey.io/commands/zincrby/
-    zincrby: async func(connection: borrow<connection>, key: string, increment: double, member: string) -> result<double, error>;
+    zincrby: async func(connection: borrow<connection>, key: string, increment: double, member: string-or-bytes) -> result<double, error>;
 
     /// The members in all of the sorted sets.
     ///
@@ -1828,7 +1855,7 @@ interface commands {
     ///
     /// ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
     /// https://valkey.io/commands/zinter/
-    zinter: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<string>, error>;
+    zinter: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<string-or-bytes>, error>;
 
     /// The members, and their combined scores, in all of the sorted sets.
     ///
@@ -1836,7 +1863,7 @@ interface commands {
     ///
     /// ZINTER numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES
     /// https://valkey.io/commands/zinter/
-    zinter-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<tuple<string, double>>, error>;
+    zinter-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<tuple<string-or-bytes, double>>, error>;
 
     /// The number of members in all of the sorted sets, counting stops at the limit.
     ///
@@ -1862,28 +1889,28 @@ interface commands {
     ///
     /// ZMPOP numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]
     /// https://valkey.io/commands/zmpop/
-    zmpop: async func(connection: borrow<connection>, keys: list<string>, end: zmpop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string, double>>>>, error>;
+    zmpop: async func(connection: borrow<connection>, keys: list<string>, end: zmpop-end, count: option<integer>) -> result<option<tuple<string, list<tuple<string-or-bytes, double>>>>, error>;
 
     /// The score of each of the members of the sorted set stored at key, none for a member that is
     /// not in it.
     ///
     /// ZMSCORE key member [ member ... ]
     /// https://valkey.io/commands/zmscore/
-    zmscore: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<list<option<double>>, error>;
+    zmscore: async func(connection: borrow<connection>, key: string, members: list<string-or-bytes>) -> result<list<option<double>>, error>;
 
     /// Removes and returns the members with the highest scores, and their scores, up to the count,
     /// one without a count.
     ///
     /// ZPOPMAX key [ count ]
     /// https://valkey.io/commands/zpopmax/
-    zpopmax: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<tuple<string, double>>, error>;
+    zpopmax: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<tuple<string-or-bytes, double>>, error>;
 
     /// Removes and returns the members with the lowest scores, and their scores, up to the count,
     /// one without a count.
     ///
     /// ZPOPMIN key [ count ]
     /// https://valkey.io/commands/zpopmin/
-    zpopmin: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<tuple<string, double>>, error>;
+    zpopmin: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<tuple<string-or-bytes, double>>, error>;
 
     /// Random members of the sorted set stored at key, up to the count.
     ///
@@ -1894,7 +1921,7 @@ interface commands {
     ///
     /// ZRANDMEMBER key [ count ]
     /// https://valkey.io/commands/zrandmember/
-    zrandmember: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string>, error>;
+    zrandmember: async func(connection: borrow<connection>, key: string, count: option<integer>) -> result<list<string-or-bytes>, error>;
 
     /// Random members of the sorted set stored at key, and their scores, up to the count.
     ///
@@ -1905,7 +1932,7 @@ interface commands {
     ///
     /// ZRANDMEMBER key count WITHSCORES
     /// https://valkey.io/commands/zrandmember/
-    zrandmember-withscores: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<tuple<string, double>>, error>;
+    zrandmember-withscores: async func(connection: borrow<connection>, key: string, count: integer) -> result<list<tuple<string-or-bytes, double>>, error>;
 
     /// The members of the sorted set stored at key in the range, from the lowest score, or the
     /// highest with `rev`.
@@ -1918,7 +1945,7 @@ interface commands {
     ///
     /// ZRANGE key start stop [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ] [ XX ]
     /// https://valkey.io/commands/zrange/
-    zrange: async func(connection: borrow<connection>, key: string, range: zrange-by, rev: bool, limit: option<limit>, xx: bool) -> result<option<list<string>>, error>;
+    zrange: async func(connection: borrow<connection>, key: string, range: zrange-by, rev: bool, limit: option<limit>, xx: bool) -> result<option<list<string-or-bytes>>, error>;
 
     /// The members of the sorted set stored at key in the range, and their scores, from the lowest
     /// score, or the highest with `rev`.
@@ -1930,7 +1957,7 @@ interface commands {
     ///
     /// ZRANGE key start stop [ BYSCORE ] [ REV ] [ LIMIT offset count ] WITHSCORES [ XX ]
     /// https://valkey.io/commands/zrange/
-    zrange-withscores: async func(connection: borrow<connection>, key: string, range: zrange-withscores-by, rev: bool, limit: option<limit>, xx: bool) -> result<option<list<tuple<string, double>>>, error>;
+    zrange-withscores: async func(connection: borrow<connection>, key: string, range: zrange-withscores-by, rev: bool, limit: option<limit>, xx: bool) -> result<option<list<tuple<string-or-bytes, double>>>, error>;
 
     /// Stores the members of the sorted set stored at source in the range, returning how many.
     ///
@@ -1947,7 +1974,7 @@ interface commands {
     ///
     /// ZRANK key member
     /// https://valkey.io/commands/zrank/
-    zrank: async func(connection: borrow<connection>, key: string, member: string) -> result<option<integer>, error>;
+    zrank: async func(connection: borrow<connection>, key: string, member: string-or-bytes) -> result<option<integer>, error>;
 
     /// The position, and the score, of the member in the sorted set stored at key, from the lowest
     /// score, none when it is not a member.
@@ -1956,13 +1983,13 @@ interface commands {
     ///
     /// ZRANK key member WITHSCORE
     /// https://valkey.io/commands/zrank/
-    zrank-withscore: async func(connection: borrow<connection>, key: string, member: string) -> result<option<tuple<integer, double>>, error>;
+    zrank-withscore: async func(connection: borrow<connection>, key: string, member: string-or-bytes) -> result<option<tuple<integer, double>>, error>;
 
     /// Removes the members from the sorted set stored at key, returning how many were members.
     ///
     /// ZREM key member [ member ... ]
     /// https://valkey.io/commands/zrem/
-    zrem: async func(connection: borrow<connection>, key: string, members: list<string>) -> result<integer, error>;
+    zrem: async func(connection: borrow<connection>, key: string, members: list<string-or-bytes>) -> result<integer, error>;
 
     /// Removes the members of the sorted set stored at key in the range, for members of equal score,
     /// returning how many.
@@ -1992,7 +2019,7 @@ interface commands {
     ///
     /// ZREVRANK key member
     /// https://valkey.io/commands/zrevrank/
-    zrevrank: async func(connection: borrow<connection>, key: string, member: string) -> result<option<integer>, error>;
+    zrevrank: async func(connection: borrow<connection>, key: string, member: string-or-bytes) -> result<option<integer>, error>;
 
     /// The position, and the score, of the member in the sorted set stored at key, from the highest
     /// score, none when it is not a member.
@@ -2001,7 +2028,7 @@ interface commands {
     ///
     /// ZREVRANK key member WITHSCORE
     /// https://valkey.io/commands/zrevrank/
-    zrevrank-withscore: async func(connection: borrow<connection>, key: string, member: string) -> result<option<tuple<integer, double>>, error>;
+    zrevrank-withscore: async func(connection: borrow<connection>, key: string, member: string-or-bytes) -> result<option<tuple<integer, double>>, error>;
 
     /// Incrementally iterate over the members of the sorted set stored at key, and their scores.
     ///
@@ -2009,7 +2036,7 @@ interface commands {
     ///
     /// ZSCAN key cursor [ MATCH pattern ] [ COUNT count ]
     /// https://valkey.io/commands/zscan/
-    zscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<tuple<string, double>>>, error>;
+    zscan: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<tuple<string-or-bytes, double>>>, error>;
 
     /// Incrementally iterate over the members of the sorted set stored at key.
     ///
@@ -2017,13 +2044,13 @@ interface commands {
     ///
     /// ZSCAN key cursor [ MATCH pattern ] [ COUNT count ] NOSCORES
     /// https://valkey.io/commands/zscan/
-    zscan-noscores: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<string>>, error>;
+    zscan-noscores: async func(connection: borrow<connection>, key: string, cursor: cursor, match: option<string>, count: option<integer>) -> result<tuple<option<cursor>, list<string-or-bytes>>, error>;
 
     /// The score of the member in the sorted set stored at key, none when it is not a member.
     ///
     /// ZSCORE key member
     /// https://valkey.io/commands/zscore/
-    zscore: async func(connection: borrow<connection>, key: string, member: string) -> result<option<double>, error>;
+    zscore: async func(connection: borrow<connection>, key: string, member: string-or-bytes) -> result<option<double>, error>;
 
     /// The members in any of the sorted sets.
     ///
@@ -2033,7 +2060,7 @@ interface commands {
     ///
     /// ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]
     /// https://valkey.io/commands/zunion/
-    zunion: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<string>, error>;
+    zunion: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<string-or-bytes>, error>;
 
     /// The members, and their combined scores, in any of the sorted sets.
     ///
@@ -2041,7 +2068,7 @@ interface commands {
     ///
     /// ZUNION numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ] WITHSCORES
     /// https://valkey.io/commands/zunion/
-    zunion-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<tuple<string, double>>, error>;
+    zunion-withscores: async func(connection: borrow<connection>, keys: list<string>, weights: option<list<double>>, aggregate: option<zset-aggregate>) -> result<list<tuple<string-or-bytes, double>>, error>;
 
     /// Stores the members in any of the sorted sets, with their combined scores, returning how many.
     ///
@@ -2062,7 +2089,7 @@ interface commands {
     ///
     /// XADD key [ NOMKSTREAM ] [ 〈 MAXLEN | MINID 〉 [ = | ~ ] threshold [ LIMIT count ] ] 〈 * | id 〉 field value [ field value ... ]
     /// https://valkey.io/commands/xadd/
-    xadd: async func(connection: borrow<connection>, key: string, nomkstream: bool, trim: option<stream-trim>, id: stream-id, field-and-values: list<tuple<string, string>>) -> result<option<stream-id>, error>;
+    xadd: async func(connection: borrow<connection>, key: string, nomkstream: bool, trim: option<stream-trim>, id: stream-id, field-and-values: list<tuple<string, string-or-bytes>>) -> result<option<stream-id>, error>;
 
     /// Transfers ownership of pending stream entries that match the specified criteria.
     ///
@@ -2074,7 +2101,7 @@ interface commands {
     ///
     /// XAUTOCLAIM key group consumer min-idle-time start [ COUNT count ]
     /// https://valkey.io/commands/xautoclaim/
-    xautoclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<tuple<stream-id, map<string, string>>>, list<stream-id>>, error>;
+    xautoclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, start: option<stream-id>, count: option<integer>) -> result<tuple<option<stream-id>, list<tuple<stream-id, map<string, string-or-bytes>>>, list<stream-id>>, error>;
 
     /// Transfers ownership of pending stream entries that match the specified criteria.
     ///
@@ -2095,7 +2122,7 @@ interface commands {
     ///
     /// XCLAIM key group consumer min-idle-time ID [ ID ... ] [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] [ LASTID lastid ]
     /// https://valkey.io/commands/xclaim/
-    xclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
+    xclaim: async func(connection: borrow<connection>, key: string, group: string, consumer: string, min-idle-time: duration-milliseconds, ids: list<stream-id>, opts: option<xclaim-opts>) -> result<list<tuple<stream-id, map<string, string-or-bytes>>>, error>;
 
     /// Changes the ownership of a pending message, so that the new owner is the consumer specified as the command argument.
     ///
@@ -2195,13 +2222,13 @@ interface commands {
     ///
     /// XRANGE key start end [ COUNT count ]
     /// https://valkey.io/commands/xrange/
-    xrange: async func(connection: borrow<connection>, key: string, start: stream-id, end: stream-id, count: option<integer>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
+    xrange: async func(connection: borrow<connection>, key: string, start: stream-id, end: stream-id, count: option<integer>) -> result<list<tuple<stream-id, map<string, string-or-bytes>>>, error>;
 
     /// Read data from one or multiple streams, only returning entries with an ID greater than the last received ID reported by the caller.
     ///
     /// XREAD [ COUNT count ] [ BLOCK milliseconds ] STREAMS key [ key ... ] ID [ ID ... ]
     /// https://valkey.io/commands/xread/
-    xread: async func(connection: borrow<connection>, count: option<integer>, block: option<duration-milliseconds>, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, map<string, string>>>>>, error>;
+    xread: async func(connection: borrow<connection>, count: option<integer>, block: option<duration-milliseconds>, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, map<string, string-or-bytes>>>>>, error>;
 
     /// Special version of the XREAD command with support for consumer groups.
     ///
@@ -2210,13 +2237,13 @@ interface commands {
     ///
     /// XREADGROUP GROUP group consumer [ COUNT count ] [ BLOCK milliseconds ] [ NOACK ] STREAMS key [ key ... ] ID [ ID ... ]
     /// https://valkey.io/commands/xreadgroup/
-    xreadgroup: async func(connection: borrow<connection>, group: string, consumer: string, count: option<integer>, block: option<duration-milliseconds>, noack: bool, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, option<map<string, string>>>>>>, error>;
+    xreadgroup: async func(connection: borrow<connection>, group: string, consumer: string, count: option<integer>, block: option<duration-milliseconds>, noack: bool, keys: list<string>, ids: list<stream-id>) -> result<option<map<string, list<tuple<stream-id, option<map<string, string-or-bytes>>>>>>, error>;
 
     /// XRANGE, but returning the entries in reverse order.
     ///
     /// XREVRANGE key end start [ COUNT count ]
     /// https://valkey.io/commands/xrevrange/
-    xrevrange: async func(connection: borrow<connection>, key: string, end: stream-id, start: stream-id, count: option<integer>) -> result<list<tuple<stream-id, map<string, string>>>, error>;
+    xrevrange: async func(connection: borrow<connection>, key: string, end: stream-id, start: stream-id, count: option<integer>) -> result<list<tuple<stream-id, map<string, string-or-bytes>>>, error>;
 
     /// Internal command. It is used by a Valkey primary to replicate the last delivered ID of streams.
     ///
@@ -2238,7 +2265,7 @@ interface commands {
     ///
     /// APPEND key value
     /// https://valkey.io/commands/append/
-    append: async func(connection: borrow<connection>, key: string, value: string) -> result<integer, error>;
+    append: async func(connection: borrow<connection>, key: string, value: string-or-bytes) -> result<integer, error>;
 
     /// Decrements the number stored at key by one.
     ///
@@ -2256,38 +2283,38 @@ interface commands {
     ///
     /// DELIFEQ key value
     /// https://valkey.io/commands/delifeq/
-    delifeq: async func(connection: borrow<connection>, key: string, value: string) -> result<bool, error>;
+    delifeq: async func(connection: borrow<connection>, key: string, value: string-or-bytes) -> result<bool, error>;
 
 
     /// Get the value of key.
     ///
     /// GET key
     /// https://valkey.io/commands/get/
-    get: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+    get: async func(connection: borrow<connection>, key: string) -> result<option<string-or-bytes>, error>;
 
     /// Get the value of key and delete the key.
     ///
     /// GETDEL key
     /// https://valkey.io/commands/getdel/
-    getdel: async func(connection: borrow<connection>, key: string) -> result<option<string>, error>;
+    getdel: async func(connection: borrow<connection>, key: string) -> result<option<string-or-bytes>, error>;
 
     /// Get the value of key and optionally set its expiration.
     ///
     /// GETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ]
     /// https://valkey.io/commands/getex/
-    getex: async func(connection: borrow<connection>, key: string, ttl: option<getex-ttl>) -> result<option<string>, error>;
+    getex: async func(connection: borrow<connection>, key: string, ttl: option<getex-ttl>) -> result<option<string-or-bytes>, error>;
 
     /// Returns the substring of the string value stored at key, determined by the offsets start and end.
     ///
     /// GETRANGE key start end
     /// https://valkey.io/commands/getrange/
-    getrange: async func(connection: borrow<connection>, key: string, start: integer, end: integer) -> result<string, error>;
+    getrange: async func(connection: borrow<connection>, key: string, start: integer, end: integer) -> result<string-or-bytes, error>;
 
     /// Atomically sets key to value and returns the old value stored at key.
     ///
     /// GETSET key value
     /// https://valkey.io/commands/getset/
-    getset: async func(connection: borrow<connection>, key: string, value: string) -> result<option<string>, error>;
+    getset: async func(connection: borrow<connection>, key: string, value: string-or-bytes) -> result<option<string-or-bytes>, error>;
 
     /// Increments the number stored at key by one.
     ///
@@ -2313,7 +2340,7 @@ interface commands {
     ///
     /// LCS key1 key2
     /// https://valkey.io/commands/lcs/
-    lcs: async func(connection: borrow<connection>, key1: string, key2: string) -> result<string, error>;
+    lcs: async func(connection: borrow<connection>, key1: string, key2: string) -> result<string-or-bytes, error>;
 
     /// The LCS command implements the longest common subsequence algorithm.
     ///
@@ -2335,31 +2362,31 @@ interface commands {
     ///
     /// MGET key [ key ... ]
     /// https://valkey.io/commands/mget/
-    mget: async func(connection: borrow<connection>, keys: list<string>) -> result<list<option<string>>, error>;
+    mget: async func(connection: borrow<connection>, keys: list<string>) -> result<list<option<string-or-bytes>>, error>;
 
     /// Sets the given keys to their respective values.
     ///
     /// MSET key value [ key value ... ]
     /// https://valkey.io/commands/mset/
-    mset: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string>>) -> result<_, error>;
+    mset: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string-or-bytes>>) -> result<_, error>;
 
     /// Sets multiple key-value pairs while also assigning a shared expiration time to all the keys atomically.
     ///
     /// MSETEX numkeys key value [ key value ... ] [ NX | XX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
     /// https://valkey.io/commands/msetex/
-    msetex: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string>>, precondition: option<msetex-precondition>, ttl: option<msetex-ttl>) -> result<bool, error>;
+    msetex: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string-or-bytes>>, precondition: option<msetex-precondition>, ttl: option<msetex-ttl>) -> result<bool, error>;
 
     /// Sets the given keys to their respective values.
     ///
     /// MSETNX key value [ key value ... ]
     /// https://valkey.io/commands/msetnx/
-    msetnx: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string>>) -> result<bool, error>;
+    msetnx: async func(connection: borrow<connection>, keys-and-values: list<tuple<string, string-or-bytes>>) -> result<bool, error>;
 
     /// Set key to hold the string value with expiration in milliseconds.
     ///
     /// PSETEX key milliseconds value
     /// https://valkey.io/commands/psetex/
-    psetex: async func(connection: borrow<connection>, key: string, milliseconds: duration-milliseconds, value: string) -> result<_, error>;
+    psetex: async func(connection: borrow<connection>, key: string, milliseconds: duration-milliseconds, value: string-or-bytes) -> result<_, error>;
 
     /// Set key to hold the string value.
     ///
@@ -2367,31 +2394,31 @@ interface commands {
     ///
     /// SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
     /// https://valkey.io/commands/set/
-    set: async func(connection: borrow<connection>, key: string, value: string, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<bool, error>;
+    set: async func(connection: borrow<connection>, key: string, value: string-or-bytes, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<bool, error>;
 
     /// Set key to hold the string value. Returning the previous value.
     ///
     /// SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] GET [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]
     /// https://valkey.io/commands/set/
-    set-get: async func(connection: borrow<connection>, key: string, value: string, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<option<string>, error>;
+    set-get: async func(connection: borrow<connection>, key: string, value: string-or-bytes, precondition: option<set-precondition>, ttl: option<set-ttl>) -> result<option<string-or-bytes>, error>;
 
     /// Set key to hold the string value with expiration in seconds.
     ///
     /// SETEX key seconds value
     /// https://valkey.io/commands/setex/
-    setex: async func(connection: borrow<connection>, key: string, seconds: duration-seconds, value: string) -> result<_, error>;
+    setex: async func(connection: borrow<connection>, key: string, seconds: duration-seconds, value: string-or-bytes) -> result<_, error>;
 
     /// Set key to hold string value if key does not exist.
     ///
     /// SETNX key value
     /// https://valkey.io/commands/setnx/
-    setnx: async func(connection: borrow<connection>, key: string, value: string) -> result<bool, error>;
+    setnx: async func(connection: borrow<connection>, key: string, value: string-or-bytes) -> result<bool, error>;
 
     /// Overwrites part of the string stored at key, starting at the specified offset, for the entire length of value.
     ///
     /// SETRANGE key offset value
     /// https://valkey.io/commands/setrange/
-    setrange: async func(connection: borrow<connection>, key: string, offset: u32, value: string) -> result<integer, error>;
+    setrange: async func(connection: borrow<connection>, key: string, offset: u32, value: string-or-bytes) -> result<integer, error>;
 
     /// Returns the length of the string value stored at key.
     ///
@@ -2403,6 +2430,6 @@ interface commands {
     ///
     /// SUBSTR key start end
     /// https://valkey.io/commands/substr/
-    substr: async func(connection: borrow<connection>, key: string, start: integer, end: integer) -> result<string, error>;
+    substr: async func(connection: borrow<connection>, key: string, start: integer, end: integer) -> result<string-or-bytes, error>;
 
 }

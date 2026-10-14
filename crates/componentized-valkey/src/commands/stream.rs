@@ -1,6 +1,6 @@
 //! The stream commands: XADD, XAUTOCLAIM, XCLAIM, XINFO, XPENDING, XTRIM and the like.
 
-use crate::command::{Flag, IntoCommand, NamedOption};
+use crate::command::{Flag, IntoCommand, NamedOption, Words};
 use crate::types::{
     DurationMilliseconds, Error, RespValue, StreamId, StreamTrim, StreamTrimEfficiency,
     UnixTimeMilliseconds, XclaimOpts, XinfoConsumersEntry, XinfoGroupsEntry, XinfoStreamReply,
@@ -10,7 +10,7 @@ use crate::types::{
 use crate::value::{Fields, FromValue, OrNever};
 
 impl IntoCommand for StreamTrim {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         //〈 MAXLEN | MINID 〉 [ = | ~ ] threshold [ LIMIT count ]
         match self {
             StreamTrim::Maxlen(trim) => (
@@ -32,7 +32,7 @@ impl IntoCommand for StreamTrim {
 }
 
 impl IntoCommand for StreamTrimEfficiency {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         //  = | ~
         (match self {
             StreamTrimEfficiency::Exact => "=",
@@ -43,7 +43,7 @@ impl IntoCommand for StreamTrimEfficiency {
 }
 
 impl IntoCommand for XclaimOpts {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         // [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] [ LASTID lastid ]
         (
             NamedOption("IDLE", self.idle),
@@ -64,8 +64,8 @@ pub const ZERO_ID: &str = "0-0";
 
 /// `0-0` for none, e.g. to start XAUTOCLAIM from the beginning.
 impl IntoCommand for OrZeroId {
-    fn into_command(self) -> Result<Vec<String>, Error> {
-        Ok(vec![self.0.unwrap_or_else(|| ZERO_ID.to_string())])
+    fn into_command(self) -> Result<Words, Error> {
+        self.0.unwrap_or_else(|| ZERO_ID.to_string()).into_command()
     }
 }
 
@@ -213,12 +213,13 @@ mod tests {
     use crate::test_util::{array, bulk, bulks, fields, from, from_error, int, words};
     use crate::types::{StreamTrimMaxlen, StreamTrimMinid};
 
+    use crate::types::StringOrBytes;
     use wit_bindgen::rt::Map;
 
-    fn entry(id: &str, field: &str, value: &str) -> (StreamId, Map<String, String>) {
+    fn entry(id: &str, field: &str, value: &str) -> (StreamId, Map<String, StringOrBytes>) {
         (
             id.to_string(),
-            [(field.to_string(), value.to_string())]
+            [(field.to_string(), StringOrBytes::from(value))]
                 .into_iter()
                 .collect(),
         )

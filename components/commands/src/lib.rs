@@ -1,19 +1,21 @@
 use crate::exports::componentized::valkey::commands::{
     AclDryrunResult, AclListEntry, AclLogEntry, AclRule, BgsaveOperation, BitRange, BitfieldGet,
-    BitfieldOperation, BitopOperation, ClientFilter, ClientPauseMode, ClientSetinfoAttr,
-    ClientTrackingOptions, ClientTrackinginfoReply, ClientUnblockType, ClusterBumpepochResult,
-    ClusterFailoverMode, ClusterGetslotmigrationsEntry, ClusterMigrateslotsGroup, ClusterResetMode,
-    ClusterSetslotState, CommandDocsReply, CommandInfoReply, CommandListFilter, CommandlogEntry,
-    CommandlogType, Connection, Cursor, Double, DurationMilliseconds, DurationSeconds, Error,
-    ExpiretimeReply, FailoverTarget, FlushMode, FunctionListLibrary, FunctionStatsReply,
-    GeoCoordinates, GeoUnit, GeoaddCondition, GeosearchCount, GeosearchShape, GeosearchWithFlags,
-    GeosearchWithResult, GetexTtl, Guest, HexpireResult, HpersistResult, HsetexCondition,
-    HsetexFieldCondition, Integer, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply,
-    LexBound, Limit, LinsertPosition, LinsertResult, ListSide, MigrateAuth, MigrateFlags,
-    ModuleListEntry, MsetexPrecondition, MsetexTtl, PexpiretimeReply, PttlReply, RespValue,
-    RoleReply, ScoreBound, SetPrecondition, SetTtl, ShutdownFlags, ShutdownSave, SortOpts,
-    SortOrder, StreamId, StreamTrim, TtlMode, TtlReply, UnixTimeMilliseconds, UnixTimeSeconds,
-    XclaimOpts, XinfoConsumersEntry, XinfoGroupsEntry, XinfoStreamReply, XinfoStreamReplyFull,
+    BitfieldOperation, BitopOperation, Bytes, BzmpopEnd, ClientFilter, ClientPauseMode,
+    ClientSetinfoAttr, ClientTrackingOptions, ClientTrackinginfoReply, ClientUnblockType,
+    ClusterBumpepochResult, ClusterFailoverMode, ClusterGetslotmigrationsEntry,
+    ClusterMigrateslotsGroup, ClusterResetMode, ClusterSetslotState, CommandDocsReply,
+    CommandInfoReply, CommandListFilter, CommandlogEntry, CommandlogType, Connection, Cursor,
+    Double, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply, FailoverTarget,
+    FlushMode, FunctionListLibrary, FunctionRestorePolicy, FunctionStatsReply, GeoCoordinates,
+    GeoUnit, GeoaddCondition, GeosearchCount, GeosearchShape, GeosearchWithFlags,
+    GeosearchWithResult, GetexTtl, Guest, HexpireResult, HgetexTtl, HpersistResult,
+    HsetexCondition, HsetexFieldCondition, HsetexTtl, Integer, KeyType, LatencyHistogramEntry,
+    LatencyLatestEntry, LcsIdxReply, LexBound, Limit, LinsertPosition, LinsertResult, ListSide,
+    MigrateAuth, MigrateFlags, ModuleListEntry, MsetexPrecondition, MsetexTtl, PexpiretimeReply,
+    PttlReply, RespValue, RestoreTtl, RoleReply, ScoreBound, SetPrecondition, SetTtl,
+    ShutdownFlags, ShutdownSave, SortOpts, SortOrder, SortRoOpts, StreamId, StreamTrim,
+    StringOrBytes, TtlMode, TtlReply, UnixTimeMilliseconds, UnixTimeSeconds, XclaimOpts,
+    XinfoConsumersEntry, XinfoGroupsEntry, XinfoStreamReply, XinfoStreamReplyFull,
     XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition, ZmpopEnd, ZrangeBy,
     ZrangeWithscoresBy, ZsetAggregate,
 };
@@ -27,7 +29,7 @@ use componentized_valkey::commands::scripting::KeysAndArgs;
 use componentized_valkey::commands::shared::{DecimalSeconds, NextCursor};
 use componentized_valkey::commands::sortedset::{LexRange, ScoreRange, ScoredMembers, Zrange};
 use componentized_valkey::commands::stream::OrZeroId;
-use componentized_valkey::value::{FlatPairs, OrNever};
+use componentized_valkey::value::{Binary, FlatPairs, OrNever};
 
 use wit_bindgen::rt::Map;
 
@@ -45,6 +47,23 @@ async fn exchange<T: FromValue>(
 }
 
 struct Commands;
+
+/// The rows of SORT's values, `row` values each.
+fn rows(values: Vec<Option<StringOrBytes>>, row: usize) -> Vec<Vec<Option<StringOrBytes>>> {
+    let mut values = values.into_iter();
+    std::iter::from_fn(|| Some(values.by_ref().take(row).collect::<Vec<_>>()))
+        .take_while(|row| !row.is_empty())
+        .collect()
+}
+
+/// The words of RESTORE's ttl, `0` for none, and whether it is absolute, ABSTTL.
+fn restore_ttl(ttl: Option<RestoreTtl>) -> (StringOrBytes, bool) {
+    match ttl {
+        None => ("0".into(), false),
+        Some(RestoreTtl::ExpireIn(duration)) => (duration.px.to_string().into(), false),
+        Some(RestoreTtl::ExpireAt(unix_time)) => (unix_time.pxat.to_string().into(), true),
+    }
+}
 
 /// The number of values SORT returns for each element, one for each GET pattern, or the element.
 fn sort_row_len(opts: &Option<SortOpts>) -> usize {
@@ -1057,9 +1076,9 @@ impl Guest for Commands {
     #[doc = " PING [ message ]"]
     #[doc = " https://valkey.io/commands/ping/"]
     #[allow(async_fn_in_trait)]
-    async fn ping(connection: &Connection, message: Option<String>) -> Result<(), Error> {
-        let reply: String = exchange(connection, ("PING", message.clone())).await?;
-        if reply == message.unwrap_or("PONG".to_string()) {
+    async fn ping(connection: &Connection, message: Option<StringOrBytes>) -> Result<(), Error> {
+        let reply: StringOrBytes = exchange(connection, ("PING", message.clone())).await?;
+        if reply == message.unwrap_or_else(|| "PONG".into()) {
             Ok(())
         } else {
             Err(Error::Client(format!("unexpected reply: {reply:?}")))
@@ -1317,7 +1336,7 @@ impl Guest for Commands {
     #[doc = " ECHO message"]
     #[doc = " https://valkey.io/commands/echo/"]
     #[allow(async_fn_in_trait)]
-    async fn echo(connection: &Connection, message: String) -> Result<String, Error> {
+    async fn echo(connection: &Connection, message: StringOrBytes) -> Result<StringOrBytes, Error> {
         exchange(connection, ("ECHO", message)).await
     }
 
@@ -1401,7 +1420,7 @@ impl Guest for Commands {
         key: String,
         condition: Option<GeoaddCondition>,
         changed: bool,
-        coordinates_and_members: Vec<(GeoCoordinates, String)>,
+        coordinates_and_members: Vec<(GeoCoordinates, StringOrBytes)>,
     ) -> Result<Integer, Error> {
         exchange(
             connection,
@@ -1424,8 +1443,8 @@ impl Guest for Commands {
     async fn geodist(
         connection: &Connection,
         key: String,
-        member1: String,
-        member2: String,
+        member1: StringOrBytes,
+        member2: StringOrBytes,
         unit: Option<GeoUnit>,
     ) -> Result<Option<Double>, Error> {
         exchange(connection, ("GEODIST", key, member1, member2, unit)).await
@@ -1439,7 +1458,7 @@ impl Guest for Commands {
     async fn geohash(
         connection: &Connection,
         key: String,
-        members: Option<Vec<String>>,
+        members: Option<Vec<StringOrBytes>>,
     ) -> Result<Vec<Option<String>>, Error> {
         exchange(
             connection,
@@ -1456,7 +1475,7 @@ impl Guest for Commands {
     async fn geopos(
         connection: &Connection,
         key: String,
-        members: Option<Vec<String>>,
+        members: Option<Vec<StringOrBytes>>,
     ) -> Result<Vec<Option<GeoCoordinates>>, Error> {
         exchange(
             connection,
@@ -1478,7 +1497,7 @@ impl Guest for Commands {
         shape: GeosearchShape,
         order: Option<SortOrder>,
         count: Option<GeosearchCount>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("GEOSEARCH", key, shape, order, count)).await
     }
 
@@ -1591,7 +1610,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<Option<String>>, Error> {
+    ) -> Result<Vec<Option<StringOrBytes>>, Error> {
         exchange(
             connection,
             ("HGETDEL", key, Fields(NonEmpty::new("fields", fields))),
@@ -1608,9 +1627,9 @@ impl Guest for Commands {
     async fn hgetex(
         connection: &Connection,
         key: String,
-        ttl: Option<GetexTtl>,
+        ttl: Option<HgetexTtl>,
         fields: Vec<String>,
-    ) -> Result<Vec<Option<String>>, Error> {
+    ) -> Result<Vec<Option<StringOrBytes>>, Error> {
         exchange(
             connection,
             ("HGETEX", key, ttl, Fields(NonEmpty::new("fields", fields))),
@@ -1728,8 +1747,8 @@ impl Guest for Commands {
         key: String,
         condition: Option<HsetexCondition>,
         field_condition: Option<HsetexFieldCondition>,
-        ttl: Option<SetTtl>,
-        field_and_values: Vec<(String, String)>,
+        ttl: Option<HsetexTtl>,
+        field_and_values: Vec<(String, StringOrBytes)>,
     ) -> Result<bool, Error> {
         let command = (
             "HSETEX",
@@ -1820,7 +1839,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         field: String,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("HGET", key, field)).await
     }
 
@@ -1829,7 +1848,10 @@ impl Guest for Commands {
     #[doc = " HGETALL key"]
     #[doc = " https://valkey.io/commands/hgetall/"]
     #[allow(async_fn_in_trait)]
-    async fn hgetall(connection: &Connection, key: String) -> Result<Map<String, String>, Error> {
+    async fn hgetall(
+        connection: &Connection,
+        key: String,
+    ) -> Result<Map<String, StringOrBytes>, Error> {
         exchange(connection, ("HGETALL", key)).await
     }
 
@@ -1888,7 +1910,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         fields: Vec<String>,
-    ) -> Result<Vec<Option<String>>, Error> {
+    ) -> Result<Vec<Option<StringOrBytes>>, Error> {
         exchange(connection, ("HMGET", key, NonEmpty::new("fields", fields))).await
     }
 
@@ -1900,7 +1922,7 @@ impl Guest for Commands {
     async fn hmset(
         connection: &Connection,
         key: String,
-        field_and_values: Vec<(String, String)>,
+        field_and_values: Vec<(String, StringOrBytes)>,
     ) -> Result<(), Error> {
         exchange(
             connection,
@@ -1950,7 +1972,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Integer,
-    ) -> Result<Vec<(String, String)>, Error> {
+    ) -> Result<Vec<(String, StringOrBytes)>, Error> {
         exchange(connection, ("HRANDFIELD", key, count, "WITHVALUES")).await
     }
 
@@ -1967,8 +1989,8 @@ impl Guest for Commands {
         cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Option<Cursor>, Map<String, String>), Error> {
-        let (cursor, items): (NextCursor, Map<String, String>) = exchange(
+    ) -> Result<(Option<Cursor>, Map<String, StringOrBytes>), Error> {
+        let (cursor, items): (NextCursor, Map<String, StringOrBytes>) = exchange(
             connection,
             (
                 "HSCAN",
@@ -2019,7 +2041,7 @@ impl Guest for Commands {
     async fn hset(
         connection: &Connection,
         key: String,
-        field_and_values: Vec<(String, String)>,
+        field_and_values: Vec<(String, StringOrBytes)>,
     ) -> Result<Integer, Error> {
         exchange(
             connection,
@@ -2041,7 +2063,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         field: String,
-        value: String,
+        value: StringOrBytes,
     ) -> Result<bool, Error> {
         exchange(connection, ("HSETNX", key, field, value)).await
     }
@@ -2064,7 +2086,7 @@ impl Guest for Commands {
     #[doc = " HVALS key"]
     #[doc = " https://valkey.io/commands/hvals/"]
     #[allow(async_fn_in_trait)]
-    async fn hvals(connection: &Connection, key: String) -> Result<Vec<String>, Error> {
+    async fn hvals(connection: &Connection, key: String) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("HVALS", key)).await
     }
 
@@ -2079,7 +2101,7 @@ impl Guest for Commands {
     async fn pfadd(
         connection: &Connection,
         key: String,
-        elements: Option<Vec<String>>,
+        elements: Option<Vec<StringOrBytes>>,
     ) -> Result<bool, Error> {
         exchange(
             connection,
@@ -2140,7 +2162,7 @@ impl Guest for Commands {
         wherefrom: ListSide,
         whereto: ListSide,
         timeout: DurationMilliseconds,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(
             connection,
             (
@@ -2172,7 +2194,7 @@ impl Guest for Commands {
         keys: Vec<String>,
         end: ListSide,
         count: Option<Integer>,
-    ) -> Result<Option<(String, Vec<String>)>, Error> {
+    ) -> Result<Option<(String, Vec<StringOrBytes>)>, Error> {
         exchange(
             connection,
             (
@@ -2201,7 +2223,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         timeout: DurationMilliseconds,
-    ) -> Result<Option<(String, String)>, Error> {
+    ) -> Result<Option<(String, StringOrBytes)>, Error> {
         exchange(
             connection,
             (
@@ -2228,7 +2250,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         timeout: DurationMilliseconds,
-    ) -> Result<Option<(String, String)>, Error> {
+    ) -> Result<Option<(String, StringOrBytes)>, Error> {
         exchange(
             connection,
             (
@@ -2258,7 +2280,7 @@ impl Guest for Commands {
         source: String,
         destination: String,
         timeout: DurationMilliseconds,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(
             connection,
             ("BRPOPLPUSH", source, destination, DecimalSeconds(timeout)),
@@ -2276,7 +2298,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         index: Integer,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("LINDEX", key, index)).await
     }
 
@@ -2290,8 +2312,8 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         position: LinsertPosition,
-        pivot: String,
-        element: String,
+        pivot: StringOrBytes,
+        element: StringOrBytes,
     ) -> Result<LinsertResult, Error> {
         exchange(connection, ("LINSERT", key, position, pivot, element)).await
     }
@@ -2317,7 +2339,7 @@ impl Guest for Commands {
         destination: String,
         wherefrom: ListSide,
         whereto: ListSide,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(
             connection,
             ("LMOVE", source, destination, wherefrom, whereto),
@@ -2336,7 +2358,7 @@ impl Guest for Commands {
         keys: Vec<String>,
         end: ListSide,
         count: Option<Integer>,
-    ) -> Result<Option<(String, Vec<String>)>, Error> {
+    ) -> Result<Option<(String, Vec<StringOrBytes>)>, Error> {
         let command = (
             "LMPOP",
             NumKeys(NonEmpty::new("keys", keys)),
@@ -2356,17 +2378,17 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Option<Integer>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         match count {
             Some(count) => {
                 // null when the key does not exist
-                let elements: Option<Vec<String>> =
+                let elements: Option<Vec<StringOrBytes>> =
                     exchange(connection, ("LPOP", key, count)).await?;
                 Ok(elements.unwrap_or_default())
             }
             None => {
                 // without a count the reply is the element itself, or null
-                let element: Option<String> = exchange(connection, ("LPOP", key)).await?;
+                let element: Option<StringOrBytes> = exchange(connection, ("LPOP", key)).await?;
                 Ok(element.into_iter().collect())
             }
         }
@@ -2384,7 +2406,7 @@ impl Guest for Commands {
     async fn lpos(
         connection: &Connection,
         key: String,
-        element: String,
+        element: StringOrBytes,
         rank: Option<Integer>,
         count: Option<Integer>,
         maxlen: Option<Integer>,
@@ -2417,7 +2439,7 @@ impl Guest for Commands {
     async fn lpush(
         connection: &Connection,
         key: String,
-        elements: Vec<String>,
+        elements: Vec<StringOrBytes>,
     ) -> Result<Integer, Error> {
         exchange(
             connection,
@@ -2435,7 +2457,7 @@ impl Guest for Commands {
     async fn lpushx(
         connection: &Connection,
         key: String,
-        elements: Vec<String>,
+        elements: Vec<StringOrBytes>,
     ) -> Result<Integer, Error> {
         exchange(
             connection,
@@ -2455,7 +2477,7 @@ impl Guest for Commands {
         key: String,
         start: Integer,
         stop: Integer,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("LRANGE", key, start, stop)).await
     }
 
@@ -2471,7 +2493,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Integer,
-        element: String,
+        element: StringOrBytes,
     ) -> Result<Integer, Error> {
         exchange(connection, ("LREM", key, count, element)).await
     }
@@ -2485,7 +2507,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         index: Integer,
-        element: String,
+        element: StringOrBytes,
     ) -> Result<(), Error> {
         exchange(connection, ("LSET", key, index, element)).await
     }
@@ -2515,17 +2537,17 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Option<Integer>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         match count {
             Some(count) => {
                 // null when the key does not exist
-                let elements: Option<Vec<String>> =
+                let elements: Option<Vec<StringOrBytes>> =
                     exchange(connection, ("RPOP", key, count)).await?;
                 Ok(elements.unwrap_or_default())
             }
             None => {
                 // without a count the reply is the element itself, or null
-                let element: Option<String> = exchange(connection, ("RPOP", key)).await?;
+                let element: Option<StringOrBytes> = exchange(connection, ("RPOP", key)).await?;
                 Ok(element.into_iter().collect())
             }
         }
@@ -2543,7 +2565,7 @@ impl Guest for Commands {
         connection: &Connection,
         source: String,
         destination: String,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("RPOPLPUSH", source, destination)).await
     }
 
@@ -2556,7 +2578,7 @@ impl Guest for Commands {
     async fn rpush(
         connection: &Connection,
         key: String,
-        elements: Vec<String>,
+        elements: Vec<StringOrBytes>,
     ) -> Result<Integer, Error> {
         exchange(
             connection,
@@ -2574,7 +2596,7 @@ impl Guest for Commands {
     async fn rpushx(
         connection: &Connection,
         key: String,
-        elements: Vec<String>,
+        elements: Vec<StringOrBytes>,
     ) -> Result<Integer, Error> {
         exchange(
             connection,
@@ -2590,6 +2612,17 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn del(connection: &Connection, keys: Vec<String>) -> Result<Integer, Error> {
         exchange(connection, ("DEL", NonEmpty::new("keys", keys))).await
+    }
+
+    #[doc = " The value of the key serialized in Valkey's own format, with its version and a checksum, see"]
+    #[doc = " `restore`, none when the key does not exist."]
+    #[doc = ""]
+    #[doc = " DUMP key"]
+    #[doc = " https://valkey.io/commands/dump/"]
+    #[allow(async_fn_in_trait)]
+    async fn dump(connection: &Connection, key: String) -> Result<Option<Bytes>, Error> {
+        let serialized: Option<Binary> = exchange(connection, ("DUMP", key)).await?;
+        Ok(serialized.map(|serialized| serialized.0))
     }
 
     #[doc = " If key exists."]
@@ -2927,6 +2960,70 @@ impl Guest for Commands {
         exchange(connection, ("RENAMENX", key, newkey)).await
     }
 
+    #[doc = " Creates the key from a value serialized with `dump`, without an expiration when `ttl` is"]
+    #[doc = " none. Fails when the key exists, unless `replace`. `idletime` and `freq` set what eviction"]
+    #[doc = " knows of the key, its idle time for an LRU policy, or its access frequency for an LFU policy."]
+    #[doc = ""]
+    #[doc = " RESTORE key ttl serialized-value [ REPLACE ] [ ABSTTL ] [ IDLETIME seconds ] [ FREQ frequency ]"]
+    #[doc = " https://valkey.io/commands/restore/"]
+    #[allow(async_fn_in_trait)]
+    async fn restore(
+        connection: &Connection,
+        key: String,
+        ttl: Option<RestoreTtl>,
+        serialized_value: Bytes,
+        replace: bool,
+        idletime: Option<DurationSeconds>,
+        freq: Option<Integer>,
+    ) -> Result<(), Error> {
+        let (ttl, absttl) = restore_ttl(ttl);
+        exchange(
+            connection,
+            (
+                "RESTORE",
+                key,
+                ttl,
+                StringOrBytes::Bytes(serialized_value),
+                Flag("REPLACE", replace),
+                Flag("ABSTTL", absttl),
+                NamedOption("IDLETIME", idletime),
+                NamedOption("FREQ", freq),
+            ),
+        )
+        .await
+    }
+
+    #[doc = " `restore` on a node a key is migrated to, for a slot being imported, see `cluster-setslot`."]
+    #[doc = ""]
+    #[doc = " RESTORE-ASKING key ttl serialized-value [ REPLACE ] [ ABSTTL ] [ IDLETIME seconds ] [ FREQ frequency ]"]
+    #[doc = " https://valkey.io/commands/restore-asking/"]
+    #[allow(async_fn_in_trait)]
+    async fn restore_asking(
+        connection: &Connection,
+        key: String,
+        ttl: Option<RestoreTtl>,
+        serialized_value: Bytes,
+        replace: bool,
+        idletime: Option<DurationSeconds>,
+        freq: Option<Integer>,
+    ) -> Result<(), Error> {
+        let (ttl, absttl) = restore_ttl(ttl);
+        exchange(
+            connection,
+            (
+                "RESTORE-ASKING",
+                key,
+                ttl,
+                StringOrBytes::Bytes(serialized_value),
+                Flag("REPLACE", replace),
+                Flag("ABSTTL", absttl),
+                NamedOption("IDLETIME", idletime),
+                NamedOption("FREQ", freq),
+            ),
+        )
+        .await
+    }
+
     #[doc = " Incrementally iterate over the keys of the current database."]
     #[doc = ""]
     #[doc = " SCAN cursor [ MATCH pattern ] [ COUNT count ] [ TYPE type ]"]
@@ -3010,7 +3107,7 @@ impl Guest for Commands {
     async fn publish(
         connection: &Connection,
         channel: String,
-        message: String,
+        message: StringOrBytes,
     ) -> Result<Integer, Error> {
         exchange(connection, ("PUBLISH", channel, message)).await
     }
@@ -3096,7 +3193,7 @@ impl Guest for Commands {
         connection: &Connection,
         script: String,
         keys: Option<Vec<String>>,
-        args: Option<Vec<String>>,
+        args: Option<Vec<StringOrBytes>>,
     ) -> Result<RespValue, Error> {
         exchange(connection, ("EVAL", script, KeysAndArgs(keys, args))).await
     }
@@ -3110,7 +3207,7 @@ impl Guest for Commands {
         connection: &Connection,
         script: String,
         keys: Option<Vec<String>>,
-        args: Option<Vec<String>>,
+        args: Option<Vec<StringOrBytes>>,
     ) -> Result<RespValue, Error> {
         exchange(connection, ("EVAL_RO", script, KeysAndArgs(keys, args))).await
     }
@@ -3125,7 +3222,7 @@ impl Guest for Commands {
         connection: &Connection,
         sha1: String,
         keys: Option<Vec<String>>,
-        args: Option<Vec<String>>,
+        args: Option<Vec<StringOrBytes>>,
     ) -> Result<RespValue, Error> {
         exchange(connection, ("EVALSHA", sha1, KeysAndArgs(keys, args))).await
     }
@@ -3140,7 +3237,7 @@ impl Guest for Commands {
         connection: &Connection,
         sha1: String,
         keys: Option<Vec<String>>,
-        args: Option<Vec<String>>,
+        args: Option<Vec<StringOrBytes>>,
     ) -> Result<RespValue, Error> {
         exchange(connection, ("EVALSHA_RO", sha1, KeysAndArgs(keys, args))).await
     }
@@ -3157,7 +3254,7 @@ impl Guest for Commands {
         connection: &Connection,
         function: String,
         keys: Option<Vec<String>>,
-        args: Option<Vec<String>>,
+        args: Option<Vec<StringOrBytes>>,
     ) -> Result<RespValue, Error> {
         exchange(connection, ("FCALL", function, KeysAndArgs(keys, args))).await
     }
@@ -3171,7 +3268,7 @@ impl Guest for Commands {
         connection: &Connection,
         function: String,
         keys: Option<Vec<String>>,
-        args: Option<Vec<String>>,
+        args: Option<Vec<StringOrBytes>>,
     ) -> Result<RespValue, Error> {
         exchange(connection, ("FCALL_RO", function, KeysAndArgs(keys, args))).await
     }
@@ -3183,6 +3280,16 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn function_delete(connection: &Connection, library_name: String) -> Result<(), Error> {
         exchange(connection, ("FUNCTION", "DELETE", library_name)).await
+    }
+
+    #[doc = " The libraries, serialized in Valkey's own format, see `function-restore`."]
+    #[doc = ""]
+    #[doc = " FUNCTION DUMP"]
+    #[doc = " https://valkey.io/commands/function-dump/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_dump(connection: &Connection) -> Result<Bytes, Error> {
+        let serialized: Binary = exchange(connection, ("FUNCTION", "DUMP")).await?;
+        Ok(serialized.0)
     }
 
     #[doc = " Deletes all the libraries, in the mode, the server's `lazyfree-lazy-user-flush` without one."]
@@ -3239,6 +3346,28 @@ impl Guest for Commands {
         exchange(
             connection,
             ("FUNCTION", "LOAD", Flag("REPLACE", replace), function_code),
+        )
+        .await
+    }
+
+    #[doc = " Loads the libraries serialized with `function-dump`, as `policy` says, by default `append`."]
+    #[doc = ""]
+    #[doc = " FUNCTION RESTORE serialized-value [ FLUSH | APPEND | REPLACE ]"]
+    #[doc = " https://valkey.io/commands/function-restore/"]
+    #[allow(async_fn_in_trait)]
+    async fn function_restore(
+        connection: &Connection,
+        serialized_value: Bytes,
+        policy: Option<FunctionRestorePolicy>,
+    ) -> Result<(), Error> {
+        exchange(
+            connection,
+            (
+                "FUNCTION",
+                "RESTORE",
+                StringOrBytes::Bytes(serialized_value),
+                policy,
+            ),
         )
         .await
     }
@@ -3313,7 +3442,7 @@ impl Guest for Commands {
     async fn spublish(
         connection: &Connection,
         shardchannel: String,
-        message: String,
+        message: StringOrBytes,
     ) -> Result<Integer, Error> {
         exchange(connection, ("SPUBLISH", shardchannel, message)).await
     }
@@ -3323,7 +3452,11 @@ impl Guest for Commands {
     #[doc = " APPEND key value"]
     #[doc = " https://valkey.io/commands/append/"]
     #[allow(async_fn_in_trait)]
-    async fn append(connection: &Connection, key: String, value: String) -> Result<Integer, Error> {
+    async fn append(
+        connection: &Connection,
+        key: String,
+        value: StringOrBytes,
+    ) -> Result<Integer, Error> {
         exchange(connection, ("APPEND", key, value)).await
     }
 
@@ -3354,7 +3487,11 @@ impl Guest for Commands {
     #[doc = " DELIFEQ key value"]
     #[doc = " https://valkey.io/commands/delifeq/"]
     #[allow(async_fn_in_trait)]
-    async fn delifeq(connection: &Connection, key: String, value: String) -> Result<bool, Error> {
+    async fn delifeq(
+        connection: &Connection,
+        key: String,
+        value: StringOrBytes,
+    ) -> Result<bool, Error> {
         exchange(connection, ("DELIFEQ", key, value)).await
     }
 
@@ -3363,7 +3500,7 @@ impl Guest for Commands {
     #[doc = " GET key"]
     #[doc = " https://valkey.io/commands/get/"]
     #[allow(async_fn_in_trait)]
-    async fn get(connection: &Connection, key: String) -> Result<Option<String>, Error> {
+    async fn get(connection: &Connection, key: String) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("GET", key)).await
     }
 
@@ -3372,7 +3509,7 @@ impl Guest for Commands {
     #[doc = " GETDEL key"]
     #[doc = " https://valkey.io/commands/getdel/"]
     #[allow(async_fn_in_trait)]
-    async fn getdel(connection: &Connection, key: String) -> Result<Option<String>, Error> {
+    async fn getdel(connection: &Connection, key: String) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("GETDEL", key)).await
     }
 
@@ -3385,7 +3522,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         ttl: Option<GetexTtl>,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("GETEX", key, ttl)).await
     }
 
@@ -3399,7 +3536,7 @@ impl Guest for Commands {
         key: String,
         start: Integer,
         end: Integer,
-    ) -> Result<String, Error> {
+    ) -> Result<StringOrBytes, Error> {
         exchange(connection, ("GETRANGE", key, start, end)).await
     }
 
@@ -3411,8 +3548,8 @@ impl Guest for Commands {
     async fn getset(
         connection: &Connection,
         key: String,
-        value: String,
-    ) -> Result<Option<String>, Error> {
+        value: StringOrBytes,
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("GETSET", key, value)).await
     }
 
@@ -3458,7 +3595,11 @@ impl Guest for Commands {
     #[doc = " LCS key1 key2"]
     #[doc = " https://valkey.io/commands/lcs/"]
     #[allow(async_fn_in_trait)]
-    async fn lcs(connection: &Connection, key1: String, key2: String) -> Result<String, Error> {
+    async fn lcs(
+        connection: &Connection,
+        key1: String,
+        key2: String,
+    ) -> Result<StringOrBytes, Error> {
         exchange(connection, ("LCS", key1, key2)).await
     }
 
@@ -3513,7 +3654,7 @@ impl Guest for Commands {
     async fn mget(
         connection: &Connection,
         keys: Vec<String>,
-    ) -> Result<Vec<Option<String>>, Error> {
+    ) -> Result<Vec<Option<StringOrBytes>>, Error> {
         exchange(connection, ("MGET", NonEmpty::new("keys", keys))).await
     }
 
@@ -3524,7 +3665,7 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn mset(
         connection: &Connection,
-        keys_and_values: Vec<(String, String)>,
+        keys_and_values: Vec<(String, StringOrBytes)>,
     ) -> Result<(), Error> {
         exchange(
             connection,
@@ -3540,7 +3681,7 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn msetex(
         connection: &Connection,
-        keys_and_values: Vec<(String, String)>,
+        keys_and_values: Vec<(String, StringOrBytes)>,
         precondition: Option<MsetexPrecondition>,
         ttl: Option<MsetexTtl>,
     ) -> Result<bool, Error> {
@@ -3563,7 +3704,7 @@ impl Guest for Commands {
     #[allow(async_fn_in_trait)]
     async fn msetnx(
         connection: &Connection,
-        keys_and_values: Vec<(String, String)>,
+        keys_and_values: Vec<(String, StringOrBytes)>,
     ) -> Result<bool, Error> {
         exchange(
             connection,
@@ -3581,7 +3722,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         milliseconds: DurationMilliseconds,
-        value: String,
+        value: StringOrBytes,
     ) -> Result<(), Error> {
         exchange(connection, ("PSETEX", key, milliseconds, value)).await
     }
@@ -3596,7 +3737,7 @@ impl Guest for Commands {
     async fn set(
         connection: &Connection,
         key: String,
-        value: String,
+        value: StringOrBytes,
         precondition: Option<SetPrecondition>,
         ttl: Option<SetTtl>,
     ) -> Result<bool, Error> {
@@ -3614,10 +3755,10 @@ impl Guest for Commands {
     async fn set_get(
         connection: &Connection,
         key: String,
-        value: String,
+        value: StringOrBytes,
         precondition: Option<SetPrecondition>,
         ttl: Option<SetTtl>,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<StringOrBytes>, Error> {
         exchange(connection, ("SET", key, value, precondition, "GET", ttl)).await
     }
 
@@ -3630,7 +3771,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         seconds: DurationSeconds,
-        value: String,
+        value: StringOrBytes,
     ) -> Result<(), Error> {
         exchange(connection, ("SETEX", key, seconds, value)).await
     }
@@ -3640,7 +3781,11 @@ impl Guest for Commands {
     #[doc = " SETNX key value"]
     #[doc = " https://valkey.io/commands/setnx/"]
     #[allow(async_fn_in_trait)]
-    async fn setnx(connection: &Connection, key: String, value: String) -> Result<bool, Error> {
+    async fn setnx(
+        connection: &Connection,
+        key: String,
+        value: StringOrBytes,
+    ) -> Result<bool, Error> {
         exchange(connection, ("SETNX", key, value)).await
     }
 
@@ -3653,7 +3798,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         offset: u32,
-        value: String,
+        value: StringOrBytes,
     ) -> Result<Integer, Error> {
         exchange(connection, ("SETRANGE", key, offset, value)).await
     }
@@ -3677,7 +3822,7 @@ impl Guest for Commands {
         key: String,
         start: Integer,
         end: Integer,
-    ) -> Result<String, Error> {
+    ) -> Result<StringOrBytes, Error> {
         exchange(connection, ("SUBSTR", key, start, end)).await
     }
 
@@ -3706,7 +3851,7 @@ impl Guest for Commands {
         nomkstream: bool,
         trim: Option<StreamTrim>,
         id: StreamId,
-        field_and_values: Vec<(String, String)>,
+        field_and_values: Vec<(String, StringOrBytes)>,
     ) -> Result<Option<StreamId>, Error> {
         exchange(
             connection,
@@ -3740,7 +3885,7 @@ impl Guest for Commands {
     ) -> Result<
         (
             Option<StreamId>,
-            Vec<(StreamId, Map<String, String>)>,
+            Vec<(StreamId, Map<String, StringOrBytes>)>,
             Vec<StreamId>,
         ),
         Error,
@@ -3809,7 +3954,7 @@ impl Guest for Commands {
         min_idle_time: DurationMilliseconds,
         ids: Vec<StreamId>,
         opts: Option<XclaimOpts>,
-    ) -> Result<Vec<(StreamId, Map<String, String>)>, Error> {
+    ) -> Result<Vec<(StreamId, Map<String, StringOrBytes>)>, Error> {
         exchange(
             connection,
             (
@@ -4091,7 +4236,7 @@ impl Guest for Commands {
         start: StreamId,
         end: StreamId,
         count: Option<Integer>,
-    ) -> Result<Vec<(StreamId, Map<String, String>)>, Error> {
+    ) -> Result<Vec<(StreamId, Map<String, StringOrBytes>)>, Error> {
         exchange(
             connection,
             ("XRANGE", key, start, end, NamedOption("COUNT", count)),
@@ -4110,7 +4255,7 @@ impl Guest for Commands {
         block: Option<DurationMilliseconds>,
         keys: Vec<String>,
         ids: Vec<StreamId>,
-    ) -> Result<Option<Map<String, Vec<(StreamId, Map<String, String>)>>>, Error> {
+    ) -> Result<Option<Map<String, Vec<(StreamId, Map<String, StringOrBytes>)>>>, Error> {
         exchange(
             connection,
             (
@@ -4142,7 +4287,8 @@ impl Guest for Commands {
         noack: bool,
         keys: Vec<String>,
         ids: Vec<StreamId>,
-    ) -> Result<Option<Map<String, Vec<(StreamId, Option<Map<String, String>>)>>>, Error> {
+    ) -> Result<Option<Map<String, Vec<(StreamId, Option<Map<String, StringOrBytes>>)>>>, Error>
+    {
         exchange(
             connection,
             (
@@ -4172,7 +4318,7 @@ impl Guest for Commands {
         end: StreamId,
         start: StreamId,
         count: Option<Integer>,
-    ) -> Result<Vec<(StreamId, Map<String, String>)>, Error> {
+    ) -> Result<Vec<(StreamId, Map<String, StringOrBytes>)>, Error> {
         exchange(
             connection,
             ("XREVRANGE", key, end, start, NamedOption("COUNT", count)),
@@ -4226,7 +4372,7 @@ impl Guest for Commands {
     async fn sadd(
         connection: &Connection,
         key: String,
-        members: Vec<String>,
+        members: Vec<StringOrBytes>,
     ) -> Result<Integer, Error> {
         exchange(connection, ("SADD", key, NonEmpty::new("members", members))).await
     }
@@ -4245,7 +4391,10 @@ impl Guest for Commands {
     #[doc = " SDIFF key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sdiff/"]
     #[allow(async_fn_in_trait)]
-    async fn sdiff(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+    async fn sdiff(
+        connection: &Connection,
+        keys: Vec<String>,
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("SDIFF", NonEmpty::new("keys", keys))).await
     }
 
@@ -4271,7 +4420,10 @@ impl Guest for Commands {
     #[doc = " SINTER key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sinter/"]
     #[allow(async_fn_in_trait)]
-    async fn sinter(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+    async fn sinter(
+        connection: &Connection,
+        keys: Vec<String>,
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("SINTER", NonEmpty::new("keys", keys))).await
     }
 
@@ -4323,7 +4475,7 @@ impl Guest for Commands {
     async fn sismember(
         connection: &Connection,
         key: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<bool, Error> {
         exchange(connection, ("SISMEMBER", key, member)).await
     }
@@ -4338,7 +4490,7 @@ impl Guest for Commands {
     async fn sismember_xx(
         connection: &Connection,
         key: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Option<bool>, Error> {
         // -1 when the key does not exist
         let member: OrNever<bool> = exchange(connection, ("SISMEMBER", key, member, "XX")).await?;
@@ -4350,7 +4502,7 @@ impl Guest for Commands {
     #[doc = " SMEMBERS key"]
     #[doc = " https://valkey.io/commands/smembers/"]
     #[allow(async_fn_in_trait)]
-    async fn smembers(connection: &Connection, key: String) -> Result<Vec<String>, Error> {
+    async fn smembers(connection: &Connection, key: String) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("SMEMBERS", key)).await
     }
 
@@ -4362,7 +4514,7 @@ impl Guest for Commands {
     async fn smismember(
         connection: &Connection,
         key: String,
-        members: Vec<String>,
+        members: Vec<StringOrBytes>,
     ) -> Result<Vec<bool>, Error> {
         exchange(
             connection,
@@ -4380,7 +4532,7 @@ impl Guest for Commands {
         connection: &Connection,
         source: String,
         destination: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<bool, Error> {
         exchange(connection, ("SMOVE", source, destination, member)).await
     }
@@ -4396,12 +4548,12 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Option<Integer>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         if count.is_some() {
             return exchange(connection, ("SPOP", key, count)).await;
         }
         // without a count the reply is the member itself, or null
-        let member: Option<String> = exchange(connection, ("SPOP", key)).await?;
+        let member: Option<StringOrBytes> = exchange(connection, ("SPOP", key)).await?;
         Ok(member.into_iter().collect())
     }
 
@@ -4417,12 +4569,12 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Option<Integer>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         if count.is_some() {
             return exchange(connection, ("SRANDMEMBER", key, count)).await;
         }
         // without a count the reply is the member itself, or null
-        let member: Option<String> = exchange(connection, ("SRANDMEMBER", key)).await?;
+        let member: Option<StringOrBytes> = exchange(connection, ("SRANDMEMBER", key)).await?;
         Ok(member.into_iter().collect())
     }
 
@@ -4434,7 +4586,7 @@ impl Guest for Commands {
     async fn srem(
         connection: &Connection,
         key: String,
-        members: Vec<String>,
+        members: Vec<StringOrBytes>,
     ) -> Result<Integer, Error> {
         exchange(connection, ("SREM", key, NonEmpty::new("members", members))).await
     }
@@ -4450,8 +4602,8 @@ impl Guest for Commands {
         cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Option<Cursor>, Vec<String>), Error> {
-        let (cursor, items): (NextCursor, Vec<String>) = exchange(
+    ) -> Result<(Option<Cursor>, Vec<StringOrBytes>), Error> {
+        let (cursor, items): (NextCursor, Vec<StringOrBytes>) = exchange(
             connection,
             (
                 "SSCAN",
@@ -4470,7 +4622,10 @@ impl Guest for Commands {
     #[doc = " SUNION key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sunion/"]
     #[allow(async_fn_in_trait)]
-    async fn sunion(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+    async fn sunion(
+        connection: &Connection,
+        keys: Vec<String>,
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("SUNION", NonEmpty::new("keys", keys))).await
     }
 
@@ -4503,10 +4658,10 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         opts: Option<SortOpts>,
-    ) -> Result<Vec<Vec<Option<String>>>, Error> {
+    ) -> Result<Vec<Vec<Option<StringOrBytes>>>, Error> {
         let row = sort_row_len(&opts);
-        let values: Vec<Option<String>> = exchange(connection, ("SORT", key, opts)).await?;
-        Ok(values.chunks(row).map(<[_]>::to_vec).collect())
+        let values: Vec<Option<StringOrBytes>> = exchange(connection, ("SORT", key, opts)).await?;
+        Ok(rows(values, row))
     }
 
     #[doc = " Sorts the elements of the list, set or sorted set stored at key, storing them as a list,"]
@@ -4532,11 +4687,12 @@ impl Guest for Commands {
     async fn sort_ro(
         connection: &Connection,
         key: String,
-        opts: Option<SortOpts>,
-    ) -> Result<Vec<Vec<Option<String>>>, Error> {
+        opts: Option<SortRoOpts>,
+    ) -> Result<Vec<Vec<Option<StringOrBytes>>>, Error> {
         let row = sort_row_len(&opts);
-        let values: Vec<Option<String>> = exchange(connection, ("SORT_RO", key, opts)).await?;
-        Ok(values.chunks(row).map(<[_]>::to_vec).collect())
+        let values: Vec<Option<StringOrBytes>> =
+            exchange(connection, ("SORT_RO", key, opts)).await?;
+        Ok(rows(values, row))
     }
 
     #[doc = " Removes the members with the lowest or highest scores from the first non-empty sorted set,"]
@@ -4554,9 +4710,9 @@ impl Guest for Commands {
         connection: &Connection,
         timeout: DurationMilliseconds,
         keys: Vec<String>,
-        end: ZmpopEnd,
+        end: BzmpopEnd,
         count: Option<Integer>,
-    ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
+    ) -> Result<Option<(String, Vec<(StringOrBytes, Double)>)>, Error> {
         let command = (
             "BZMPOP",
             DecimalSeconds(timeout),
@@ -4582,7 +4738,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         timeout: DurationMilliseconds,
-    ) -> Result<Option<(String, String, Double)>, Error> {
+    ) -> Result<Option<(String, StringOrBytes, Double)>, Error> {
         exchange(
             connection,
             (
@@ -4609,7 +4765,7 @@ impl Guest for Commands {
         connection: &Connection,
         keys: Vec<String>,
         timeout: DurationMilliseconds,
-    ) -> Result<Option<(String, String, Double)>, Error> {
+    ) -> Result<Option<(String, StringOrBytes, Double)>, Error> {
         exchange(
             connection,
             (
@@ -4635,7 +4791,7 @@ impl Guest for Commands {
         condition: Option<ZaddCondition>,
         comparison: Option<ZaddComparison>,
         changed: bool,
-        score_and_members: Vec<(Double, String)>,
+        score_and_members: Vec<(Double, StringOrBytes)>,
     ) -> Result<Option<Integer>, Error> {
         let command = (
             "ZADD",
@@ -4662,7 +4818,7 @@ impl Guest for Commands {
         condition: Option<ZaddCondition>,
         comparison: Option<ZaddComparison>,
         increment: Double,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Option<Double>, Error> {
         let command = (
             "ZADD", key, condition, comparison, "INCR", increment, member,
@@ -4712,7 +4868,10 @@ impl Guest for Commands {
     #[doc = " ZDIFF numkeys key [ key ... ]"]
     #[doc = " https://valkey.io/commands/zdiff/"]
     #[allow(async_fn_in_trait)]
-    async fn zdiff(connection: &Connection, keys: Vec<String>) -> Result<Vec<String>, Error> {
+    async fn zdiff(
+        connection: &Connection,
+        keys: Vec<String>,
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(connection, ("ZDIFF", NumKeys(NonEmpty::new("keys", keys)))).await
     }
 
@@ -4726,7 +4885,7 @@ impl Guest for Commands {
     async fn zdiff_withscores(
         connection: &Connection,
         keys: Vec<String>,
-    ) -> Result<Vec<(String, Double)>, Error> {
+    ) -> Result<Vec<(StringOrBytes, Double)>, Error> {
         exchange(
             connection,
             ("ZDIFF", NumKeys(NonEmpty::new("keys", keys)), "WITHSCORES"),
@@ -4765,7 +4924,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         increment: Double,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Double, Error> {
         exchange(connection, ("ZINCRBY", key, increment, member)).await
     }
@@ -4784,7 +4943,7 @@ impl Guest for Commands {
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
         aggregate: Option<ZsetAggregate>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(
             connection,
             (
@@ -4809,7 +4968,7 @@ impl Guest for Commands {
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
         aggregate: Option<ZsetAggregate>,
-    ) -> Result<Vec<(String, Double)>, Error> {
+    ) -> Result<Vec<(StringOrBytes, Double)>, Error> {
         let command = (
             "ZINTER",
             NumKeys(NonEmpty::new("keys", keys)),
@@ -4901,7 +5060,7 @@ impl Guest for Commands {
         keys: Vec<String>,
         end: ZmpopEnd,
         count: Option<Integer>,
-    ) -> Result<Option<(String, Vec<(String, Double)>)>, Error> {
+    ) -> Result<Option<(String, Vec<(StringOrBytes, Double)>)>, Error> {
         exchange(
             connection,
             (
@@ -4923,7 +5082,7 @@ impl Guest for Commands {
     async fn zmscore(
         connection: &Connection,
         key: String,
-        members: Vec<String>,
+        members: Vec<StringOrBytes>,
     ) -> Result<Vec<Option<Double>>, Error> {
         exchange(
             connection,
@@ -4942,7 +5101,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Option<Integer>,
-    ) -> Result<Vec<(String, Double)>, Error> {
+    ) -> Result<Vec<(StringOrBytes, Double)>, Error> {
         let members: ScoredMembers = exchange(connection, ("ZPOPMAX", key, count)).await?;
         Ok(members.0)
     }
@@ -4957,7 +5116,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Option<Integer>,
-    ) -> Result<Vec<(String, Double)>, Error> {
+    ) -> Result<Vec<(StringOrBytes, Double)>, Error> {
         let members: ScoredMembers = exchange(connection, ("ZPOPMIN", key, count)).await?;
         Ok(members.0)
     }
@@ -4976,12 +5135,12 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Option<Integer>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         if count.is_some() {
             return exchange(connection, ("ZRANDMEMBER", key, count)).await;
         }
         // without a count the reply is the member itself, or null
-        let member: Option<String> = exchange(connection, ("ZRANDMEMBER", key)).await?;
+        let member: Option<StringOrBytes> = exchange(connection, ("ZRANDMEMBER", key)).await?;
         Ok(member.into_iter().collect())
     }
 
@@ -4999,7 +5158,7 @@ impl Guest for Commands {
         connection: &Connection,
         key: String,
         count: Integer,
-    ) -> Result<Vec<(String, Double)>, Error> {
+    ) -> Result<Vec<(StringOrBytes, Double)>, Error> {
         exchange(connection, ("ZRANDMEMBER", key, count, "WITHSCORES")).await
     }
 
@@ -5022,7 +5181,7 @@ impl Guest for Commands {
         rev: bool,
         limit: Option<Limit>,
         xx: bool,
-    ) -> Result<Option<Vec<String>>, Error> {
+    ) -> Result<Option<Vec<StringOrBytes>>, Error> {
         let range = Zrange { range, rev, limit };
         exchange(connection, ("ZRANGE", key, range, Flag("XX", xx))).await
     }
@@ -5045,7 +5204,7 @@ impl Guest for Commands {
         rev: bool,
         limit: Option<Limit>,
         xx: bool,
-    ) -> Result<Option<Vec<(String, Double)>>, Error> {
+    ) -> Result<Option<Vec<(StringOrBytes, Double)>>, Error> {
         let range = match range {
             ZrangeWithscoresBy::Rank(rank) => ZrangeBy::Rank(rank),
             ZrangeWithscoresBy::Score(score) => ZrangeBy::Score(score),
@@ -5085,7 +5244,7 @@ impl Guest for Commands {
     async fn zrank(
         connection: &Connection,
         key: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Option<Integer>, Error> {
         exchange(connection, ("ZRANK", key, member)).await
     }
@@ -5101,7 +5260,7 @@ impl Guest for Commands {
     async fn zrank_withscore(
         connection: &Connection,
         key: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Option<(Integer, Double)>, Error> {
         exchange(connection, ("ZRANK", key, member, "WITHSCORE")).await
     }
@@ -5114,7 +5273,7 @@ impl Guest for Commands {
     async fn zrem(
         connection: &Connection,
         key: String,
-        members: Vec<String>,
+        members: Vec<StringOrBytes>,
     ) -> Result<Integer, Error> {
         exchange(connection, ("ZREM", key, NonEmpty::new("members", members))).await
     }
@@ -5199,7 +5358,7 @@ impl Guest for Commands {
     async fn zrevrank(
         connection: &Connection,
         key: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Option<Integer>, Error> {
         exchange(connection, ("ZREVRANK", key, member)).await
     }
@@ -5215,7 +5374,7 @@ impl Guest for Commands {
     async fn zrevrank_withscore(
         connection: &Connection,
         key: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Option<(Integer, Double)>, Error> {
         exchange(connection, ("ZREVRANK", key, member, "WITHSCORE")).await
     }
@@ -5233,9 +5392,9 @@ impl Guest for Commands {
         cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Option<Cursor>, Vec<(String, Double)>), Error> {
+    ) -> Result<(Option<Cursor>, Vec<(StringOrBytes, Double)>), Error> {
         // the members and scores are a flat array, the scores bulk strings
-        let (cursor, members): (NextCursor, FlatPairs<String, Double>) = exchange(
+        let (cursor, members): (NextCursor, FlatPairs<StringOrBytes, Double>) = exchange(
             connection,
             (
                 "ZSCAN",
@@ -5262,8 +5421,8 @@ impl Guest for Commands {
         cursor: Cursor,
         match_: Option<String>,
         count: Option<Integer>,
-    ) -> Result<(Option<Cursor>, Vec<String>), Error> {
-        let (cursor, items): (NextCursor, Vec<String>) = exchange(
+    ) -> Result<(Option<Cursor>, Vec<StringOrBytes>), Error> {
+        let (cursor, items): (NextCursor, Vec<StringOrBytes>) = exchange(
             connection,
             (
                 "ZSCAN",
@@ -5286,7 +5445,7 @@ impl Guest for Commands {
     async fn zscore(
         connection: &Connection,
         key: String,
-        member: String,
+        member: StringOrBytes,
     ) -> Result<Option<Double>, Error> {
         exchange(connection, ("ZSCORE", key, member)).await
     }
@@ -5305,7 +5464,7 @@ impl Guest for Commands {
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
         aggregate: Option<ZsetAggregate>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<StringOrBytes>, Error> {
         exchange(
             connection,
             (
@@ -5330,7 +5489,7 @@ impl Guest for Commands {
         keys: Vec<String>,
         weights: Option<Vec<Double>>,
         aggregate: Option<ZsetAggregate>,
-    ) -> Result<Vec<(String, Double)>, Error> {
+    ) -> Result<Vec<(StringOrBytes, Double)>, Error> {
         let command = (
             "ZUNION",
             NumKeys(NonEmpty::new("keys", keys)),

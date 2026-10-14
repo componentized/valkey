@@ -24,7 +24,7 @@ use wasmtime::{Config, Engine, Result, Store, StoreContextMut, bail, format_err}
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 pub use bindings::componentized::valkey::types::{
-    self, ConnectOpts, Error, RespNestedValue, RespValue,
+    self, ConnectOpts, Error, RespNestedValue, RespValue, StringOrBytes,
 };
 
 mod server;
@@ -63,7 +63,7 @@ pub fn encode(value: RespValue) -> RespNestedValue {
 
 /// Decode a nested value.
 pub fn decode(value: RespNestedValue) -> Result<RespValue, String> {
-    componentized_valkey::resp::decode(value).map(from_codec)
+    componentized_valkey::resp::decode(&value).map(from_codec)
 }
 
 // a value is not recursive, nested values are encoded RESP, so each conversion is one match
@@ -118,11 +118,19 @@ pub use bindings::exports::wasmcloud::keyvalue;
 
 /// A bulk string, the type commands are sent as.
 pub fn bulk(value: &str) -> RespValue {
-    RespValue::BulkString(value.to_string())
+    RespValue::BulkString(value.as_bytes().to_vec())
 }
 
-/// The words of a command to send, e.g. `words(&["GET", "key"])`.
-pub fn words(words: &[&str]) -> Vec<String> {
+/// The words of a command to send, e.g. `words(&["GET", "key"])`, see `connection.exchange`.
+pub fn words(words: &[&str]) -> Vec<StringOrBytes> {
+    words
+        .iter()
+        .map(|word| StringOrBytes::String(word.to_string()))
+        .collect()
+}
+
+/// Strings, e.g. the keys of `connection.watch`, or the words of a command of a transaction.
+pub fn strings(words: &[&str]) -> Vec<String> {
     words.iter().map(|word| word.to_string()).collect()
 }
 

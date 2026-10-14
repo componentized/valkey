@@ -1,7 +1,7 @@
 //! Converting a reply into Rust values, the impls for Rust's own types and the helpers the commands
 //! share. The impls for the package's types are in [`crate::commands`].
 
-use crate::types::{Double, Error, Integer, RespNestedValue, RespValue};
+use crate::types::{Double, Error, Integer, RespNestedValue, RespValue, StringOrBytes};
 
 use wit_bindgen::rt::Map;
 
@@ -41,9 +41,13 @@ impl FromValue for Double {
     fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
             RespValue::Double(value) => Ok(value),
-            RespValue::BulkString(text) => text
-                .parse()
-                .map_err(|_| Error::Client(format!("unexpected reply, not a double: {text:?}"))),
+            RespValue::BulkString(bytes) => std::str::from_utf8(&bytes)
+                .ok()
+                .and_then(|text| text.parse().ok())
+                .ok_or_else(|| {
+                    let reply = RespValue::BulkString(bytes);
+                    Error::Client(format!("unexpected reply, not a double: {reply}"))
+                }),
             value => Err(unexpected(&value)),
         }
     }
@@ -74,8 +78,38 @@ impl FromValue for bool {
 impl FromValue for String {
     fn from_value(value: RespValue) -> Result<Self, Error> {
         match value {
-            RespValue::BulkString(value) | RespValue::String(value) => Ok(value),
-            RespValue::VerbatimString((_, value)) => Ok(value),
+            RespValue::BulkString(bytes) => String::from_utf8(bytes).map_err(|error| {
+                let reply = RespValue::BulkString(error.into_bytes());
+                Error::Client(format!("unexpected reply, not UTF-8: {reply}"))
+            }),
+            RespValue::String(value) | RespValue::VerbatimString((_, value)) => Ok(value),
+            value => Err(unexpected(&value)),
+        }
+    }
+}
+
+/// A bulk, simple or verbatim string, a string when it is UTF-8, otherwise its bytes, e.g. a value
+/// of GET.
+impl FromValue for StringOrBytes {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
+        match value {
+            RespValue::BulkString(bytes) => Ok(StringOrBytes::from_bytes(bytes)),
+            RespValue::String(text) | RespValue::VerbatimString((_, text)) => {
+                Ok(StringOrBytes::String(text))
+            }
+            value => Err(unexpected(&value)),
+        }
+    }
+}
+
+/// The bytes of a bulk string, binary by nature, e.g. the payload of DUMP.
+#[derive(Debug, PartialEq)]
+pub struct Binary(pub Vec<u8>);
+
+impl FromValue for Binary {
+    fn from_value(value: RespValue) -> Result<Self, Error> {
+        match value {
+            RespValue::BulkString(bytes) => Ok(Binary(bytes)),
             value => Err(unexpected(&value)),
         }
     }
@@ -184,11 +218,11 @@ pub(crate) fn parse_string<T: std::str::FromStr>(value: RespValue) -> Result<T, 
 }
 
 pub(crate) fn unexpected(reply: &RespValue) -> Error {
-    Error::Client(format!("unexpected reply: {reply:?}"))
+    Error::Client(format!("unexpected reply: {reply}"))
 }
 
 fn decode(value: RespNestedValue) -> Result<RespValue, Error> {
-    crate::resp::decode(value).map_err(Error::Resp)
+    crate::resp::decode(&value).map_err(Error::Resp)
 }
 
 /// The nested values of an array, or a set.
@@ -240,7 +274,7 @@ mod tests {
         from::<()>(ok());
         assert_eq!(
             from_error::<()>(simple("QUEUED")),
-            r#"unexpected reply: RespValue::String("QUEUED")"#
+            r#"unexpected reply: string<"QUEUED">"#
         );
     }
 
@@ -249,7 +283,7 @@ mod tests {
         assert_eq!(from::<Integer>(int(-5)), -5);
         assert_eq!(
             from_error::<Integer>(bulk("5")),
-            r#"unexpected reply: RespValue::BulkString("5")"#
+            r#"unexpected reply: bulk-string<"5">"#
         );
     }
 
@@ -259,7 +293,11 @@ mod tests {
         assert_eq!(from::<Double>(bulk("2.5")), 2.5);
         assert_eq!(
             from_error::<Double>(bulk("two")),
-            r#"unexpected reply, not a double: "two""#
+            r#"unexpected reply, not a double: bulk-string<"two">"#
+        );
+        assert_eq!(
+            from_error::<Double>(RespValue::BulkString(vec![0x80])),
+            r#"unexpected reply, not a double: bulk-string<b"\x80">"#
         );
     }
 
@@ -274,10 +312,7 @@ mod tests {
         assert!(!from::<bool>(int(0)));
         assert!(from::<bool>(int(1)));
         assert!(from::<bool>(RespValue::Boolean(true)));
-        assert_eq!(
-            from_error::<bool>(int(2)),
-            "unexpected reply: RespValue::Integer(2)"
-        );
+        assert_eq!(from_error::<bool>(int(2)), "unexpected reply: integer<2>");
     }
 
     #[test]
@@ -286,9 +321,10 @@ mod tests {
         assert_eq!(from::<String>(simple("simple")), "simple");
         let verbatim = RespValue::VerbatimString(("txt".to_string(), "verbatim".to_string()));
         assert_eq!(from::<String>(verbatim), "verbatim");
+        assert_eq!(from_error::<String>(int(1)), "unexpected reply: integer<1>");
         assert_eq!(
-            from_error::<String>(int(1)),
-            "unexpected reply: RespValue::Integer(1)"
+            from_error::<String>(RespValue::BulkString(vec![0x80])),
+            r#"unexpected reply, not UTF-8: bulk-string<b"\x80">"#
         );
     }
 
@@ -308,7 +344,7 @@ mod tests {
         assert_eq!(from::<Vec<String>>(set), ["a"]);
         assert_eq!(
             from_error::<Vec<String>>(bulk("a")),
-            r#"unexpected reply: RespValue::BulkString("a")"#
+            r#"unexpected reply: bulk-string<"a">"#
         );
     }
 

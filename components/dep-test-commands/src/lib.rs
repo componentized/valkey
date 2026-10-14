@@ -13,8 +13,9 @@ use componentized::valkey::commands;
 use componentized::valkey::connection::{Connection, Error};
 use componentized::valkey::connector;
 use componentized_valkey::types::{
-    AclRule, AclUserRule, Cursor, DurationSeconds, HexpireResult, RespValue, TtlMode,
-    UnixTimeSeconds,
+    AclRule, AclUserRule, Bytes, Cursor, DurationMilliseconds, DurationSeconds,
+    FunctionRestorePolicy, HexpireResult, RespValue, RestoreTtl, StringOrBytes, TtlMode,
+    UnixTimeMilliseconds, UnixTimeSeconds,
 };
 use exports::componentized::valkey_components::test_suite::Guest;
 use wit_bindgen::rt::Map;
@@ -40,6 +41,8 @@ suite! {
     "string commands" => string_commands,
     "keyspace commands" => keyspace_commands,
     "hash commands" => hash_commands,
+    "binary values" => binary_values,
+    "dump and restore commands" => dump_and_restore_commands,
     "connection commands" => connection_commands,
     "admin and pubsub commands" => admin_and_pubsub_commands,
     "invalid arguments fail before anything is sent" => invalid_arguments,
@@ -79,12 +82,24 @@ fn words(words: &[&str]) -> Vec<String> {
     words.iter().map(|word| word.to_string()).collect()
 }
 
+fn bwords(words: &[&str]) -> Vec<Bytes> {
+    words.iter().map(|word| word.as_bytes().to_vec()).collect()
+}
+
 fn s(value: &str) -> String {
     value.to_string()
 }
 
+/// A value that is text.
+fn v(value: &str) -> StringOrBytes {
+    value.into()
+}
+
+/// Bytes that are not UTF-8, a value that is not text.
+const BINARY: &[u8] = b"\x80\xff\x00value";
+
 fn bulk(value: &str) -> RespValue {
-    RespValue::BulkString(value.to_string())
+    RespValue::BulkString(value.as_bytes().to_vec())
 }
 
 fn ok() -> RespValue {
@@ -150,16 +165,19 @@ struct Server {
 
 impl Server {
     /// The words of the next command the connection sent.
-    async fn request(&mut self) -> Result<Vec<String>, String> {
+    async fn request(&mut self) -> Result<Vec<Bytes>, String> {
         let request = self.requests.next().await;
-        let Some(RespValue::Array(words)) = request else {
-            return Err(format!("expected a command, got {request:?}"));
+        let words = match request {
+            Some(RespValue::Array(words)) => words,
+            Some(request) => return Err(format!("expected a command, got {request}")),
+            None => return Err("expected a command, the requests closed".to_string()),
         };
         words
             .into_iter()
-            .map(|word| match componentized_valkey::resp::decode(word) {
+            .map(|word| match componentized_valkey::resp::decode(&word) {
                 Ok(RespValue::BulkString(word)) => Ok(word),
-                word => Err(format!("expected a bulk string, got {word:?}")),
+                Ok(word) => Err(format!("expected a bulk-string, got {word}")),
+                Err(err) => Err(format!("expected a bulk-string, got {err}")),
             })
             .collect()
     }
@@ -182,11 +200,11 @@ async fn establish() -> Result<(Server, Connection), String> {
         replies,
         _closed: closed,
     };
-    check_eq!(server.request().await?, words(&["HELLO", "3"]));
+    check_eq!(server.request().await?, bwords(&["HELLO", "3"]));
     let version = env!("CARGO_PKG_VERSION");
     let setinfo = [
-        words(&["CLIENT", "SETINFO", "LIB-NAME", "componentized:valkey"]),
-        words(&["CLIENT", "SETINFO", "LIB-VER", version]),
+        bwords(&["CLIENT", "SETINFO", "LIB-NAME", "componentized:valkey"]),
+        bwords(&["CLIENT", "SETINFO", "LIB-VER", version]),
     ];
     for expected in &setinfo {
         check_eq!(&server.request().await?, expected);
@@ -212,7 +230,7 @@ async fn round_trip<T>(
     server: &mut Server,
     reply: RespValue,
     call: impl Future<Output = T>,
-) -> Result<(T, Vec<String>), String> {
+) -> Result<(T, Vec<Bytes>), String> {
     let serve = async {
         let request = server.request().await?;
         server.reply(reply).await?;
@@ -227,8 +245,8 @@ async fn string_commands() -> Result<(), String> {
 
     let (result, sent) =
         round_trip(&mut server, bulk("value"), commands::get(&conn, s("key"))).await?;
-    check_eq!(sent, words(&["GET", "key"]));
-    check_eq!(result, Ok(Some(s("value"))));
+    check_eq!(sent, bwords(&["GET", "key"]));
+    check_eq!(result, Ok(Some(v("value"))));
 
     let (result, _) = round_trip(
         &mut server,
@@ -241,10 +259,10 @@ async fn string_commands() -> Result<(), String> {
     let (result, sent) = round_trip(
         &mut server,
         ok(),
-        commands::set(&conn, s("key"), s("value"), None, None),
+        commands::set(&conn, s("key"), v("value"), None, None),
     )
     .await?;
-    check_eq!(sent, words(&["SET", "key", "value"]));
+    check_eq!(sent, bwords(&["SET", "key", "value"]));
     check_eq!(result, Ok(true));
 
     // null when the precondition is not met
@@ -254,7 +272,7 @@ async fn string_commands() -> Result<(), String> {
         commands::set(
             &conn,
             s("key"),
-            s("value"),
+            v("value"),
             Some(componentized_valkey::types::SetPrecondition::Nx),
             Some(componentized_valkey::types::SetTtl::Ex(DurationSeconds {
                 ex: 10,
@@ -262,7 +280,7 @@ async fn string_commands() -> Result<(), String> {
         ),
     )
     .await?;
-    check_eq!(sent, words(&["SET", "key", "value", "NX", "EX", "10"]));
+    check_eq!(sent, bwords(&["SET", "key", "value", "NX", "EX", "10"]));
     check_eq!(result, Ok(false));
 
     let (result, sent) = round_trip(
@@ -271,7 +289,7 @@ async fn string_commands() -> Result<(), String> {
         commands::incr(&conn, s("count")),
     )
     .await?;
-    check_eq!(sent, words(&["INCR", "count"]));
+    check_eq!(sent, bwords(&["INCR", "count"]));
     check_eq!(result, Ok(1));
 
     let (result, sent) = round_trip(
@@ -280,7 +298,7 @@ async fn string_commands() -> Result<(), String> {
         commands::incrby(&conn, s("count"), -5),
     )
     .await?;
-    check_eq!(sent, words(&["INCRBY", "count", "-5"]));
+    check_eq!(sent, bwords(&["INCRBY", "count", "-5"]));
     check_eq!(result, Ok(-4));
     Ok(())
 }
@@ -294,7 +312,7 @@ async fn keyspace_commands() -> Result<(), String> {
         commands::del(&conn, words(&["a", "b"])),
     )
     .await?;
-    check_eq!(sent, words(&["DEL", "a", "b"]));
+    check_eq!(sent, bwords(&["DEL", "a", "b"]));
     check_eq!(result, Ok(1));
 
     let (result, sent) = round_trip(
@@ -303,7 +321,7 @@ async fn keyspace_commands() -> Result<(), String> {
         commands::exists(&conn, words(&["key"])),
     )
     .await?;
-    check_eq!(sent, words(&["EXISTS", "key"]));
+    check_eq!(sent, bwords(&["EXISTS", "key"]));
     check_eq!(result, Ok(0));
 
     let (result, sent) = round_trip(
@@ -317,7 +335,7 @@ async fn keyspace_commands() -> Result<(), String> {
         ),
     )
     .await?;
-    check_eq!(sent, words(&["EXPIRE", "key", "91", "NX"]));
+    check_eq!(sent, bwords(&["EXPIRE", "key", "91", "NX"]));
     check_eq!(result, Ok(true));
 
     let (result, sent) = round_trip(
@@ -333,7 +351,7 @@ async fn keyspace_commands() -> Result<(), String> {
         ),
     )
     .await?;
-    check_eq!(sent, words(&["EXPIREAT", "key", "1900000000"]));
+    check_eq!(sent, bwords(&["EXPIREAT", "key", "1900000000"]));
     check_eq!(result, Ok(false));
 
     let (result, sent) = round_trip(
@@ -342,7 +360,7 @@ async fn keyspace_commands() -> Result<(), String> {
         commands::keys(&conn, s("*")),
     )
     .await?;
-    check_eq!(sent, words(&["KEYS", "*"]));
+    check_eq!(sent, bwords(&["KEYS", "*"]));
     check_eq!(result, Ok(words(&["a", "b"])));
 
     // TYPE replies `none` for a key that does not exist
@@ -352,7 +370,7 @@ async fn keyspace_commands() -> Result<(), String> {
         commands::type_(&conn, s("missing")),
     )
     .await?;
-    check_eq!(sent, words(&["TYPE", "missing"]));
+    check_eq!(sent, bwords(&["TYPE", "missing"]));
     check_eq!(result, Ok(None));
     Ok(())
 }
@@ -364,16 +382,16 @@ async fn hash_commands() -> Result<(), String> {
     let (result, sent) = round_trip(
         &mut server,
         RespValue::Integer(2),
-        commands::hset(&conn, key(), vec![(s("f"), s("v")), (s("g"), s("w"))]),
+        commands::hset(&conn, key(), vec![(s("f"), v("v")), (s("g"), v("w"))]),
     )
     .await?;
-    check_eq!(sent, words(&["HSET", "hash", "f", "v", "g", "w"]));
+    check_eq!(sent, bwords(&["HSET", "hash", "f", "v", "g", "w"]));
     check_eq!(result, Ok(2));
 
     let (result, sent) =
         round_trip(&mut server, bulk("v"), commands::hget(&conn, key(), s("f"))).await?;
-    check_eq!(sent, words(&["HGET", "hash", "f"]));
-    check_eq!(result, Ok(Some(s("v"))));
+    check_eq!(sent, bwords(&["HGET", "hash", "f"]));
+    check_eq!(result, Ok(Some(v("v"))));
 
     // RESP3 replies to HGETALL with a map
     let (result, sent) = round_trip(
@@ -382,13 +400,13 @@ async fn hash_commands() -> Result<(), String> {
         commands::hgetall(&conn, key()),
     )
     .await?;
-    check_eq!(sent, words(&["HGETALL", "hash"]));
-    check_eq!(result, Ok(Map::from([(s("f"), s("v")), (s("g"), s("w"))])));
+    check_eq!(sent, bwords(&["HGETALL", "hash"]));
+    check_eq!(result, Ok(Map::from([(s("f"), v("v")), (s("g"), v("w"))])));
 
     let (result, _) = round_trip(
         &mut server,
         RespValue::Integer(1),
-        commands::hsetnx(&conn, key(), s("f"), s("v")),
+        commands::hsetnx(&conn, key(), s("f"), v("v")),
     )
     .await?;
     check_eq!(result, Ok(true));
@@ -407,8 +425,8 @@ async fn hash_commands() -> Result<(), String> {
         commands::hmget(&conn, key(), words(&["f", "x"])),
     )
     .await?;
-    check_eq!(sent, words(&["HMGET", "hash", "f", "x"]));
-    check_eq!(result, Ok(vec![Some(s("v")), None]));
+    check_eq!(sent, bwords(&["HMGET", "hash", "f", "x"]));
+    check_eq!(result, Ok(vec![Some(v("v")), None]));
 
     let (result, sent) = round_trip(
         &mut server,
@@ -416,7 +434,7 @@ async fn hash_commands() -> Result<(), String> {
         commands::hincrby(&conn, key(), s("n"), 5),
     )
     .await?;
-    check_eq!(sent, words(&["HINCRBY", "hash", "n", "5"]));
+    check_eq!(sent, bwords(&["HINCRBY", "hash", "n", "5"]));
     check_eq!(result, Ok(6));
 
     // a double sent as a bulk string, even with RESP3
@@ -426,7 +444,7 @@ async fn hash_commands() -> Result<(), String> {
         commands::hincrbyfloat(&conn, key(), s("n"), 1.5),
     )
     .await?;
-    check_eq!(sent, words(&["HINCRBYFLOAT", "hash", "n", "1.5"]));
+    check_eq!(sent, bwords(&["HINCRBYFLOAT", "hash", "n", "1.5"]));
     check_eq!(result, Ok(2.5));
 
     let (result, sent) = round_trip(
@@ -443,7 +461,7 @@ async fn hash_commands() -> Result<(), String> {
     .await?;
     check_eq!(
         sent,
-        words(&["HEXPIRE", "hash", "60", "FIELDS", "2", "f", "x"])
+        bwords(&["HEXPIRE", "hash", "60", "FIELDS", "2", "f", "x"])
     );
     check_eq!(
         result,
@@ -457,7 +475,7 @@ async fn hash_commands() -> Result<(), String> {
         commands::hrandfield(&conn, key(), None),
     )
     .await?;
-    check_eq!(sent, words(&["HRANDFIELD", "hash"]));
+    check_eq!(sent, bwords(&["HRANDFIELD", "hash"]));
     check_eq!(result, Ok(words(&["f"])));
 
     // RESP3 replies with values as [field, value] pairs
@@ -470,8 +488,8 @@ async fn hash_commands() -> Result<(), String> {
         commands::hrandfield_withvalues(&conn, key(), 2),
     )
     .await?;
-    check_eq!(sent, words(&["HRANDFIELD", "hash", "2", "WITHVALUES"]));
-    check_eq!(result, Ok(vec![(s("f"), s("v")), (s("g"), s("w"))]));
+    check_eq!(sent, bwords(&["HRANDFIELD", "hash", "2", "WITHVALUES"]));
+    check_eq!(result, Ok(vec![(s("f"), v("v")), (s("g"), v("w"))]));
 
     let (result, sent) = round_trip(
         &mut server,
@@ -481,11 +499,11 @@ async fn hash_commands() -> Result<(), String> {
     .await?;
     check_eq!(
         sent,
-        words(&["HSCAN", "hash", "0", "MATCH", "f*", "COUNT", "10"])
+        bwords(&["HSCAN", "hash", "0", "MATCH", "f*", "COUNT", "10"])
     );
     check_eq!(
         result,
-        Ok((Some(Cursor::Resume(s("17"))), Map::from([(s("f"), s("v"))])))
+        Ok((Some(Cursor::Resume(s("17"))), Map::from([(s("f"), v("v"))])))
     );
 
     // the last page has a cursor of 0
@@ -495,7 +513,7 @@ async fn hash_commands() -> Result<(), String> {
         commands::hscan_novalues(&conn, key(), Cursor::Resume(s("17")), None, None),
     )
     .await?;
-    check_eq!(sent, words(&["HSCAN", "hash", "17", "NOVALUES"]));
+    check_eq!(sent, bwords(&["HSCAN", "hash", "17", "NOVALUES"]));
     check_eq!(result, Ok((None, words(&["g"]))));
 
     let (result, sent) = round_trip(
@@ -504,8 +522,171 @@ async fn hash_commands() -> Result<(), String> {
         commands::hdel(&conn, key(), words(&["f"])),
     )
     .await?;
-    check_eq!(sent, words(&["HDEL", "hash", "f"]));
+    check_eq!(sent, bwords(&["HDEL", "hash", "f"]));
     check_eq!(result, Ok(1));
+    Ok(())
+}
+
+async fn binary_values() -> Result<(), String> {
+    let (mut server, conn) = establish().await?;
+    let binary = || StringOrBytes::Bytes(BINARY.to_vec());
+
+    // sent as is
+    let (result, sent) = round_trip(
+        &mut server,
+        ok(),
+        commands::set(&conn, s("key"), binary(), None, None),
+    )
+    .await?;
+    check_eq!(
+        sent,
+        vec![b"SET".to_vec(), b"key".to_vec(), BINARY.to_vec()]
+    );
+    check_eq!(result, Ok(true));
+
+    // a reply that is not UTF-8 is bytes, one that is is a string
+    let (result, _) = round_trip(
+        &mut server,
+        RespValue::BulkString(BINARY.to_vec()),
+        commands::get(&conn, s("key")),
+    )
+    .await?;
+    check_eq!(result, Ok(Some(binary())));
+
+    let (result, _) = round_trip(
+        &mut server,
+        RespValue::BulkString(b"text".to_vec()),
+        commands::get(&conn, s("key")),
+    )
+    .await?;
+    check_eq!(result, Ok(Some(v("text"))));
+
+    let (result, _) = round_trip(
+        &mut server,
+        map(vec![
+            (bulk("f"), RespValue::BulkString(BINARY.to_vec())),
+            (bulk("g"), bulk("w")),
+        ]),
+        commands::hgetall(&conn, s("hash")),
+    )
+    .await?;
+    check_eq!(
+        result,
+        Ok(Map::from([(s("f"), binary()), (s("g"), v("w"))]))
+    );
+
+    // a field, a string, that is not UTF-8 fails the command
+    let (result, _) = round_trip(
+        &mut server,
+        map(vec![(RespValue::BulkString(BINARY.to_vec()), bulk("v"))]),
+        commands::hgetall(&conn, s("hash")),
+    )
+    .await?;
+    check_eq!(result.is_err(), true);
+    Ok(())
+}
+
+async fn dump_and_restore_commands() -> Result<(), String> {
+    let (mut server, conn) = establish().await?;
+
+    let (result, sent) = round_trip(
+        &mut server,
+        RespValue::BulkString(BINARY.to_vec()),
+        commands::dump(&conn, s("key")),
+    )
+    .await?;
+    check_eq!(sent, bwords(&["DUMP", "key"]));
+    check_eq!(result, Ok(Some(BINARY.to_vec())));
+
+    let (result, _) = round_trip(
+        &mut server,
+        RespValue::Null,
+        commands::dump(&conn, s("missing")),
+    )
+    .await?;
+    check_eq!(result, Ok(None));
+
+    // without a ttl, 0
+    let (result, sent) = round_trip(
+        &mut server,
+        ok(),
+        commands::restore(&conn, s("key"), None, BINARY.to_vec(), false, None, None),
+    )
+    .await?;
+    check_eq!(
+        sent,
+        vec![
+            b"RESTORE".to_vec(),
+            b"key".to_vec(),
+            b"0".to_vec(),
+            BINARY.to_vec()
+        ]
+    );
+    check_eq!(result, Ok(()));
+
+    let (result, sent) = round_trip(
+        &mut server,
+        ok(),
+        commands::restore(
+            &conn,
+            s("key"),
+            Some(RestoreTtl::ExpireIn(DurationMilliseconds { px: 1500 })),
+            BINARY.to_vec(),
+            true,
+            Some(DurationSeconds { ex: 10 }),
+            Some(5),
+        ),
+    )
+    .await?;
+    let mut expected = bwords(&["RESTORE", "key", "1500"]);
+    expected.push(BINARY.to_vec());
+    expected.extend(bwords(&["REPLACE", "IDLETIME", "10", "FREQ", "5"]));
+    check_eq!(sent, expected);
+    check_eq!(result, Ok(()));
+
+    // an expiration at a time is ABSTTL
+    let (result, sent) = round_trip(
+        &mut server,
+        ok(),
+        commands::restore_asking(
+            &conn,
+            s("key"),
+            Some(RestoreTtl::ExpireAt(UnixTimeMilliseconds {
+                pxat: 1_900_000_000_000,
+            })),
+            BINARY.to_vec(),
+            false,
+            None,
+            None,
+        ),
+    )
+    .await?;
+    let mut expected = bwords(&["RESTORE-ASKING", "key", "1900000000000"]);
+    expected.push(BINARY.to_vec());
+    expected.extend(bwords(&["ABSTTL"]));
+    check_eq!(sent, expected);
+    check_eq!(result, Ok(()));
+
+    let (result, sent) = round_trip(
+        &mut server,
+        RespValue::BulkString(BINARY.to_vec()),
+        commands::function_dump(&conn),
+    )
+    .await?;
+    check_eq!(sent, bwords(&["FUNCTION", "DUMP"]));
+    check_eq!(result, Ok(BINARY.to_vec()));
+
+    let (result, sent) = round_trip(
+        &mut server,
+        ok(),
+        commands::function_restore(&conn, BINARY.to_vec(), Some(FunctionRestorePolicy::Replace)),
+    )
+    .await?;
+    let mut expected = bwords(&["FUNCTION", "RESTORE"]);
+    expected.push(BINARY.to_vec());
+    expected.extend(bwords(&["REPLACE"]));
+    check_eq!(sent, expected);
+    check_eq!(result, Ok(()));
     Ok(())
 }
 
@@ -518,7 +699,7 @@ async fn connection_commands() -> Result<(), String> {
         commands::ping(&conn, None),
     )
     .await?;
-    check_eq!(sent, words(&["PING"]));
+    check_eq!(sent, bwords(&["PING"]));
     check_eq!(result, Ok(()));
 
     let (result, sent) = round_trip(
@@ -527,7 +708,7 @@ async fn connection_commands() -> Result<(), String> {
         commands::auth(&conn, Some(s("user")), s("secret")),
     )
     .await?;
-    check_eq!(sent, words(&["AUTH", "user", "secret"]));
+    check_eq!(sent, bwords(&["AUTH", "user", "secret"]));
     check_eq!(result, Ok(()));
 
     let (result, sent) = round_trip(
@@ -536,7 +717,7 @@ async fn connection_commands() -> Result<(), String> {
         commands::client_setname(&conn, s("tests")),
     )
     .await?;
-    check_eq!(sent, words(&["CLIENT", "SETNAME", "tests"]));
+    check_eq!(sent, bwords(&["CLIENT", "SETNAME", "tests"]));
     check_eq!(result, Ok(()));
     Ok(())
 }
@@ -554,13 +735,13 @@ async fn admin_and_pubsub_commands() -> Result<(), String> {
         commands::acl_setuser(&conn, s("user"), Some(rules)),
     )
     .await?;
-    check_eq!(sent, words(&["ACL", "SETUSER", "user", "on", ">secret"]));
+    check_eq!(sent, bwords(&["ACL", "SETUSER", "user", "on", ">secret"]));
     check_eq!(result, Ok(()));
 
     let pass = "dd721260bfe1b3d9601e7fbab36de6d04e2e67b0ef1c53de59d45950db0dd3cc";
     let (result, sent) =
         round_trip(&mut server, bulk(pass), commands::acl_genpass(&conn, None)).await?;
-    check_eq!(sent, words(&["ACL", "GENPASS"]));
+    check_eq!(sent, bwords(&["ACL", "GENPASS"]));
     check_eq!(result, Ok(s(pass)));
 
     let (result, sent) = round_trip(
@@ -569,16 +750,16 @@ async fn admin_and_pubsub_commands() -> Result<(), String> {
         commands::acl_deluser(&conn, words(&["user"])),
     )
     .await?;
-    check_eq!(sent, words(&["ACL", "DELUSER", "user"]));
+    check_eq!(sent, bwords(&["ACL", "DELUSER", "user"]));
     check_eq!(result, Ok(1));
 
     let (result, sent) = round_trip(
         &mut server,
         RespValue::Integer(2),
-        commands::publish(&conn, s("news"), s("hello")),
+        commands::publish(&conn, s("news"), v("hello")),
     )
     .await?;
-    check_eq!(sent, words(&["PUBLISH", "news", "hello"]));
+    check_eq!(sent, bwords(&["PUBLISH", "news", "hello"]));
     check_eq!(result, Ok(2));
     Ok(())
 }
@@ -602,7 +783,7 @@ async fn invalid_arguments() -> Result<(), String> {
         commands::ping(&conn, None),
     )
     .await?;
-    check_eq!(sent, words(&["PING"]));
+    check_eq!(sent, bwords(&["PING"]));
     Ok(())
 }
 
@@ -616,7 +797,7 @@ async fn unexpected_replies() -> Result<(), String> {
     .await?;
     check_eq!(
         result,
-        Err(Error::Client(s("unexpected reply: RespValue::Integer(7)")))
+        Err(Error::Client(s("unexpected reply: integer<7>")))
     );
     Ok(())
 }
@@ -650,10 +831,10 @@ async fn with_valkey() -> Result<(), String> {
 
     check(commands::ping(&conn, None).await)?;
     check_eq!(
-        commands::set(&conn, key(), s("1"), None, None).await,
+        commands::set(&conn, key(), v("1"), None, None).await,
         Ok(true)
     );
-    check_eq!(commands::get(&conn, key()).await, Ok(Some(s("1"))));
+    check_eq!(commands::get(&conn, key()).await, Ok(Some(v("1"))));
     check_eq!(commands::incr(&conn, key()).await, Ok(2));
     check_eq!(commands::incrby(&conn, key(), 3).await, Ok(5));
     check_eq!(commands::exists(&conn, vec![key()]).await, Ok(1));
@@ -670,17 +851,17 @@ async fn with_valkey() -> Result<(), String> {
 
     let key = || s("commands-test:hash");
     check_eq!(
-        commands::hset(&conn, key(), vec![(s("f"), s("v")), (s("g"), s("w"))]).await,
+        commands::hset(&conn, key(), vec![(s("f"), v("v")), (s("g"), v("w"))]).await,
         Ok(2)
     );
     check_eq!(
         commands::hgetall(&conn, key()).await,
-        Ok(Map::from([(s("f"), s("v")), (s("g"), s("w"))]))
+        Ok(Map::from([(s("f"), v("v")), (s("g"), v("w"))]))
     );
     check_eq!(commands::hlen(&conn, key()).await, Ok(2));
     check_eq!(
         commands::hmget(&conn, key(), words(&["f", "x"])).await,
-        Ok(vec![Some(s("v")), None])
+        Ok(vec![Some(v("v")), None])
     );
     let fields = commands::hrandfield_withvalues(&conn, key(), 2)
         .await
@@ -688,7 +869,7 @@ async fn with_valkey() -> Result<(), String> {
     check_eq!(fields.len(), 2);
     check_eq!(
         commands::hscan(&conn, key(), Cursor::Start, None, None).await,
-        Ok((None, Map::from([(s("f"), s("v")), (s("g"), s("w"))])))
+        Ok((None, Map::from([(s("f"), v("v")), (s("g"), v("w"))])))
     );
     check_eq!(
         commands::hincrbyfloat(&conn, key(), s("n"), 1.5).await,
@@ -700,15 +881,52 @@ async fn with_valkey() -> Result<(), String> {
             key(),
             DurationSeconds { ex: 60 },
             None,
-            words(&["f", "x"])
+            vec!["f".to_string(), "x".to_string()]
         )
         .await,
         Ok(vec![HexpireResult::Applied, HexpireResult::DoesNotExist])
     );
     check_eq!(commands::del(&conn, vec![key()]).await, Ok(1));
 
+    // binary values round trip
+    let key = || s("commands-test:binary");
+    let binary = || StringOrBytes::Bytes(BINARY.to_vec());
     check_eq!(
-        commands::publish(&conn, s("commands-test"), s("hello")).await,
+        commands::set(&conn, key(), binary(), None, None).await,
+        Ok(true)
+    );
+    check_eq!(commands::get(&conn, key()).await, Ok(Some(binary())));
+
+    // the serialized value restores the key, with its value
+    let serialized = commands::dump(&conn, key())
+        .await
+        .map_err(|error| format!("{error:?}"))?
+        .ok_or("expected the key to dump")?;
+    check_eq!(
+        commands::restore(&conn, key(), None, serialized.clone(), false, None, None)
+            .await
+            .is_err(),
+        true
+    );
+    let ttl = RestoreTtl::ExpireIn(DurationMilliseconds { px: 60_000 });
+    check_eq!(
+        commands::restore(&conn, key(), Some(ttl), serialized, true, None, None).await,
+        Ok(())
+    );
+    check_eq!(commands::get(&conn, key()).await, Ok(Some(binary())));
+    check_eq!(commands::del(&conn, vec![key()]).await, Ok(1));
+
+    // the serialized libraries restore, appending none when there are none
+    let serialized = commands::function_dump(&conn)
+        .await
+        .map_err(|error| format!("{error:?}"))?;
+    check_eq!(
+        commands::function_restore(&conn, serialized, Some(FunctionRestorePolicy::Append)).await,
+        Ok(())
+    );
+
+    check_eq!(
+        commands::publish(&conn, s("commands-test"), v("hello")).await,
         Ok(0)
     );
     let pass = commands::acl_genpass(&conn, None)

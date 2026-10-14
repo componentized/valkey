@@ -1,7 +1,7 @@
 //! The admin commands: ACL, CLIENT, CLUSTER, COMMANDLOG, FAILOVER, LATENCY, MODULE, ROLE, SHUTDOWN
 //! and the like.
 
-use crate::command::{Flag, IntoCommand, NonEmpty};
+use crate::command::{Flag, IntoCommand, NonEmpty, Words};
 use crate::types::{
     AclChannelRule, AclCommandRule, AclDbRule, AclDryrunResult, AclKeyRule, AclListEntry,
     AclLogEntry, AclRule, AclSelectorRule, AclUserRule, BgsaveOperation, ClientFilter,
@@ -16,7 +16,7 @@ use crate::value::{Fields, FlatPairs, FromValue, items, parse_string};
 use wit_bindgen::rt::Map;
 
 impl IntoCommand for AclRule {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             AclRule::Keys(rule) => rule.into_command(),
             AclRule::Channel(rule) => rule.into_command(),
@@ -29,7 +29,7 @@ impl IntoCommand for AclRule {
 }
 
 impl IntoCommand for AclSelectorRule {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             AclSelectorRule::Keys(rule) => rule.into_command(),
             AclSelectorRule::Channel(rule) => rule.into_command(),
@@ -41,31 +41,33 @@ impl IntoCommand for AclSelectorRule {
 }
 
 impl IntoCommand for AclKeyRule {
-    fn into_command(self) -> Result<Vec<String>, Error> {
-        Ok(vec![match self {
+    fn into_command(self) -> Result<Words, Error> {
+        match self {
             AclKeyRule::Add(pattern) => format!("~{pattern}"),
             AclKeyRule::AddRead(pattern) => format!("%R~{pattern}"),
             AclKeyRule::AddWrite(pattern) => format!("%W~{pattern}"),
             AclKeyRule::AddReadWrite(pattern) => format!("%RW~{pattern}"),
             AclKeyRule::All => "allkeys".to_string(),
             AclKeyRule::Reset => "resetkeys".to_string(),
-        }])
+        }
+        .into_command()
     }
 }
 
 impl IntoCommand for AclChannelRule {
-    fn into_command(self) -> Result<Vec<String>, Error> {
-        Ok(vec![match self {
+    fn into_command(self) -> Result<Words, Error> {
+        match self {
             AclChannelRule::Add(pattern) => format!("&{pattern}"),
             AclChannelRule::All => "allchannels".to_string(),
             AclChannelRule::Reset => "resetchannels".to_string(),
-        }])
+        }
+        .into_command()
     }
 }
 
 impl IntoCommand for AclCommandRule {
-    fn into_command(self) -> Result<Vec<String>, Error> {
-        Ok(vec![match self {
+    fn into_command(self) -> Result<Words, Error> {
+        match self {
             AclCommandRule::Add(command) => format!("+{command}"),
             AclCommandRule::AddCategory(category) => format!("+@{category}"),
             AclCommandRule::AddFirstArg((command, arg)) => format!("+{command}|{arg}"),
@@ -73,14 +75,15 @@ impl IntoCommand for AclCommandRule {
             AclCommandRule::Remove(command) => format!("-{command}"),
             AclCommandRule::RemoveCategory(category) => format!("-@{category}"),
             AclCommandRule::Reset => "nocommands".to_string(),
-        }])
+        }
+        .into_command()
     }
 }
 
 /// `db=` requires at least one database.
 impl IntoCommand for AclDbRule {
-    fn into_command(self) -> Result<Vec<String>, Error> {
-        Ok(vec![match self {
+    fn into_command(self) -> Result<Words, Error> {
+        match self {
             AclDbRule::Db(dbs) if dbs.is_empty() => {
                 return Err(Error::Client("db requires at least one item".to_string()));
             }
@@ -93,12 +96,13 @@ impl IntoCommand for AclDbRule {
             ),
             AclDbRule::All => "alldbs".to_string(),
             AclDbRule::Reset => "resetdbs".to_string(),
-        }])
+        }
+        .into_command()
     }
 }
 
 impl IntoCommand for AclUserRule {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             AclUserRule::On => "on".into_command(),
             AclUserRule::Off => "off".into_command(),
@@ -362,7 +366,7 @@ impl FromValue for AclLogEntry {
 }
 
 impl IntoCommand for BgsaveOperation {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             BgsaveOperation::Schedule => "SCHEDULE",
             BgsaveOperation::Cancel => "CANCEL",
@@ -373,7 +377,7 @@ impl IntoCommand for BgsaveOperation {
 
 /// `master` rather than `primary`, which servers before Valkey 8.0 do not know.
 impl IntoCommand for ClientType {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClientType::Normal => "normal",
             ClientType::Primary => "master",
@@ -385,7 +389,7 @@ impl IntoCommand for ClientType {
 }
 
 impl IntoCommand for ClientFilter {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClientFilter::Id(ids) => ("ID", NonEmpty::new("id", ids)).into_command(),
             ClientFilter::Type(client_type) => ("TYPE", client_type).into_command(),
@@ -442,7 +446,7 @@ impl FromValue for ClientList {
 }
 
 impl IntoCommand for ClientPauseMode {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClientPauseMode::Write => "WRITE",
             ClientPauseMode::All => "ALL",
@@ -452,7 +456,7 @@ impl IntoCommand for ClientPauseMode {
 }
 
 impl IntoCommand for ClientUnblockType {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClientUnblockType::Timeout => "TIMEOUT",
             ClientUnblockType::Error => "ERROR",
@@ -477,7 +481,7 @@ impl FromValue for ClusterBumpepochResult {
 }
 
 impl IntoCommand for ClusterFailoverMode {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClusterFailoverMode::Force => "FORCE",
             ClusterFailoverMode::Takeover => "TAKEOVER",
@@ -541,7 +545,7 @@ impl FromValue for ClusterGetslotmigrationsEntry {
 
 /// `SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ]`
 impl IntoCommand for ClusterMigrateslotsGroup {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         (
             "SLOTSRANGE",
             NonEmpty::new("ranges", self.ranges),
@@ -555,7 +559,7 @@ impl IntoCommand for ClusterMigrateslotsGroup {
 }
 
 impl IntoCommand for ClusterResetMode {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClusterResetMode::Hard => "HARD",
             ClusterResetMode::Soft => "SOFT",
@@ -565,7 +569,7 @@ impl IntoCommand for ClusterResetMode {
 }
 
 impl IntoCommand for ClusterSetslotState {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClusterSetslotState::Importing(node_id) => ("IMPORTING", node_id).into_command(),
             ClusterSetslotState::Migrating(node_id) => ("MIGRATING", node_id).into_command(),
@@ -576,7 +580,7 @@ impl IntoCommand for ClusterSetslotState {
 }
 
 impl IntoCommand for CommandlogType {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             CommandlogType::Slow => "slow",
             CommandlogType::LargeRequest => "large-request",
@@ -609,7 +613,7 @@ impl FromValue for CommandlogEntry {
 
 /// `TO host port [ FORCE ]`
 impl IntoCommand for FailoverTarget {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         ("TO", self.host, self.port, Flag("FORCE", self.force)).into_command()
     }
 }
@@ -701,7 +705,7 @@ impl FromValue for RoleReply {
 }
 
 impl IntoCommand for ShutdownSave {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ShutdownSave::Nosave => "NOSAVE",
             ShutdownSave::Save => "SAVE",
@@ -1015,7 +1019,11 @@ mod tests {
         let rules = entries.into_iter().next().unwrap().rules;
         // selectors are sent as words between parentheses
         assert_eq!(
-            words(rules).join(" "),
+            words(rules)
+                .iter()
+                .map(|word| String::from_utf8_lossy(word.as_bytes()))
+                .collect::<Vec<_>>()
+                .join(" "),
             "on #abc ~app:* resetchannels &news:* nocommands +get ( %R~x resetchannels +get )"
         );
     }

@@ -16,12 +16,24 @@ interface types {
     @since(version = 0.3.0-dev)
     type double = f64;
 
+    /// Raw bytes, e.g. a bulk string, which Valkey keeps as given, UTF-8 or not.
+    @since(version = 0.3.0-dev)
+    type bytes = list<u8>;
+
+    @since(version = 0.3.0-dev)
+    variant string-or-bytes {
+        /// utf-8 decoded bytes.
+        %string(string),
+        /// bytes that cannot be represented as a utf-8 string.
+        bytes(bytes),
+    }
+
     @since(version = 0.3.0-dev)
     variant resp-value {
         %string(string),
         error(string),
         integer(integer),
-        bulk-string(string),
+        bulk-string(bytes),
         array(list<resp-nested-value>),
         null,
         boolean(bool),
@@ -87,7 +99,8 @@ interface types {
     /// a message once for each target.
     @since(version = 0.3.0-dev)
     record subscription-message {
-        payload: string,
+        /// The message as published, UTF-8 or not.
+        payload: string-or-bytes,
         /// The channel the message was published to: a channel, published with PUBLISH, or a shard
         /// channel, published with SPUBLISH. Channels and shard channels are separate, a channel
         /// and a shard channel of the same name are not the same. `target` tells them apart, a
@@ -1108,7 +1121,7 @@ interface types {
     @since(version = 0.3.0-dev)
     variant geosearch-from {
         /// `FROMMEMBER member`: the position of a member of the index.
-        member(string),
+        member(string-or-bytes),
         /// `FROMLONLAT longitude latitude`
         lonlat(geo-coordinates),
     }
@@ -1172,7 +1185,7 @@ interface types {
     /// A member a search found, with the details asked for.
     @since(version = 0.3.0-dev)
     record geosearch-with-result {
-        member: string,
+        member: string-or-bytes,
         /// `WITHDIST`: the distance from the center, in the unit of the shape.
         distance: option<double>,
         /// `WITHHASH`: the geohash, as an integer.
@@ -1238,6 +1251,15 @@ interface types {
     type hpexpireat-result = hexpire-result;
 
     // keyspace commands
+
+    /// The expiration of a key `restore` creates.
+    @since(version = 0.3.0-dev)
+    variant restore-ttl {
+        /// `ttl`: the key expires after the duration.
+        expire-in(duration-milliseconds),
+        /// `ttl` with `ABSTTL`: the key expires at the time.
+        expire-at(unix-time-milliseconds),
+    }
 
     /// The type of the value stored at a key.
     @since(version = 0.3.0-dev)
@@ -1330,6 +1352,17 @@ interface types {
 
     // scripting commands
 
+    /// What `function-restore` does with the libraries already loaded.
+    @since(version = 0.3.0-dev)
+    enum function-restore-policy {
+        /// `FLUSH`: deletes them first.
+        flush,
+        /// `APPEND`: keeps them, failing when a library of the same name is loaded.
+        append,
+        /// `REPLACE`: keeps them, replacing those with a library of the same name.
+        replace,
+    }
+
     /// Whether a flush happens in the background, `ASYNC`, or before replying, `SYNC`.
     @since(version = 0.3.0-dev)
     enum flush-mode {
@@ -1402,9 +1435,9 @@ interface types {
     @since(version = 0.3.0-dev)
     variant lex-bound {
         /// `[member`: the member, included in the range.
-        inclusive(string),
+        inclusive(string-or-bytes),
         /// `(member`: the member, excluded from the range.
-        exclusive(string),
+        exclusive(string-or-bytes),
         /// `-` as the min, `+` as the max, the start is the max with `REV`.
         unbounded,
     }
@@ -1594,10 +1627,10 @@ interface types {
         entries-added: integer,
         /// The ID and fields of the first entry.
         /// None when the stream is empty.
-        first-entry: option<tuple<stream-id, map<string, string>>>,
+        first-entry: option<tuple<stream-id, map<string, string-or-bytes>>>,
         /// The ID and fields of the last entry.
         /// None when the stream is empty.
-        last-entry: option<tuple<stream-id, map<string, string>>>,
+        last-entry: option<tuple<stream-id, map<string, string-or-bytes>>>,
     }
 
     /// Information about a stream, its entries and consumer groups, see `xinfo-stream-full`.
@@ -1616,7 +1649,7 @@ interface types {
         /// The number of entries added to the stream over its lifetime.
         entries-added: integer,
         /// The ID and fields of the entries, in ascending ID order, up to the count given.
-        entries: list<tuple<stream-id, map<string, string>>>,
+        entries: list<tuple<stream-id, map<string, string-or-bytes>>>,
         /// The consumer groups of the stream.
         groups: list<xinfo-stream-reply-full-group>,
     }
@@ -1747,9 +1780,9 @@ interface types {
         /// Only set the key if it already exists.
         xx,
         /// Set the key if the comparison value matches the existing value.
-        ifeq(string),
+        ifeq(string-or-bytes),
         /// Set the key if the comparison value does not match the existing value.
-        ifne(string),
+        ifne(string-or-bytes),
     }
 
     /// The expiration to set on a key, see `set`.

@@ -1,11 +1,11 @@
 //! The list commands: LINSERT, LMOVE, LMPOP and the like.
 
-use crate::command::IntoCommand;
+use crate::command::{IntoCommand, Words};
 use crate::types::{Error, Integer, LinsertPosition, LinsertResult, ListSide, RespValue};
 use crate::value::FromValue;
 
 impl IntoCommand for ListSide {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ListSide::Left => "LEFT",
             ListSide::Right => "RIGHT",
@@ -15,7 +15,7 @@ impl IntoCommand for ListSide {
 }
 
 impl IntoCommand for LinsertPosition {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             LinsertPosition::Before => "BEFORE",
             LinsertPosition::After => "AFTER",

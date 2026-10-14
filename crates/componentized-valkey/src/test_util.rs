@@ -5,7 +5,7 @@ use crate::types::{Error, RespValue};
 use crate::{FromValue, IntoCommand};
 
 /// The words of a command that converts.
-pub fn words(command: impl IntoCommand) -> Vec<String> {
+pub fn words(command: impl IntoCommand) -> crate::command::Words {
     command.into_command().expect("the words of the command")
 }
 
@@ -41,7 +41,7 @@ pub fn simple(text: &str) -> RespValue {
 }
 
 pub fn bulk(text: &str) -> RespValue {
-    RespValue::BulkString(text.to_string())
+    RespValue::BulkString(text.as_bytes().to_vec())
 }
 
 pub fn int(value: i64) -> RespValue {

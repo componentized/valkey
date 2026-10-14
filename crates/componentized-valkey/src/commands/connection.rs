@@ -1,6 +1,6 @@
 //! The connection commands: CLIENT of the connection itself, and COMMAND.
 
-use crate::command::{Flag, IntoCommand, NonEmpty};
+use crate::command::{Flag, IntoCommand, NonEmpty, Words};
 use crate::types::{
     ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientTrackinginfoRedirect,
     ClientTrackinginfoReply, CommandDocsArgument, CommandDocsArgumentType, CommandDocsReply,
@@ -11,7 +11,7 @@ use crate::types::{
 use crate::value::{Fields, FlatPairs, FromValue, entries, items};
 
 impl IntoCommand for ClientSetinfoAttr {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClientSetinfoAttr::LibName(name) => ("LIB-NAME", name).into_command(),
             ClientSetinfoAttr::LibVer(version) => ("LIB-VER", version).into_command(),
@@ -20,7 +20,7 @@ impl IntoCommand for ClientSetinfoAttr {
 }
 
 impl IntoCommand for ClientTrackingMode {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             ClientTrackingMode::Optin => "OPTIN",
             ClientTrackingMode::Optout => "OPTOUT",
@@ -31,7 +31,7 @@ impl IntoCommand for ClientTrackingMode {
 
 /// `[ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN | OPTOUT ] [ NOLOOP ]`
 impl IntoCommand for ClientTrackingOptions {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         // PREFIX before each prefix
         let prefixes = self.prefixes.map(|prefixes| {
             let prefixes = prefixes.into_iter().map(|prefix| ("PREFIX", prefix));
@@ -72,7 +72,7 @@ impl FromValue for ClientTrackinginfoReply {
 
 /// `FILTERBY 〈 MODULE module-name | ACLCAT category | PATTERN pattern 〉`
 impl IntoCommand for CommandListFilter {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let (filter, value) = match self {
             CommandListFilter::Module(name) => ("MODULE", name),
             CommandListFilter::Aclcat(category) => ("ACLCAT", category),
@@ -86,7 +86,7 @@ impl IntoCommand for CommandListFilter {
 pub struct OnOff(pub bool);
 
 impl IntoCommand for OnOff {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         if self.0 { "ON" } else { "OFF" }.into_command()
     }
 }

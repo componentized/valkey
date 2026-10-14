@@ -1,6 +1,6 @@
 //! Shared by the commands: times, cursors, the expiration of keys and fields, limits and sort order.
 
-use crate::command::IntoCommand;
+use crate::command::{IntoCommand, Words};
 use crate::types::{
     Cursor, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply, Integer, Limit,
     PexpiretimeReply, PttlReply, RespValue, SortOrder, TtlMode, TtlReply, UnixTimeMilliseconds,
@@ -10,7 +10,7 @@ use crate::value::FromValue;
 
 /// Whole seconds, e.g. for EX.
 impl IntoCommand for DurationSeconds {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         self.ex.into_command()
     }
 }
@@ -24,7 +24,7 @@ impl FromValue for DurationSeconds {
 
 /// Whole milliseconds, e.g. for PX.
 impl IntoCommand for DurationMilliseconds {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         self.px.into_command()
     }
 }
@@ -38,7 +38,7 @@ impl FromValue for DurationMilliseconds {
 
 /// Whole seconds since the Unix epoch, e.g. for EXAT.
 impl IntoCommand for UnixTimeSeconds {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         self.exat.into_command()
     }
 }
@@ -52,7 +52,7 @@ impl FromValue for UnixTimeSeconds {
 
 /// Whole milliseconds since the Unix epoch, e.g. for PXAT.
 impl IntoCommand for UnixTimeMilliseconds {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         self.pxat.into_command()
     }
 }
@@ -68,19 +68,15 @@ impl FromValue for UnixTimeMilliseconds {
 pub struct DecimalSeconds(pub DurationMilliseconds);
 
 impl IntoCommand for DecimalSeconds {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         let milliseconds = self.0.px;
-        Ok(vec![format!(
-            "{}.{:03}",
-            milliseconds / 1_000,
-            milliseconds % 1_000
-        )])
+        format!("{}.{:03}", milliseconds / 1_000, milliseconds % 1_000).into_command()
     }
 }
 
 /// `0` to start, failing to resume from `0`, which would restart the scan.
 impl IntoCommand for Cursor {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             Cursor::Start => "0".into_command(),
             Cursor::Resume(cursor) if cursor == "0" => Err(Error::Client(
@@ -104,7 +100,7 @@ impl FromValue for NextCursor {
 }
 
 impl IntoCommand for TtlMode {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             TtlMode::Nx => "NX",
             TtlMode::Xx => "XX",
@@ -142,13 +138,13 @@ from_value_ttl_replies!(
 
 /// `LIMIT offset count`
 impl IntoCommand for Limit {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         ("LIMIT", self.offset, self.count).into_command()
     }
 }
 
 impl IntoCommand for SortOrder {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             SortOrder::Asc => "ASC",
             SortOrder::Desc => "DESC",

@@ -162,12 +162,14 @@ async fn receive_pump(
     // bytes read from the socket that are not part of a whole value yet
     let mut buffered: Vec<u8> = Vec::new();
     let result = 'pump: loop {
-        // hand over each whole value buffered, a value may span several reads
+        // hand over each whole value buffered, a value may span several reads, then drop them from
+        // the buffer at once
+        let mut start = 0;
         loop {
-            match componentized_valkey::resp::frame_len(&buffered) {
+            match componentized_valkey::resp::frame_len(&buffered[start..]) {
                 Ok(Some(len)) => {
-                    let rest = buffered.split_off(len);
-                    let frame = std::mem::replace(&mut buffered, rest);
+                    let frame = &buffered[start..start + len];
+                    start += len;
                     match componentized_valkey::resp::decode(frame) {
                         Ok(value) => {
                             if replies.write_one(value).await.is_some() {
@@ -182,6 +184,7 @@ async fn receive_pump(
                 Err(error) => break 'pump Err(Error::Resp(error)),
             }
         }
+        buffered.drain(..start);
         match bytes.read(Vec::with_capacity(READ_SIZE)).await {
             (StreamResult::Complete(_), chunk) => buffered.extend_from_slice(&chunk),
             (StreamResult::Dropped | StreamResult::Cancelled, _) => {

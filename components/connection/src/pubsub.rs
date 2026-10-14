@@ -5,7 +5,8 @@ use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use componentized_valkey::types::{
-    RespValue, SubscriptionEvent, SubscriptionMessage, SubscriptionTarget, UnsubscribeReason,
+    RespValue, StringOrBytes, SubscriptionEvent, SubscriptionMessage, SubscriptionTarget,
+    UnsubscribeReason,
 };
 use futures_channel::{mpsc, oneshot};
 use wit_bindgen::{FutureReader, FutureWriter, StreamReader, StreamWriter};
@@ -563,8 +564,8 @@ fn queue_subscribe(
     if names.is_empty() {
         return Ok(None);
     }
-    let command = std::iter::once(kind.subscribe().to_string())
-        .chain(names.iter().cloned())
+    let command = std::iter::once(kind.subscribe().as_bytes().to_vec())
+        .chain(names.iter().map(|name| name.as_bytes().to_vec()))
         .collect();
     let (done_tx, done_rx) = oneshot::channel();
     let reply = Reply::Pubsub(Pending::Subscribe {
@@ -686,8 +687,8 @@ fn queue_unsubscribe(
     if release.is_empty() {
         return Ok(None);
     }
-    let command = std::iter::once(kind.unsubscribe().to_string())
-        .chain(release.iter().cloned())
+    let command = std::iter::once(kind.unsubscribe().as_bytes().to_vec())
+        .chain(release.iter().map(|name| name.as_bytes().to_vec()))
         .collect();
     let (done_tx, done_rx) = oneshot::channel();
     let reply = Reply::Pubsub(Pending::Unsubscribe {
@@ -759,43 +760,45 @@ fn parse_push(value: &RespValue) -> Option<Push> {
     let RespValue::Push(items) = value else {
         return None;
     };
-    let items = items
+    let mut items = items
         .iter()
-        .map(|item| decode(item.clone()).ok())
+        .map(|item| decode(item).ok())
         .collect::<Option<Vec<_>>>()?;
-    let text = |index: usize| match items.get(index) {
-        Some(RespValue::String(text) | RespValue::BulkString(text)) => Some(text.clone()),
-        _ => None,
+    // each item is taken once, rather than cloned
+    let mut take = |index: usize| {
+        items
+            .get_mut(index)
+            .map(|item| std::mem::replace(item, RespValue::Null))
     };
-    let push = match text(0)?.as_str() {
-        "subscribe" => Push::Subscribed((Kind::Channel, text(1)?)),
-        "psubscribe" => Push::Subscribed((Kind::Pattern, text(1)?)),
-        "ssubscribe" => Push::Subscribed((Kind::Shard, text(1)?)),
-        "unsubscribe" => Push::Unsubscribed(Kind::Channel, text(1)),
-        "punsubscribe" => Push::Unsubscribed(Kind::Pattern, text(1)),
-        "sunsubscribe" => Push::Unsubscribed(Kind::Shard, text(1)),
+    let push = match text(take(0))?.as_str() {
+        "subscribe" => Push::Subscribed((Kind::Channel, text(take(1))?)),
+        "psubscribe" => Push::Subscribed((Kind::Pattern, text(take(1))?)),
+        "ssubscribe" => Push::Subscribed((Kind::Shard, text(take(1))?)),
+        "unsubscribe" => Push::Unsubscribed(Kind::Channel, text(take(1))),
+        "punsubscribe" => Push::Unsubscribed(Kind::Pattern, text(take(1))),
+        "sunsubscribe" => Push::Unsubscribed(Kind::Shard, text(take(1))),
         "message" => {
-            let channel = text(1)?;
+            let channel = text(take(1))?;
             let message = SubscriptionMessage {
-                payload: text(2)?,
+                payload: payload(take(2))?,
                 channel: channel.clone(),
                 target: SubscriptionTarget::Channel(channel.clone()),
             };
             Push::Message((Kind::Channel, channel), message)
         }
         "pmessage" => {
-            let pattern = text(1)?;
+            let pattern = text(take(1))?;
             let message = SubscriptionMessage {
-                payload: text(3)?,
-                channel: text(2)?,
+                channel: text(take(2))?,
+                payload: payload(take(3))?,
                 target: SubscriptionTarget::Pattern(pattern.clone()),
             };
             Push::Message((Kind::Pattern, pattern), message)
         }
         "smessage" => {
-            let shardchannel = text(1)?;
+            let shardchannel = text(take(1))?;
             let message = SubscriptionMessage {
-                payload: text(2)?,
+                payload: payload(take(2))?,
                 channel: shardchannel.clone(),
                 target: SubscriptionTarget::Shardchannel(shardchannel.clone()),
             };
@@ -804,6 +807,29 @@ fn parse_push(value: &RespValue) -> Option<Push> {
         _ => return None,
     };
     Some(push)
+}
+
+/// The text of an item of a push message, a simple or bulk string that is UTF-8, e.g. its kind or
+/// a channel.
+fn text(item: Option<RespValue>) -> Option<String> {
+    match item? {
+        RespValue::String(text) => Some(text),
+        RespValue::BulkString(bytes) => String::from_utf8(bytes).ok(),
+        _ => None,
+    }
+}
+
+/// The payload of a message, a string when it is UTF-8, otherwise its bytes.
+fn payload(item: Option<RespValue>) -> Option<StringOrBytes> {
+    match item? {
+        // the bytes come back with the error, rather than being cloned to try
+        RespValue::BulkString(bytes) => Some(match String::from_utf8(bytes) {
+            Ok(text) => StringOrBytes::String(text),
+            Err(error) => StringOrBytes::Bytes(error.into_bytes()),
+        }),
+        RespValue::String(text) => Some(StringOrBytes::String(text)),
+        _ => None,
+    }
 }
 
 /// Hand a push message to the subscriptions, or the command, it belongs to, false when it belongs

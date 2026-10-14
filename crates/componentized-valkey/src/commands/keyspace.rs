@@ -1,12 +1,12 @@
 //! The keyspace commands: MIGRATE, SCAN, SORT, TYPE and the like.
 
-use crate::command::{Flag, IntoCommand, NamedOption, NonEmpty};
+use crate::command::{Flag, IntoCommand, NamedOption, NonEmpty, Words};
 use crate::types::{Error, KeyType, MigrateAuth, RespValue, SortOpts};
 use crate::value::{FromValue, unexpected};
 
 /// The name of the type, e.g. for SCAN's TYPE.
 impl IntoCommand for KeyType {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             KeyType::String => "string".to_string(),
             KeyType::List => "list".to_string(),
@@ -41,7 +41,7 @@ impl FromValue for OptionalKeyType {
 }
 
 impl IntoCommand for MigrateAuth {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         match self {
             MigrateAuth::Password(password) => ("AUTH", password).into_command(),
             MigrateAuth::UsernamePassword((username, password)) => {
@@ -67,7 +67,7 @@ impl FromValue for Migrated {
 /// `[ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]`, also
 /// `SortRoOpts`, the same type.
 impl IntoCommand for SortOpts {
-    fn into_command(self) -> Result<Vec<String>, Error> {
+    fn into_command(self) -> Result<Words, Error> {
         // GET before each pattern
         let get = self.get.map(|patterns| {
             let patterns = patterns.into_iter().map(|pattern| ("GET", pattern));
@@ -153,7 +153,7 @@ mod tests {
         assert!(!from::<Migrated>(simple("NOKEY")).0);
         assert_eq!(
             from_error::<Migrated>(bulk("OK")),
-            r#"unexpected reply: RespValue::BulkString("OK")"#
+            r#"unexpected reply: bulk-string<"OK">"#
         );
     }
 
