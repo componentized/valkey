@@ -35,6 +35,11 @@ use futures_core::Stream;
 use wasi::clocks::monotonic_clock::wait_for;
 use wit_bindgen::{FutureReader, FutureWriter, StreamReader, StreamWriter, spawn_local};
 
+/// The library the connection reports to the server, see CLIENT SETINFO.
+const LIB_NAME: &str = "componentized:valkey";
+/// The version the connection reports to the server, that of the package.
+const LIB_VER: &str = env!("CARGO_PKG_VERSION");
+
 /// How many values a reader may fall behind before its stream is closed, and how many events a
 /// subscription keeps while no stream is open.
 const PUSH_BUFFER: usize = 256;
@@ -1535,7 +1540,25 @@ async fn establish(
     }
 
     inner.state.borrow_mut().hello = hello.clone();
-    let result = match request(&inner, hello).await.and_then(server_properties) {
+    let (hello_tx, hello_rx) = oneshot::channel();
+    // the library, best effort, a server before 7.2 does not know CLIENT SETINFO, its error is
+    // discarded. It survives RESET, so it is only sent once.
+    let setinfo = [("LIB-NAME", LIB_NAME), ("LIB-VER", LIB_VER)];
+    let queued = enqueue(&inner, hello, Some(Reply::Call(hello_tx)), None).and_then(|()| {
+        for (attr, value) in setinfo {
+            let command = words(&["CLIENT", "SETINFO", attr, value]);
+            enqueue(&inner, command, Some(Reply::Discard), None)?;
+        }
+        Ok(())
+    });
+    let hello = match queued {
+        // dropped unsent when the connection closes, the reader fails it first
+        Ok(()) => hello_rx
+            .await
+            .unwrap_or_else(|_| Err(closed_error(&inner.state))),
+        Err(error) => Err(error),
+    };
+    let result = match hello.and_then(server_properties) {
         Ok(properties) => {
             inner.state.borrow_mut().server_properties = properties;
             let established = ConnectionImpl(inner);

@@ -24,6 +24,10 @@ interface connection {
         /// future resolves to the connection once HELLO succeeds, or to the error that stopped it.
         /// The rest of `opts` is applied before the connection is returned.
         ///
+        /// It then reports the library to the server, `CLIENT SETINFO LIB-NAME componentized:valkey`
+        /// and `LIB-VER` with the version of the package, ignoring an error from a server that does
+        /// not know CLIENT SETINFO. They survive `reset`, `client-setinfo` replaces them.
+        ///
         /// Async so the connection keeps working between commands after it returns, e.g. to read
         /// push messages and to send keep-alive pings.
         new: static async func(replies: stream<resp-value>, closed: future<result<_, error>>, opts: option<connect-opts>) -> tuple<stream<resp-value>, future<result<connection, error>>>;
