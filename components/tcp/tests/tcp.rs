@@ -1,12 +1,25 @@
-//! Tests for the `tcp` component, composed with `connection` and `resp` as `test-tcp`, against a
-//! server played by the test over TCP.
+//! Tests for the `tcp` component, composed with `connection` as `test-tcp`, against a server
+//! played by the test over TCP.
 
 use test_harness::{
-    Client, Ctx, Error, Exports, Harness, Server, Value, bulk, command, hello_reply, resolve, words,
+    Client, Ctx, Error, Exports, Harness, RespValue, Server, bulk, command, hello_reply, ok,
+    resolve, setinfo, words,
 };
 use wasmtime::component::{Accessor, ResourceAny};
 
-/// Connect to the server and answer HELLO, returning the server's side and the connection.
+/// Answer the handshake of a connection: HELLO, then the CLIENT SETINFO commands.
+async fn handshake(client: &mut Client) {
+    assert_eq!(client.request().await, Some(command(&["HELLO", "3"])));
+    for setinfo in setinfo() {
+        assert_eq!(client.request().await, Some(setinfo));
+    }
+    client.reply(hello_reply()).await;
+    for _ in setinfo() {
+        client.reply(ok()).await;
+    }
+}
+
+/// Connect to the server and answer the handshake, returning the server's side and the connection.
 async fn establish(
     accessor: &Accessor<Ctx>,
     exports: &Exports,
@@ -18,8 +31,7 @@ async fn establish(
         .call_connect(accessor, host.to_string(), server.port(), None);
     let serve = async {
         let mut client = server.accept().await.expect("accept");
-        assert_eq!(client.request().await, Some(command(&["HELLO", "3"])));
-        client.reply(hello_reply()).await;
+        handshake(&mut client).await;
         client
     };
     let (connection, client) = tokio::join!(connect, serve);
@@ -39,10 +51,10 @@ async fn connects_and_exchanges() -> wasmtime::Result<()> {
             let call = guest.call_exchange(accessor, connection, words(&["PING"]));
             let serve = async {
                 assert_eq!(client.request().await, Some(command(&["PING"])));
-                client.reply(Value::String("PONG".to_string())).await;
+                client.reply(RespValue::String("PONG".to_string())).await;
             };
             let (result, ()) = tokio::join!(call, serve);
-            assert_eq!(result?, Ok(Value::String("PONG".to_string())));
+            assert_eq!(result?, Ok(RespValue::String("PONG".to_string())));
             Ok(())
         })
         .await
@@ -183,10 +195,7 @@ async fn transports_wire_to_connections() -> wasmtime::Result<()> {
                 .await?;
             drop(sent);
 
-            let serve = async {
-                assert_eq!(client.request().await, Some(command(&["HELLO", "3"])));
-                client.reply(hello_reply()).await;
-            };
+            let serve = handshake(&mut client);
             let (connection, ()) = tokio::join!(resolve(accessor, connection), serve);
             assert!(connection?.is_ok());
 
@@ -217,26 +226,26 @@ async fn dropping_the_connection_closes_the_socket() -> wasmtime::Result<()> {
         .await
 }
 
-/// The tests against a Valkey server on localhost:6379, ignored unless run with
-/// `make test-valkey`, which only runs the ignored tests in `with_valkey` modules.
+/// The tests against a Valkey server, ignored unless run with `make test-valkey`, which runs one in
+/// a container and only runs the ignored tests in `with_valkey` modules.
 mod with_valkey {
     use super::*;
 
-    /// Against a Valkey server on localhost:6379, run with `cargo test -p tcp -- --ignored with_valkey::`.
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "needs a Valkey server on localhost:6379"]
+    #[ignore = "needs a Valkey server, see make test-valkey"]
     async fn against_valkey() -> wasmtime::Result<()> {
+        let (host, port) = test_harness::valkey_server();
         let mut harness = Harness::new("test-tcp").await?;
         harness
             .run(async |accessor, exports| {
                 let connection = exports
                     .tcp()
-                    .call_connect(accessor, "localhost".to_string(), 6379, None)
+                    .call_connect(accessor, host.clone(), port, None)
                     .await?
                     .map_err(|error| wasmtime::format_err!("{error:?}"))?;
                 let guest = exports.connection();
                 let properties = guest.call_server_properties(accessor, connection).await?;
-                assert!(properties.contains(&("proto".to_string(), Value::Integer(3))));
+                assert!(properties.contains(&("proto".to_string(), RespValue::Integer(3))));
 
                 let value: String = (0..100_000)
                     .map(|n| char::from(b'a' + (n % 26) as u8))
@@ -244,7 +253,7 @@ mod with_valkey {
                 let set = guest
                     .call_exchange(accessor, connection, words(&["SET", "tcp-test", &value]))
                     .await?;
-                assert_eq!(set, Ok(Value::String("OK".to_string())));
+                assert_eq!(set, Ok(RespValue::String("OK".to_string())));
                 let get = guest
                     .call_exchange(accessor, connection, words(&["GET", "tcp-test"]))
                     .await?;
@@ -252,7 +261,7 @@ mod with_valkey {
                 let del = guest
                     .call_exchange(accessor, connection, words(&["DEL", "tcp-test"]))
                     .await?;
-                assert_eq!(del, Ok(Value::Integer(1)));
+                assert_eq!(del, Ok(RespValue::Integer(1)));
                 Ok(())
             })
             .await

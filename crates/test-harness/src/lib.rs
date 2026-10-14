@@ -23,8 +23,9 @@ use wasmtime::error::Context as _;
 use wasmtime::{Config, Engine, Result, Store, StoreContextMut, bail, format_err};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-pub use bindings::componentized::valkey::resp::{RespNestedValue, RespValue};
-pub use bindings::exports::componentized::valkey::connection::{ConnectOpts, Error};
+pub use bindings::componentized::valkey::types::{
+    self, ConnectOpts, Error, RespNestedValue, RespValue,
+};
 
 mod server;
 
@@ -37,16 +38,12 @@ pub mod bindings {
             package componentized:test-harness;
 
             world harness {
-                import componentized:valkey/resp@0.3.0-dev;
+                import componentized:valkey/types@0.3.0-dev;
                 import wasi:config/store@0.2.0-rc.1;
                 export componentized:valkey/connection@0.3.0-dev;
                 export componentized:valkey/tcp@0.3.0-dev;
-                export componentized:valkey/admin-commands@0.3.0-dev;
-                export componentized:valkey/connection-commands@0.3.0-dev;
-                export componentized:valkey/hash-commands@0.3.0-dev;
-                export componentized:valkey/keyspace-commands@0.3.0-dev;
-                export componentized:valkey/pubsub-commands@0.3.0-dev;
-                export componentized:valkey/string-commands@0.3.0-dev;
+                export componentized:valkey/connector@0.3.0-dev;
+                export componentized:valkey-components/test-suite;
                 export wasmcloud:keyvalue/types@0.2.0;
                 export wasmcloud:keyvalue/store@0.2.0;
                 export wasmcloud:keyvalue/atomics@0.2.0;
@@ -58,25 +55,6 @@ pub mod bindings {
         additional_derives: [PartialEq],
     });
 }
-
-/// Bindings for the `resp` component, which exports the interface the other components import.
-pub mod resp_bindings {
-    wasmtime::component::bindgen!({
-        path: "../../components/wit",
-        inline: "
-            package componentized:test-harness-resp;
-
-            world resp {
-                export componentized:valkey/resp@0.3.0-dev;
-            }
-        ",
-        world: "componentized:test-harness-resp/resp",
-        exports: { default: async | store },
-        additional_derives: [PartialEq],
-    });
-}
-
-pub type Resp = resp_bindings::exports::componentized::valkey::resp::Guest;
 
 /// Encode a value as RESP, e.g. to nest it in an aggregate.
 pub fn encode(value: RespValue) -> RespNestedValue {
@@ -130,11 +108,12 @@ fn from_codec(value: componentized_valkey::types::RespValue) -> RespValue {
 }
 
 pub type Connection<'a> = bindings::exports::componentized::valkey::connection::GuestConnection<'a>;
+pub type Subscription<'a> =
+    bindings::exports::componentized::valkey::connection::GuestSubscription<'a>;
 pub type Tcp = bindings::exports::componentized::valkey::tcp::Guest;
-pub use bindings::exports::componentized::valkey::{
-    admin_commands, connection_commands, hash_commands, keyspace_commands, pubsub_commands,
-    string_commands,
-};
+pub type Connector = bindings::exports::componentized::valkey::connector::Guest;
+/// A suite of tests run inside a component, e.g. those of the commands, see [`run_suite`].
+pub type TestSuite = bindings::exports::componentized::valkey_components::test_suite::Guest;
 pub use bindings::exports::wasmcloud::keyvalue;
 
 /// A bulk string, the type commands are sent as.
@@ -165,6 +144,11 @@ pub fn map(entries: Vec<(RespValue, RespValue)>) -> RespValue {
 /// A push message, e.g. a pub/sub message.
 pub fn push(items: Vec<RespValue>) -> RespValue {
     RespValue::Push(items.into_iter().map(encode).collect())
+}
+
+/// A simple string `OK`.
+pub fn ok() -> RespValue {
+    RespValue::String("OK".to_string())
 }
 
 /// The server's properties in the canned reply to HELLO.
@@ -246,16 +230,35 @@ pub async fn connect(
     ))
 }
 
-/// Start a connection and answer its HELLO with [`hello_reply`], returning the transport and the
+/// The commands the connection sends when it is established, after HELLO, to report the library.
+pub fn setinfo() -> [Vec<RespValue>; 2] {
+    [
+        command(&["CLIENT", "SETINFO", "LIB-NAME", "componentized:valkey"]),
+        command(&["CLIENT", "SETINFO", "LIB-VER", env!("CARGO_PKG_VERSION")]),
+    ]
+}
+
+/// Answer the handshake of a connection: HELLO with [`hello_reply`], then the CLIENT SETINFO
+/// commands with OK.
+pub async fn handshake(transport: &mut Transport, hello: &[&str]) {
+    assert_eq!(transport.request().await, Some(command(hello)));
+    for setinfo in setinfo() {
+        assert_eq!(transport.request().await, Some(setinfo));
+    }
+    transport.reply(hello_reply());
+    for _ in setinfo() {
+        transport.reply(ok());
+    }
+}
+
+/// Start a connection and answer its handshake, see [`handshake`], returning the transport and the
 /// established connection.
 pub async fn establish(
     accessor: &Accessor<Ctx>,
     exports: &Exports,
 ) -> Result<(Transport, ResourceAny)> {
     let (mut transport, connection) = connect(accessor, exports, None).await?;
-    let hello = transport.request().await.expect("HELLO");
-    assert_eq!(hello, command(&["HELLO", "3"]));
-    transport.reply(hello_reply());
+    handshake(&mut transport, &["HELLO", "3"]).await;
     let connection = resolve(accessor, connection)
         .await?
         .map_err(|error| format_err!("failed to establish the connection: {error:?}"))?;
@@ -427,32 +430,16 @@ impl WasiView for Ctx {
     }
 }
 
-// the components only import the types of `resp`, the functions are here for completeness
-impl bindings::componentized::valkey::resp::Host for Ctx {
-    fn decode(&mut self, data: Vec<u8>) -> Result<RespValue, String> {
-        decode(data)
-    }
-
-    fn encode(&mut self, value: RespValue) -> Result<Vec<u8>, String> {
-        Ok(encode(value))
-    }
-}
-
 /// The interfaces a component exports.
 pub struct Exports {
     connection: Option<bindings::exports::componentized::valkey::connection::Guest>,
-    tcp: Option<bindings::exports::componentized::valkey::tcp::Guest>,
+    tcp: Option<Tcp>,
+    connector: Option<Connector>,
+    test_suite: Option<TestSuite>,
     keyvalue_store: Option<keyvalue::store::Guest>,
     keyvalue_types: Option<keyvalue::types::Guest>,
     keyvalue_atomics: Option<keyvalue::atomics::Guest>,
     keyvalue_batch: Option<keyvalue::batch::Guest>,
-    admin_commands: Option<admin_commands::Guest>,
-    connection_commands: Option<connection_commands::Guest>,
-    hash_commands: Option<hash_commands::Guest>,
-    keyspace_commands: Option<keyspace_commands::Guest>,
-    pubsub_commands: Option<pubsub_commands::Guest>,
-    string_commands: Option<string_commands::Guest>,
-    resp: Option<resp_bindings::exports::componentized::valkey::resp::Guest>,
 }
 
 impl Exports {
@@ -480,40 +467,16 @@ impl Exports {
             .expect("component exports wasmcloud:keyvalue/batch")
     }
 
-    pub fn admin_commands(&self) -> &admin_commands::Guest {
-        self.admin_commands
+    pub fn test_suite(&self) -> &TestSuite {
+        self.test_suite
             .as_ref()
-            .expect("component exports componentized:valkey/admin-commands")
+            .expect("component exports componentized:valkey-components/test-suite")
     }
 
-    pub fn connection_commands(&self) -> &connection_commands::Guest {
-        self.connection_commands
+    pub fn connector(&self) -> &Connector {
+        self.connector
             .as_ref()
-            .expect("component exports componentized:valkey/connection-commands")
-    }
-
-    pub fn hash_commands(&self) -> &hash_commands::Guest {
-        self.hash_commands
-            .as_ref()
-            .expect("component exports componentized:valkey/hash-commands")
-    }
-
-    pub fn keyspace_commands(&self) -> &keyspace_commands::Guest {
-        self.keyspace_commands
-            .as_ref()
-            .expect("component exports componentized:valkey/keyspace-commands")
-    }
-
-    pub fn pubsub_commands(&self) -> &pubsub_commands::Guest {
-        self.pubsub_commands
-            .as_ref()
-            .expect("component exports componentized:valkey/pubsub-commands")
-    }
-
-    pub fn string_commands(&self) -> &string_commands::Guest {
-        self.string_commands
-            .as_ref()
-            .expect("component exports componentized:valkey/string-commands")
+            .expect("component exports componentized:valkey/connector")
     }
 
     pub fn tcp(&self) -> &Tcp {
@@ -521,17 +484,19 @@ impl Exports {
             .as_ref()
             .expect("component exports componentized:valkey/tcp")
     }
-    pub fn resp(&self) -> &Resp {
-        self.resp
-            .as_ref()
-            .expect("component exports componentized:valkey/resp")
-    }
 
     pub fn connection(&self) -> Connection<'_> {
         self.connection
             .as_ref()
             .expect("component exports componentized:valkey/connection")
             .connection()
+    }
+
+    pub fn subscription(&self) -> Subscription<'_> {
+        self.connection
+            .as_ref()
+            .expect("component exports componentized:valkey/connection")
+            .subscription()
     }
 }
 
@@ -559,10 +524,6 @@ impl Harness {
 
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::p3::add_to_linker(&mut linker)?;
-        bindings::componentized::valkey::resp::add_to_linker::<_, HasSelf<Ctx>>(
-            &mut linker,
-            |ctx| ctx,
-        )?;
         bindings::wasi::config::store::add_to_linker::<_, HasSelf<Ctx>>(&mut linker, |ctx| ctx)?;
 
         let mut store = Store::new(
@@ -596,6 +557,17 @@ impl Harness {
             tcp: bindings::exports::componentized::valkey::tcp::GuestIndices::new(&instance_pre)
                 .ok()
                 .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            connector: bindings::exports::componentized::valkey::connector::GuestIndices::new(
+                &instance_pre,
+            )
+            .ok()
+            .and_then(|indices| indices.load(&mut store, &instance).ok()),
+            test_suite:
+                bindings::exports::componentized::valkey_components::test_suite::GuestIndices::new(
+                    &instance_pre,
+                )
+                .ok()
+                .and_then(|indices| indices.load(&mut store, &instance).ok()),
             keyvalue_store: keyvalue::store::GuestIndices::new(&instance_pre)
                 .ok()
                 .and_then(|indices| indices.load(&mut store, &instance).ok()),
@@ -608,31 +580,18 @@ impl Harness {
             keyvalue_batch: keyvalue::batch::GuestIndices::new(&instance_pre)
                 .ok()
                 .and_then(|indices| indices.load(&mut store, &instance).ok()),
-            admin_commands: admin_commands::GuestIndices::new(&instance_pre)
-                .ok()
-                .and_then(|indices| indices.load(&mut store, &instance).ok()),
-            connection_commands: connection_commands::GuestIndices::new(&instance_pre)
-                .ok()
-                .and_then(|indices| indices.load(&mut store, &instance).ok()),
-            hash_commands: hash_commands::GuestIndices::new(&instance_pre)
-                .ok()
-                .and_then(|indices| indices.load(&mut store, &instance).ok()),
-            keyspace_commands: keyspace_commands::GuestIndices::new(&instance_pre)
-                .ok()
-                .and_then(|indices| indices.load(&mut store, &instance).ok()),
-            pubsub_commands: pubsub_commands::GuestIndices::new(&instance_pre)
-                .ok()
-                .and_then(|indices| indices.load(&mut store, &instance).ok()),
-            string_commands: string_commands::GuestIndices::new(&instance_pre)
-                .ok()
-                .and_then(|indices| indices.load(&mut store, &instance).ok()),
-            resp: resp_bindings::exports::componentized::valkey::resp::GuestIndices::new(
-                &instance_pre,
-            )
-            .ok()
-            .and_then(|indices| indices.load(&mut store, &instance).ok()),
         };
         Ok(Self { store, exports })
+    }
+
+    /// Build and instantiate the named component, its connector configured for the Valkey server
+    /// of the `with_valkey` tests, see [`valkey_server`], with the values of `wasi:config`.
+    pub async fn with_valkey(name: &str, config_values: &[(&str, &str)]) -> Result<Self> {
+        let (host, port) = valkey_server();
+        let port = port.to_string();
+        let mut values = vec![("hostname", host.as_str()), ("port", port.as_str())];
+        values.extend_from_slice(config_values);
+        Self::with_config(name, &values).await
     }
 
     /// Drop a resource the component exports, running its destructor.
@@ -652,4 +611,46 @@ impl Harness {
             .run_concurrent(async move |accessor| f(accessor, exports).await)
             .await?
     }
+}
+
+/// The Valkey server of the `with_valkey` tests, from `VALKEY_HOST` and `VALKEY_PORT`, by default
+/// 127.0.0.1:6379. `make test-valkey` runs one in a container, and sets them.
+pub fn valkey_server() -> (String, u16) {
+    let host = std::env::var("VALKEY_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = std::env::var("VALKEY_PORT")
+        .ok()
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(6379);
+    (host, port)
+}
+
+/// Run the tests of the suite the component exports that `filter` selects, each in turn, failing
+/// with every test that failed.
+pub async fn run_suite(
+    mut harness: Harness,
+    filter: impl Fn(&str) -> bool + Send + Sync,
+) -> Result<()> {
+    let failures = harness
+        .run(async |accessor, exports| {
+            let suite = exports.test_suite();
+            let mut failures = vec![];
+            for test in suite.call_tests(accessor).await? {
+                if !filter(&test) {
+                    continue;
+                }
+                match suite.call_run(accessor, test.clone()).await? {
+                    Ok(()) => println!("ok - {test}"),
+                    Err(why) => {
+                        println!("FAILED - {test}: {why}");
+                        failures.push(format!("{test}: {why}"));
+                    }
+                }
+            }
+            Ok(failures)
+        })
+        .await?;
+    if !failures.is_empty() {
+        bail!("{} failed:\n{}", failures.len(), failures.join("\n"));
+    }
+    Ok(())
 }

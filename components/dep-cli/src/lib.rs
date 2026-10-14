@@ -434,3 +434,184 @@ wit_bindgen::generate!({
 });
 
 export!(Cli);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nested(value: RespValue) -> RespNestedValue {
+        componentized_valkey::resp::encode(value)
+    }
+
+    fn bulk(text: &str) -> RespValue {
+        RespValue::BulkString(text.to_string())
+    }
+
+    #[test]
+    fn split_on_whitespace() {
+        assert_eq!(
+            split("  SET  key\tvalue "),
+            Ok(vec![
+                "SET".to_string(),
+                "key".to_string(),
+                "value".to_string()
+            ])
+        );
+        assert_eq!(split(""), Ok(vec![]));
+        assert_eq!(split("   "), Ok(vec![]));
+    }
+
+    #[test]
+    fn split_double_quotes() {
+        assert_eq!(
+            split(r#"SET key "hello world" "a\"b" "\n\r\t\b\a" "\x41\x7a" "\q""#),
+            Ok(vec![
+                "SET".to_string(),
+                "key".to_string(),
+                "hello world".to_string(),
+                "a\"b".to_string(),
+                "\n\r\t\u{8}\u{7}".to_string(),
+                "Az".to_string(),
+                "q".to_string(),
+            ])
+        );
+        assert_eq!(split(r#""""#), Ok(vec![String::new()]));
+    }
+
+    #[test]
+    fn split_single_quotes() {
+        assert_eq!(
+            split(r#"'hello world' 'it\'s' 'a\nb'"#),
+            Ok(vec![
+                "hello world".to_string(),
+                "it's".to_string(),
+                "a\\nb".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn split_errors() {
+        assert_eq!(split(r#"SET "key"#), Err("unbalanced quotes".to_string()));
+        assert_eq!(split("'key"), Err("unbalanced quotes".to_string()));
+        assert_eq!(split(r#""key\"#), Err("unbalanced quotes".to_string()));
+        assert_eq!(
+            split(r#""key"value"#),
+            Err("closing quote must be followed by a space".to_string())
+        );
+        // a byte on its own is only a character when it is ASCII
+        assert_eq!(
+            split(r#""\xff""#),
+            Err("unsupported escape: \\xff".to_string())
+        );
+        assert_eq!(
+            split(r#""\xzz""#),
+            Err("unsupported escape: \\xzz".to_string())
+        );
+    }
+
+    #[test]
+    fn render_scalars() {
+        assert_eq!(render(RespValue::String("OK".to_string())), "OK");
+        assert_eq!(
+            render(RespValue::Error("ERR oops".to_string())),
+            "(error) ERR oops"
+        );
+        assert_eq!(
+            render(RespValue::BulkError("SYNTAX".to_string())),
+            "(error) SYNTAX"
+        );
+        assert_eq!(render(RespValue::Integer(-1)), "(integer) -1");
+        assert_eq!(render(bulk("a\"b\n")), r#""a\"b\n""#);
+        assert_eq!(render(RespValue::Null), "(nil)");
+        assert_eq!(render(RespValue::Boolean(true)), "(true)");
+        assert_eq!(render(RespValue::Double(1.5)), "(double) 1.5");
+        assert_eq!(
+            render(RespValue::BigNumber("12345678901234567890".to_string())),
+            "(big number) 12345678901234567890"
+        );
+        assert_eq!(
+            render(RespValue::VerbatimString((
+                "txt".to_string(),
+                "line 1\nline 2".to_string()
+            ))),
+            "line 1\nline 2"
+        );
+    }
+
+    #[test]
+    fn render_aggregates() {
+        assert_eq!(render(RespValue::Array(vec![])), "(empty array)");
+        assert_eq!(render(RespValue::Set(vec![])), "(empty set)");
+        assert_eq!(render(RespValue::Map(vec![])), "(empty map)");
+        assert_eq!(
+            render(RespValue::Array(vec![
+                nested(bulk("a")),
+                nested(RespValue::Integer(1))
+            ])),
+            "1) \"a\"\n2) (integer) 1"
+        );
+        assert_eq!(render(RespValue::Set(vec![nested(bulk("a"))])), "1~ \"a\"");
+        assert_eq!(
+            render(RespValue::Push(vec![
+                nested(bulk("message")),
+                nested(bulk("news"))
+            ])),
+            "1) \"message\"\n2) \"news\""
+        );
+        assert_eq!(
+            render(RespValue::Map(vec![(
+                nested(bulk("proto")),
+                nested(RespValue::Integer(3))
+            )])),
+            "1# \"proto\" => (integer) 3"
+        );
+    }
+
+    #[test]
+    fn render_nested_aggregates_line_up() {
+        let inner = RespValue::Array(vec![nested(bulk("x")), nested(bulk("y"))]);
+        assert_eq!(
+            render(RespValue::Array(vec![nested(bulk("a")), nested(inner)])),
+            "1) \"a\"\n2) 1) \"x\"\n   2) \"y\""
+        );
+        let entry = RespValue::Array(vec![nested(bulk("x")), nested(bulk("y"))]);
+        assert_eq!(
+            render(RespValue::Map(vec![(nested(bulk("k")), nested(entry))])),
+            "1# \"k\" => 1) \"x\"\n          2) \"y\""
+        );
+    }
+
+    #[test]
+    fn render_numbers_right_aligned() {
+        let items = (0..10).map(|n| nested(RespValue::Integer(n))).collect();
+        let rendered = render(RespValue::Array(items));
+        let lines: Vec<&str> = rendered.lines().collect();
+        assert_eq!(lines[0], " 1) (integer) 0");
+        assert_eq!(lines[9], "10) (integer) 9");
+    }
+
+    #[test]
+    fn render_invalid_nested_values() {
+        assert!(render(RespValue::Array(vec![b"?".to_vec()])).starts_with("1) (invalid) "));
+    }
+
+    #[test]
+    fn render_errors() {
+        assert_eq!(
+            render_error(Error::Valkey("ERR oops".to_string())),
+            "(error) ERR oops"
+        );
+        assert_eq!(render_error(Error::Closed(None)), "connection closed");
+        assert_eq!(
+            render_error(Error::Closed(Some("reset".to_string()))),
+            "connection closed: reset"
+        );
+        assert_eq!(render_error(Error::Client("bad".to_string())), "bad");
+        assert_eq!(
+            render_error(Error::Resp("bad".to_string())),
+            "invalid RESP: bad"
+        );
+        assert_eq!(render_error(Error::Lagged), "fell behind, values were lost");
+    }
+}

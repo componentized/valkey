@@ -48,3 +48,21 @@ world cli {
     import componentized:valkey/connector@0.3.0-dev;
     export wasi:cli/run@0.3.0;
 }
+
+/// A suite of tests run inside a component, by the test harness, `crates/test-harness`.
+interface test-suite {
+    /// The names of the tests. Those that need a Valkey server on localhost:6379 start with
+    /// `with-valkey `.
+    tests: func() -> list<string>;
+
+    /// Runs the named test, failing with why.
+    run: async func(name: string) -> result<_, string>;
+}
+
+/// The tests of the commands, playing the server over the streams of a connection.
+world test-commands {
+    import componentized:valkey/connection@0.3.0-dev;
+    import componentized:valkey/connector@0.3.0-dev;
+    import componentized:valkey/commands@0.3.0-dev;
+    export test-suite;
+}

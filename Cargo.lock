@@ -422,6 +422,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dep-test-commands"
+version = "0.3.0-dev"
+dependencies = [
+ "componentized-valkey",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1438,6 +1446,9 @@ name = "tcp-connector"
 version = "0.1.0"
 dependencies = [
  "componentized-valkey",
+ "test-harness",
+ "tokio",
+ "wasmtime",
  "wit-bindgen",
 ]
 
@@ -1465,7 +1476,7 @@ dependencies = [
 
 [[package]]
 name = "test-harness"
-version = "0.1.0"
+version = "0.3.0-dev"
 dependencies = [
  "componentized-valkey",
  "tokio",

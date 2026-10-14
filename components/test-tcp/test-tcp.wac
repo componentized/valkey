@@ -7,6 +7,12 @@ let tcp = new local:tcp {
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     ...
 };
+let connector = new local:tcp-connector {
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/tcp@0.3.0-dev": tcp.tcp,
+    ...
+};
 
 export connection.connection;
 export tcp.tcp;
+export connector.connector;

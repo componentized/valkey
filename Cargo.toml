@@ -5,6 +5,7 @@ members = [
     "components/commands",
     "components/connection",
     "components/dep-cli",
+    "components/dep-test-commands",
     "components/sample-http-incrementor",
     "components/tcp",
     "components/tcp-connector",
