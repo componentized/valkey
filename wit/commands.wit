@@ -27,10 +27,10 @@ interface commands {
         command-key-spec-begin-search, command-key-spec-keyword, command-key-spec-find-keys,
         command-key-spec-range, command-key-spec-keynum, command-key-spec, command-info-reply,
         command-reply, command-docs-argument-type, command-docs-argument, command-docs-reply,
-        client-tracking-redirect, client-setinfo-attr, client-tracking-mode,
-        client-tracking-options, client-trackinginfo-reply, command-list-filter, geo-coordinates,
-        geo-unit, geoadd-condition, geosearch-from, geosearch-radius, geosearch-box,
-        geosearch-shape, geosearchstore-shape, geosearch-count, geosearchstore-count,
+        client-setinfo-attr, client-tracking-mode, client-tracking-options,
+        client-trackinginfo-redirect, client-trackinginfo-reply, command-list-filter,
+        geo-coordinates, geo-unit, geoadd-condition, geosearch-from, geosearch-radius,
+        geosearch-box, geosearch-shape, geosearchstore-shape, geosearch-count, geosearchstore-count,
         geosearch-with-flags, geosearch-with-result, hpersist-result, hsetex-condition,
         hsetex-field-condition, key-type, migrate-flags, migrate-auth, list-side, linsert-position,
         linsert-result, flush-mode, function-list-function, function-list-library,
@@ -562,12 +562,6 @@ interface commands {
     /// https://valkey.io/commands/client-getname/
     client-getname: async func(connection: borrow<connection>) -> result<option<string>, error>;
 
-    /// Where the connection's tracking notifications are redirected.
-    ///
-    /// CLIENT GETREDIR
-    /// https://valkey.io/commands/client-getredir/
-    client-getredir: async func(connection: borrow<connection>) -> result<client-tracking-redirect, error>;
-
     /// The ID of the connection, unique until the server restarts.
     ///
     /// CLIENT ID
@@ -608,11 +602,11 @@ interface commands {
     client-setname: async func(connection: borrow<connection>, connection-name: string) -> result<_, error>;
 
     /// Turns tracking on with the options, or off with none, for server assisted client side
-    /// caching. Invalidations arrive as push messages, see `connection.pushes`.
+    /// caching. Invalidations arrive as push messages, see `connection.dead-letters`.
     ///
     /// It applies to the connection, so to every caller sharing it.
     ///
-    /// CLIENT TRACKING 〈 ON | OFF 〉 [ REDIRECT client-id ] [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN ] [ OPTOUT ] [ NOLOOP ]
+    /// CLIENT TRACKING 〈 ON | OFF 〉 [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN ] [ OPTOUT ] [ NOLOOP ]
     /// https://valkey.io/commands/client-tracking/
     client-tracking: async func(connection: borrow<connection>, options: option<client-tracking-options>) -> result<_, error>;
 
@@ -672,14 +666,6 @@ interface commands {
     /// ECHO message
     /// https://valkey.io/commands/echo/
     echo: async func(connection: borrow<connection>, message: string) -> result<string, error>;
-
-    /// Switch to a different protocol, optionally authenticating and setting the connection's name, or provide a contextual client report.
-    ///
-    /// RESP2 is not fully supported by this client.
-    ///
-    /// HELLO 3 [ AUTH username password ] [ SETNAME clientname ]
-    /// https://valkey.io/commands/hello/
-    hello: async func(connection: borrow<connection>, auth: option<tuple<string, string>>, client-name: option<string>) -> result<map<string, resp-value>, error>;
 
     /// Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk.
     ///
@@ -1433,12 +1419,6 @@ interface commands {
 
     // pubsub commands
 
-    /// Subscribes the client to the given patterns.
-    ///
-    /// PSUBSCRIBE pattern [ pattern ... ]
-    /// https://valkey.io/commands/psubscribe/
-    psubscribe: async func(connection: borrow<connection>, patterns: list<string>) -> result<_, error>;
-
     /// Posts a message to the given channel.
     ///
     /// PUBLISH channel message
@@ -1475,41 +1455,11 @@ interface commands {
     /// https://valkey.io/commands/pubsub-shardnumsub/
     pubsub-shardnumsub: async func(connection: borrow<connection>, shardchannels: option<list<string>>) -> result<map<string, integer>, error>;
 
-    /// Unsubscribes the client from the given patterns, or from all of them if none is given.
-    ///
-    /// PUNSUBSCRIBE [ pattern [ pattern ... ] ]
-    /// https://valkey.io/commands/punsubscribe/
-    punsubscribe: async func(connection: borrow<connection>, patterns: option<list<string>>) -> result<_, error>;
-
     /// Posts a message to the given shard channel.
     ///
     /// SPUBLISH shardchannel message
     /// https://valkey.io/commands/spublish/
     spublish: async func(connection: borrow<connection>, shardchannel: string, message: string) -> result<integer, error>;
-
-    /// Subscribes the client to the specified shard channels.
-    ///
-    /// SSUBSCRIBE shardchannel [ shardchannel ... ]
-    /// https://valkey.io/commands/ssubscribe/
-    ssubscribe: async func(connection: borrow<connection>, shardchannels: list<string>) -> result<_, error>;
-
-    /// Subscribes the client to the specified channels.
-    ///
-    /// SUBSCRIBE channel [ channel ... ]
-    /// https://valkey.io/commands/subscribe/
-    subscribe: async func(connection: borrow<connection>, channels: list<string>) -> result<_, error>;
-
-    /// Unsubscribes the client from the given shard channels, or from all of them if none is given.
-    ///
-    /// SUNSUBSCRIBE [ shardchannel ] [ [ shardchannel ] ... ]
-    /// https://valkey.io/commands/sunsubscribe/
-    sunsubscribe: async func(connection: borrow<connection>, shardchannels: option<list<string>>) -> result<_, error>;
-
-    /// Unsubscribes the client from the given channels, or from all of them if none is given.
-    ///
-    /// UNSUBSCRIBE [ channel ] [ [ channel ] ... ]
-    /// https://valkey.io/commands/unsubscribe/
-    unsubscribe: async func(connection: borrow<connection>, channels: option<list<string>>) -> result<_, error>;
 
 
     // scripting commands

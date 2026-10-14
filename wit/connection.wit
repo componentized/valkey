@@ -6,10 +6,10 @@
 /// that does this for its caller.
 ///
 /// The connection is the mechanics of talking to a server: sending commands and pairing replies
-/// with them, push messages, and transactions. Higher level, typed operations are functions in the
-/// `commands` interface that borrow the connection.
+/// with them, subscriptions, push messages, and transactions. Higher level, typed operations are
+/// functions in the `commands` interface that borrow the connection.
 interface connection {
-    use types.{connect-opts, duration-milliseconds, error, resp-value};
+    use types.{connect-opts, duration-milliseconds, error, resp-value, subscription-event, subscription-target};
 
     resource connection {
         /// Establishes a connection over a transport.
@@ -36,9 +36,14 @@ interface connection {
         /// Several commands may be in flight at once, replies are paired with commands in the order
         /// the commands were sent.
         ///
-        /// SUBSCRIBE, PSUBSCRIBE, SSUBSCRIBE and their UNSUBSCRIBE counterparts have no reply, the
-        /// server confirms them with push messages, see `pushes`. Their exchange resolves to null
-        /// once the command is written.
+        /// For SUBSCRIBE, PSUBSCRIBE, SSUBSCRIBE and their UNSUBSCRIBE counterparts, prefer a
+        /// `subscription`, which owns its targets' messages. Once the connection has one, it alone
+        /// sends these commands, and they fail with a client error before anything is sent, here,
+        /// with `exchange-all`, `emit` and `transaction`.
+        ///
+        /// RESET, HELLO and CLIENT REPLY always fail with a client error. See `reset` and
+        /// `server-properties`, CLIENT REPLY would stop replies from pairing with commands, see
+        /// `emit`.
         ///
         /// A command has at least one word, an empty command fails with a client error.
         exchange: async func(command: list<string>) -> result<resp-value, error>;
@@ -94,15 +99,47 @@ interface connection {
         /// https://valkey.io/commands/exec/
         transaction: async func(commands: list<list<string>>) -> result<option<list<resp-value>>, error>;
 
-        /// Push messages, e.g. from SUBSCRIBE or client tracking, kept apart from replies.
+        /// A new subscription, subscribed to nothing yet, see the subscription's `subscribe`.
         ///
-        /// Values the server sends unprompted, when no command is waiting for a reply, are
-        /// included, e.g. the feed of MONITOR, which are not RESP push values.
+        /// From the first subscription, the connection owns its subscriptions: SUBSCRIBE,
+        /// PSUBSCRIBE, SSUBSCRIBE and their UNSUBSCRIBE counterparts sent with `exchange` and the like
+        /// fail with a client error, so the server's subscriptions stay in step with the
+        /// connection's. Subscriptions made with `exchange` before are unsupported. They may keep
+        /// delivering to `dead-letters`, the exact behavior is undocumented.
+        subscription: func() -> subscription;
+
+        /// The values nothing else claims, kept apart from replies.
         ///
-        /// Each call returns a new stream that receives every push message arriving after the call,
-        /// push messages arriving while no stream is open are dropped. A stream that falls too far
-        /// behind is closed rather than holding up replies, the push messages it missed are lost.
-        pushes: func() -> stream<resp-value>;
+        /// Push messages that no subscription owns, e.g. client tracking invalidations, messages
+        /// and confirmations of SUBSCRIBE sent with `exchange`, or kinds of push messages from a
+        /// newer server. Values the server sends unprompted, when no command is waiting for a
+        /// reply, are included, e.g. the feed of MONITOR, which are not RESP push values.
+        ///
+        /// Each call returns a new stream that receives every value arriving after the call,
+        /// values arriving while no stream is open are dropped. A stream that falls too far behind
+        /// is closed rather than holding up replies, the values it missed are lost.
+        dead-letters: func() -> stream<resp-value>;
+
+        /// Resets the connection to the state of a new one, then repeats the handshake of `new`.
+        ///
+        /// RESET discards a transaction in progress, forgets the watched keys, unsubscribes from
+        /// every channel, turns off client tracking and the like, selects database 0, and forgets
+        /// the client name and the authenticated user. It also switches the connection to RESP2,
+        /// so it is followed at once by `HELLO 3` with the `auth` and `client-name` the connection
+        /// was established with, with no other command sent between them. `server-properties`
+        /// then holds the new reply to HELLO.
+        ///
+        /// The subscriptions are unsubscribed from every target, each with the reason `reset`, and
+        /// stay open for new targets.
+        ///
+        /// No other command is sent until the handshake succeeds, so none runs on the connection
+        /// RESET leaves. When the handshake fails, e.g. the credentials expired since the connection
+        /// was established, the connection closes with its error, and the commands queued after
+        /// the reset fail with it without being sent. Establish a new connection.
+        ///
+        /// RESET
+        /// https://valkey.io/commands/reset/
+        reset: async func() -> result<_, error>;
 
         /// Sends PING when no command has been sent and no reply is outstanding for `interval`,
         /// `none` disables it. A PING that fails closes the connection. Disabled by default.
@@ -110,5 +147,80 @@ interface connection {
         /// Unlike TCP keep-alive, a PING counts as activity for the server's idle client timeout,
         /// and works over any transport.
         set-keep-alive: func(interval: option<duration-milliseconds>);
+    }
+
+    /// The messages of a set of channels, patterns of channels and shard channels, that changes
+    /// as targets are subscribed to and unsubscribed from, see `connection.subscription`.
+    ///
+    /// Subscriptions sharing a connection may overlap, the server stays subscribed to a target while
+    /// any subscription has it. The subscription stays open until it is dropped, with or without
+    /// targets or streams, then it unsubscribes from its targets. It keeps its connection open.
+    resource subscription {
+        /// Subscribes to the targets, resolving once the server confirms each of them, see
+        /// `subscription-event.subscribed`. Targets already subscribed to are left as they are. The
+        /// server unsubscribes from a shard channel on its own when its slot moves to another node.
+        ///
+        /// Each kind of target is subscribed to with its own command, queued with no other command
+        /// between them. Every command is sent, even when another fails, and those that succeed
+        /// take effect, see `subscription-event.subscribed` and `targets`. The error then holds the
+        /// error of each command that failed, e.g. `PSUBSCRIBE: NOPERM ...`. A command is accepted
+        /// or refused as a whole, targets of one kind are subscribed to all or none.
+        ///
+        /// SUBSCRIBE channel [ channel ... ]
+        /// PSUBSCRIBE pattern [ pattern ... ]
+        /// SSUBSCRIBE shardchannel [ shardchannel ... ]
+        /// https://valkey.io/commands/subscribe/
+        /// https://valkey.io/commands/psubscribe/
+        /// https://valkey.io/commands/ssubscribe/
+        ///
+        /// At least one target, no targets fails with a client error.
+        subscribe: async func(targets: list<subscription-target>) -> result<_, error>;
+
+        /// The events arriving after the call: targets subscribed to and unsubscribed from, and
+        /// messages, in the order they happened.
+        ///
+        /// Each call returns a new stream, every open stream receives every event. Events arriving
+        /// while no stream is open are kept for the next stream, up to 256, later ones are dropped.
+        /// Dropping a stream does not unsubscribe, call `events` again for another.
+        ///
+        /// Pub/sub delivers each message at most once, to all listeners. A stream receives
+        /// no events from before it opened, beyond those kept while no stream was open, and does
+        /// not start with the current targets, see `targets`. Messages published while nothing
+        /// listens are lost, e.g. before a target is subscribed to, after the connection closed, or
+        /// past what a lagging stream holds. For delivery that is guaranteed, use a Valkey stream,
+        /// see XADD and XREADGROUP.
+        ///
+        /// The stream closes once the subscription is dropped, the future then resolves to `ok`,
+        /// or to the error that closed the connection. A stream that falls too far behind is
+        /// closed rather than holding up the connection, its future resolves to `lagged`, and the
+        /// events it missed, messages and changes of targets alike, are lost. The future resolves
+        /// after the stream delivered what it holds, read the stream to its end first.
+        events: func() -> tuple<stream<subscription-event>, future<result<_, error>>>;
+
+        /// The targets the server confirmed, in the order they were subscribed to, until they are
+        /// unsubscribed from.
+        ///
+        /// Once the connection closes, the targets confirmed until then are still listed, e.g. to
+        /// subscribe to them on a new connection. `subscribe` and `unsubscribe` then fail with the
+        /// error that closed the connection, and leave the targets as they are.
+        targets: func() -> list<subscription-target>;
+
+        /// Unsubscribes from the targets, none for every target, resolving once each is
+        /// unsubscribed from, see `subscription-event.unsubscribed`. Targets not subscribed to are
+        /// left as they are. The server stays subscribed to targets other subscriptions have.
+        ///
+        /// Each kind of target is unsubscribed from with its own command, as for `subscribe`, e.g.
+        /// the `targets` may be given as they are.
+        ///
+        /// UNSUBSCRIBE [ channel [ channel ... ] ]
+        /// PUNSUBSCRIBE [ pattern [ pattern ... ] ]
+        /// SUNSUBSCRIBE [ shardchannel [ shardchannel ... ] ]
+        /// https://valkey.io/commands/unsubscribe/
+        /// https://valkey.io/commands/punsubscribe/
+        /// https://valkey.io/commands/sunsubscribe/
+        ///
+        /// A list of targets has at least one target, otherwise fails with a client error. None
+        /// unsubscribes from every target.
+        unsubscribe: async func(targets: option<list<subscription-target>>) -> result<_, error>;
     }
 }

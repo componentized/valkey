@@ -1,22 +1,21 @@
 use crate::exports::componentized::valkey::commands::{
     AclDryrunResult, AclListEntry, AclLogEntry, AclRule, BgsaveOperation, BitRange, BitfieldGet,
     BitfieldOperation, BitopOperation, ClientFilter, ClientPauseMode, ClientSetinfoAttr,
-    ClientTrackingOptions, ClientTrackingRedirect, ClientTrackinginfoReply, ClientUnblockType,
-    ClusterBumpepochResult, ClusterFailoverMode, ClusterGetslotmigrationsEntry,
-    ClusterMigrateslotsGroup, ClusterResetMode, ClusterSetslotState, CommandDocsReply,
-    CommandInfoReply, CommandListFilter, CommandlogEntry, CommandlogType, Connection, Cursor,
-    Double, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply, FailoverTarget,
-    FlushMode, FunctionListLibrary, FunctionStatsReply, GeoCoordinates, GeoUnit, GeoaddCondition,
-    GeosearchCount, GeosearchShape, GeosearchWithFlags, GeosearchWithResult, GetexTtl, Guest,
-    HexpireResult, HpersistResult, HsetexCondition, HsetexFieldCondition, Integer, KeyType,
-    LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply, LexBound, Limit, LinsertPosition,
-    LinsertResult, ListSide, MigrateAuth, MigrateFlags, ModuleListEntry, MsetexPrecondition,
-    MsetexTtl, PexpiretimeReply, PttlReply, RespValue, RoleReply, ScoreBound, SetPrecondition,
-    SetTtl, ShutdownFlags, ShutdownSave, SortOpts, SortOrder, StreamId, StreamTrim, TtlMode,
-    TtlReply, UnixTimeMilliseconds, UnixTimeSeconds, XclaimOpts, XinfoConsumersEntry,
-    XinfoGroupsEntry, XinfoStreamReply, XinfoStreamReplyFull, XpendingExtendedEntry,
-    XpendingSummary, ZaddComparison, ZaddCondition, ZmpopEnd, ZrangeBy, ZrangeWithscoresBy,
-    ZsetAggregate,
+    ClientTrackingOptions, ClientTrackinginfoReply, ClientUnblockType, ClusterBumpepochResult,
+    ClusterFailoverMode, ClusterGetslotmigrationsEntry, ClusterMigrateslotsGroup, ClusterResetMode,
+    ClusterSetslotState, CommandDocsReply, CommandInfoReply, CommandListFilter, CommandlogEntry,
+    CommandlogType, Connection, Cursor, Double, DurationMilliseconds, DurationSeconds, Error,
+    ExpiretimeReply, FailoverTarget, FlushMode, FunctionListLibrary, FunctionStatsReply,
+    GeoCoordinates, GeoUnit, GeoaddCondition, GeosearchCount, GeosearchShape, GeosearchWithFlags,
+    GeosearchWithResult, GetexTtl, Guest, HexpireResult, HpersistResult, HsetexCondition,
+    HsetexFieldCondition, Integer, KeyType, LatencyHistogramEntry, LatencyLatestEntry, LcsIdxReply,
+    LexBound, Limit, LinsertPosition, LinsertResult, ListSide, MigrateAuth, MigrateFlags,
+    ModuleListEntry, MsetexPrecondition, MsetexTtl, PexpiretimeReply, PttlReply, RespValue,
+    RoleReply, ScoreBound, SetPrecondition, SetTtl, ShutdownFlags, ShutdownSave, SortOpts,
+    SortOrder, StreamId, StreamTrim, TtlMode, TtlReply, UnixTimeMilliseconds, UnixTimeSeconds,
+    XclaimOpts, XinfoConsumersEntry, XinfoGroupsEntry, XinfoStreamReply, XinfoStreamReplyFull,
+    XpendingExtendedEntry, XpendingSummary, ZaddComparison, ZaddCondition, ZmpopEnd, ZrangeBy,
+    ZrangeWithscoresBy, ZsetAggregate,
 };
 use componentized_valkey::command::{Flag, NamedOption, NonEmpty, NumKeys};
 use componentized_valkey::commands::admin::{AclList, AclUserRules, ClientList};
@@ -43,13 +42,6 @@ async fn exchange<T: FromValue>(
 ) -> Result<T, Error> {
     let reply = connection.exchange(command.into_command()?).await?;
     T::from_value(reply)
-}
-
-/// Send a command, its words as bulk strings, without waiting for a reply.
-///
-/// An error reply fails the command, see `connection.emit`.
-async fn emit(connection: &Connection, command: impl IntoCommand) -> Result<(), Error> {
-    connection.emit(command.into_command()?).await
 }
 
 struct Commands;
@@ -1060,30 +1052,6 @@ impl Guest for Commands {
         exchange(connection, ("AUTH", username, password)).await
     }
 
-    #[doc = " Switch to a different protocol, optionally authenticating and setting the connection\'s name, or provide a contextual client report."]
-    #[doc = ""]
-    #[doc = " RESP2 is not fully supported by this client."]
-    #[doc = ""]
-    #[doc = " HELLO 3 [ AUTH username password ] [ SETNAME clientname ]"]
-    #[doc = " https://valkey.io/commands/hello/"]
-    #[allow(async_fn_in_trait)]
-    async fn hello(
-        connection: &Connection,
-        auth: Option<(String, String)>,
-        client_name: Option<String>,
-    ) -> Result<Map<String, RespValue>, Error> {
-        exchange(
-            connection,
-            (
-                "HELLO",
-                "3",
-                auth.map(|auth| ("AUTH", auth)),
-                client_name.map(|name| ("SETNAME", name)),
-            ),
-        )
-        .await
-    }
-
     #[doc = " Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk."]
     #[doc = ""]
     #[doc = " PING [ message ]"]
@@ -1153,15 +1121,6 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "GETNAME")).await
     }
 
-    #[doc = " Where the connection's tracking notifications are redirected."]
-    #[doc = ""]
-    #[doc = " CLIENT GETREDIR"]
-    #[doc = " https://valkey.io/commands/client-getredir/"]
-    #[allow(async_fn_in_trait)]
-    async fn client_getredir(connection: &Connection) -> Result<ClientTrackingRedirect, Error> {
-        exchange(connection, ("CLIENT", "GETREDIR")).await
-    }
-
     #[doc = " The ID of the connection, unique until the server restarts."]
     #[doc = ""]
     #[doc = " CLIENT ID"]
@@ -1226,11 +1185,11 @@ impl Guest for Commands {
     }
 
     #[doc = " Turns tracking on with the options, or off with none, for server assisted client side"]
-    #[doc = " caching. Invalidations arrive as push messages, see `connection.pushes`."]
+    #[doc = " caching. Invalidations arrive as push messages, see `connection.dead-letters`."]
     #[doc = ""]
     #[doc = " It applies to the connection, so to every caller sharing it."]
     #[doc = ""]
-    #[doc = " CLIENT TRACKING 〈 ON | OFF 〉 [ REDIRECT client-id ] [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN ] [ OPTOUT ] [ NOLOOP ]"]
+    #[doc = " CLIENT TRACKING 〈 ON | OFF 〉 [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN ] [ OPTOUT ] [ NOLOOP ]"]
     #[doc = " https://valkey.io/commands/client-tracking/"]
     #[allow(async_fn_in_trait)]
     async fn client_tracking(
@@ -3043,19 +3002,6 @@ impl Guest for Commands {
         exchange(connection, ("UNLINK", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " Subscribes the client to the given patterns."]
-    #[doc = ""]
-    #[doc = " PSUBSCRIBE pattern [ pattern ... ]"]
-    #[doc = " https://valkey.io/commands/psubscribe/"]
-    #[allow(async_fn_in_trait)]
-    async fn psubscribe(connection: &Connection, patterns: Vec<String>) -> Result<(), Error> {
-        emit(
-            connection,
-            ("PSUBSCRIBE", NonEmpty::new("patterns", patterns)),
-        )
-        .await
-    }
-
     #[doc = " Posts a message to the given channel."]
     #[doc = ""]
     #[doc = " PUBLISH channel message"]
@@ -3359,22 +3305,6 @@ impl Guest for Commands {
         exchange(connection, ("SCRIPT", "SHOW", sha1)).await
     }
 
-    #[doc = " Unsubscribes the client from the given patterns, or from all of them if none is given."]
-    #[doc = ""]
-    #[doc = " PUNSUBSCRIBE [ pattern [ pattern ... ] ]"]
-    #[doc = " https://valkey.io/commands/punsubscribe/"]
-    #[allow(async_fn_in_trait)]
-    async fn punsubscribe(
-        connection: &Connection,
-        patterns: Option<Vec<String>>,
-    ) -> Result<(), Error> {
-        emit(
-            connection,
-            ("PUNSUBSCRIBE", NonEmpty::optional("patterns", patterns)),
-        )
-        .await
-    }
-
     #[doc = " Posts a message to the given shard channel."]
     #[doc = ""]
     #[doc = " SPUBLISH shardchannel message"]
@@ -3386,67 +3316,6 @@ impl Guest for Commands {
         message: String,
     ) -> Result<Integer, Error> {
         exchange(connection, ("SPUBLISH", shardchannel, message)).await
-    }
-
-    #[doc = " Subscribes the client to the specified shard channels."]
-    #[doc = ""]
-    #[doc = " SSUBSCRIBE shardchannel [ shardchannel ... ]"]
-    #[doc = " https://valkey.io/commands/ssubscribe/"]
-    #[allow(async_fn_in_trait)]
-    async fn ssubscribe(connection: &Connection, shardchannels: Vec<String>) -> Result<(), Error> {
-        emit(
-            connection,
-            ("SSUBSCRIBE", NonEmpty::new("shardchannels", shardchannels)),
-        )
-        .await
-    }
-
-    #[doc = " Subscribes the client to the specified channels."]
-    #[doc = ""]
-    #[doc = " SUBSCRIBE channel [ channel ... ]"]
-    #[doc = " https://valkey.io/commands/subscribe/"]
-    #[allow(async_fn_in_trait)]
-    async fn subscribe(connection: &Connection, channels: Vec<String>) -> Result<(), Error> {
-        emit(
-            connection,
-            ("SUBSCRIBE", NonEmpty::new("channels", channels)),
-        )
-        .await
-    }
-
-    #[doc = " Unsubscribes the client from the given shard channels, or from all of them if none is given."]
-    #[doc = ""]
-    #[doc = " SUNSUBSCRIBE [ shardchannel ] [ [ shardchannel ] ... ]"]
-    #[doc = " https://valkey.io/commands/sunsubscribe/"]
-    #[allow(async_fn_in_trait)]
-    async fn sunsubscribe(
-        connection: &Connection,
-        shardchannels: Option<Vec<String>>,
-    ) -> Result<(), Error> {
-        emit(
-            connection,
-            (
-                "SUNSUBSCRIBE",
-                NonEmpty::optional("shardchannels", shardchannels),
-            ),
-        )
-        .await
-    }
-
-    #[doc = " Unsubscribes the client from the given channels, or from all of them if none is given."]
-    #[doc = ""]
-    #[doc = " UNSUBSCRIBE [ channel ] [ [ channel ] ... ]"]
-    #[doc = " https://valkey.io/commands/unsubscribe/"]
-    #[allow(async_fn_in_trait)]
-    async fn unsubscribe(
-        connection: &Connection,
-        channels: Option<Vec<String>>,
-    ) -> Result<(), Error> {
-        emit(
-            connection,
-            ("UNSUBSCRIBE", NonEmpty::optional("channels", channels)),
-        )
-        .await
     }
 
     #[doc = " Appends the value at the end of the string."]

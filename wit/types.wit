@@ -48,6 +48,9 @@ interface types {
         resp(resp-error),
         /// Valkey errors are Error or BulkError values returned directly from the server.
         valkey(string),
+        /// The reader of a stream fell too far behind and its stream was closed, rather than
+        /// holding up the connection. What the stream missed is lost.
+        lagged,
     }
 
     /// Options for establishing a connection.
@@ -58,6 +61,51 @@ interface types {
         client-name: option<string>,
         /// Enables keep-alive pings at this interval, see `connection.set-keep-alive`.
         keep-alive-interval: option<duration-milliseconds>,
+    }
+
+    /// What a subscription is subscribed to, see `connection.subscription`.
+    variant subscription-target {
+        /// A channel, see SUBSCRIBE.
+        channel(string),
+        /// A pattern of channels, see PSUBSCRIBE.
+        pattern(string),
+        /// A shard channel, see SSUBSCRIBE.
+        shardchannel(string),
+    }
+
+    /// A message published to a channel.
+    ///
+    /// A subscription with overlapping targets, e.g. a channel and a pattern matching it, receives
+    /// a message once for each target.
+    record subscription-message {
+        payload: string,
+        /// The channel the message was published to: a channel, published with PUBLISH, or a shard
+        /// channel, published with SPUBLISH. Channels and shard channels are separate, a channel
+        /// and a shard channel of the same name are not the same. `target` tells them apart, a
+        /// `shardchannel` target for a shard channel, a `channel` or `pattern` target otherwise.
+        channel: string,
+        /// The subscription's target that matched the channel, the channel itself, or a pattern
+        /// matching it.
+        target: subscription-target,
+    }
+
+    /// Why a target is no longer subscribed to.
+    enum unsubscribe-reason {
+        /// By the subscription, e.g. its `unsubscribe`.
+        requested,
+        /// By the server on its own, e.g. the slot of a shard channel moved to another node.
+        by-server,
+        /// By `connection.reset`.
+        reset,
+    }
+
+    /// What a subscription's stream carries, in the order it happened.
+    variant subscription-event {
+        /// The server confirmed the target, its messages may arrive from now on.
+        subscribed(subscription-target),
+        /// The target is no longer subscribed to, none of its messages arrive after this.
+        unsubscribed(tuple<subscription-target, unsubscribe-reason>),
+        message(subscription-message),
     }
 
     // shared by the commands
@@ -872,17 +920,6 @@ interface types {
         arguments: list<command-docs-argument>,
     }
 
-    /// Where a connection's tracking notifications are redirected, see `client-getredir` and
-    /// `client-trackinginfo`.
-    variant client-tracking-redirect {
-        /// -1: tracking is not on.
-        not-tracking,
-        /// 0: tracking is on, the notifications are not redirected.
-        not-redirected,
-        /// The ID of the connection the notifications are redirected to.
-        redirected(integer),
-    }
-
     /// Information about the library of a connection, see `client-setinfo`.
     variant client-setinfo-attr {
         /// `LIB-NAME`: the name of the library, e.g. `valkey-wasm`.
@@ -901,8 +938,6 @@ interface types {
 
     /// The options of CLIENT TRACKING ON.
     record client-tracking-options {
-        /// `REDIRECT client-id`: sends the notifications to the connection with the ID instead.
-        redirect: option<integer>,
         /// `PREFIX prefix`: with `bcast`, only notifies about keys with the prefixes.
         prefixes: option<list<string>>,
         /// `BCAST`: notifies about every change of the keys with the prefixes, read or not.
@@ -912,12 +947,25 @@ interface types {
         noloop: bool,
     }
 
+    /// Where a connection's tracking notifications are redirected, see `client-trackinginfo`.
+    ///
+    /// Redirecting is for RESP2, which the connection does not use, but CLIENT TRACKING REDIRECT may
+    /// still be sent with `connection.exchange`.
+    variant client-trackinginfo-redirect {
+        /// -1: tracking is not on.
+        not-tracking,
+        /// 0: tracking is on, the notifications are not redirected.
+        not-redirected,
+        /// The ID of the connection the notifications are redirected to.
+        redirected(integer),
+    }
+
     /// A connection's tracking state, see `client-trackinginfo`.
     record client-trackinginfo-reply {
         /// The tracking flags, e.g. `on`, `bcast`, `optin` or `noloop`.
         %flags: list<string>,
         /// Where the notifications are redirected.
-        redirect: client-tracking-redirect,
+        redirect: client-trackinginfo-redirect,
         /// The prefixes of BCAST.
         prefixes: list<string>,
     }

@@ -66,7 +66,7 @@ impl Guest for Cli {
 async fn exec(command: Vec<String>, out: &mut Output) -> Result<(), Error> {
     let connection = connector::connect().await?;
     // before the command is sent, so none of the push messages it causes are missed
-    let mut pushes = connection.pushes();
+    let mut pushes = connection.dead_letters();
     let name = command[0].to_ascii_uppercase();
     let channels = command.len() - 1;
 
@@ -78,6 +78,11 @@ async fn exec(command: Vec<String>, out: &mut Output) -> Result<(), Error> {
         // not subscribed to any
         connection.emit(command).await?;
         print_pushes(&mut pushes, out, Some(channels.max(1))).await
+    } else if name == "RESET" && channels == 0 {
+        // RESET is the connection's to send, it then repeats its handshake
+        connection.reset().await?;
+        out.line("RESET").await;
+        Ok(())
     } else if name == "MONITOR" {
         // the feed follows the reply, values sent unprompted that the connection treats as push
         // messages
@@ -119,7 +124,7 @@ async fn print_pushes(
 /// until stdin closes.
 async fn session(out: &mut Output) -> Result<(), Error> {
     let connection = connector::connect().await?;
-    let pushes = connection.pushes();
+    let pushes = connection.dead_letters();
     let (stdin, _stdin_result) = stdin::read_via_stream();
 
     // replies and push messages arrive independently, both are printed by one writer
@@ -172,10 +177,20 @@ async fn send_lines(
             connection.emit(words).await?;
             continue;
         }
-        let text = match connection.exchange(words).await {
+        let reply = if name == "RESET" && words.len() == 1 {
+            // RESET is the connection's to send, it then repeats its handshake
+            connection
+                .reset()
+                .await
+                .map(|()| RespValue::String("RESET".to_string()))
+        } else {
+            connection.exchange(words).await
+        };
+        let text = match reply {
             Ok(reply) => render(reply),
             // the command failed, not the session
             Err(Error::Valkey(message)) => format!("(error) {message}"),
+            Err(Error::Client(message)) => format!("(error) {message}"),
             Err(error) => return Err(error),
         };
         let _ = lines.unbounded_send(text);
@@ -339,6 +354,7 @@ fn render_error(error: Error) -> String {
         Error::Closed(Some(reason)) => format!("connection closed: {reason}"),
         Error::Client(message) => message,
         Error::Resp(message) => format!("invalid RESP: {message}"),
+        Error::Lagged => "fell behind, values were lost".to_string(),
     }
 }
 

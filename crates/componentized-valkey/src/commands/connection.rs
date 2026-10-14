@@ -1,8 +1,8 @@
 //! The connection commands: CLIENT of the connection itself, and COMMAND.
 
-use crate::command::{Flag, IntoCommand, NamedOption, NonEmpty};
+use crate::command::{Flag, IntoCommand, NonEmpty};
 use crate::types::{
-    ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientTrackingRedirect,
+    ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientTrackinginfoRedirect,
     ClientTrackinginfoReply, CommandDocsArgument, CommandDocsArgumentType, CommandDocsReply,
     CommandInfoReply, CommandKeySpec, CommandKeySpecBeginSearch, CommandKeySpecFindKeys,
     CommandKeySpecKeynum, CommandKeySpecKeyword, CommandKeySpecRange, CommandListFilter, Error,
@@ -29,7 +29,7 @@ impl IntoCommand for ClientTrackingMode {
     }
 }
 
-/// `[ REDIRECT client-id ] [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN | OPTOUT ] [ NOLOOP ]`
+/// `[ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN | OPTOUT ] [ NOLOOP ]`
 impl IntoCommand for ClientTrackingOptions {
     fn into_command(self) -> Result<Vec<String>, Error> {
         // PREFIX before each prefix
@@ -38,7 +38,6 @@ impl IntoCommand for ClientTrackingOptions {
             prefixes.collect::<Vec<_>>()
         });
         (
-            NamedOption("REDIRECT", self.redirect),
             NonEmpty::optional("prefixes", prefixes),
             Flag("BCAST", self.bcast),
             self.mode,
@@ -49,12 +48,12 @@ impl IntoCommand for ClientTrackingOptions {
 }
 
 /// `-1` when tracking is off, `0` when not redirected, otherwise the ID of the connection.
-impl FromValue for ClientTrackingRedirect {
+impl FromValue for ClientTrackinginfoRedirect {
     fn from_value(value: RespValue) -> Result<Self, Error> {
         match Integer::from_value(value)? {
-            -1 => Ok(ClientTrackingRedirect::NotTracking),
-            0 => Ok(ClientTrackingRedirect::NotRedirected),
-            id if id > 0 => Ok(ClientTrackingRedirect::Redirected(id)),
+            -1 => Ok(ClientTrackinginfoRedirect::NotTracking),
+            0 => Ok(ClientTrackinginfoRedirect::NotRedirected),
+            id if id > 0 => Ok(ClientTrackinginfoRedirect::Redirected(id)),
             code => Err(Error::Client(format!("unexpected reply: {code}"))),
         }
     }
@@ -293,7 +292,6 @@ mod tests {
     #[test]
     fn client_tracking_options() {
         let options = ClientTrackingOptions {
-            redirect: Some(5),
             prefixes: Some(vec!["a:".to_string(), "b:".to_string()]),
             bcast: true,
             mode: Some(ClientTrackingMode::Optin),
@@ -301,12 +299,9 @@ mod tests {
         };
         assert_eq!(
             words(options),
-            [
-                "REDIRECT", "5", "PREFIX", "a:", "PREFIX", "b:", "BCAST", "OPTIN", "NOLOOP"
-            ]
+            ["PREFIX", "a:", "PREFIX", "b:", "BCAST", "OPTIN", "NOLOOP"]
         );
         let options = ClientTrackingOptions {
-            redirect: None,
             prefixes: None,
             bcast: false,
             mode: Some(ClientTrackingMode::Optout),
@@ -314,7 +309,6 @@ mod tests {
         };
         assert_eq!(words(options), ["OPTOUT"]);
         let options = ClientTrackingOptions {
-            redirect: None,
             prefixes: Some(vec![]),
             bcast: true,
             mode: None,
@@ -324,21 +318,21 @@ mod tests {
     }
 
     #[test]
-    fn client_tracking_redirect() {
+    fn client_trackinginfo_redirect() {
         assert_eq!(
-            from::<ClientTrackingRedirect>(int(-1)),
-            ClientTrackingRedirect::NotTracking
+            from::<ClientTrackinginfoRedirect>(int(-1)),
+            ClientTrackinginfoRedirect::NotTracking
         );
         assert_eq!(
-            from::<ClientTrackingRedirect>(int(0)),
-            ClientTrackingRedirect::NotRedirected
+            from::<ClientTrackinginfoRedirect>(int(0)),
+            ClientTrackinginfoRedirect::NotRedirected
         );
         assert_eq!(
-            from::<ClientTrackingRedirect>(int(7)),
-            ClientTrackingRedirect::Redirected(7)
+            from::<ClientTrackinginfoRedirect>(int(7)),
+            ClientTrackinginfoRedirect::Redirected(7)
         );
         assert_eq!(
-            from_error::<ClientTrackingRedirect>(int(-2)),
+            from_error::<ClientTrackinginfoRedirect>(int(-2)),
             "unexpected reply: -2"
         );
     }
@@ -354,7 +348,7 @@ mod tests {
             from::<ClientTrackinginfoReply>(value),
             ClientTrackinginfoReply {
                 flags: vec!["on".to_string(), "bcast".to_string()],
-                redirect: ClientTrackingRedirect::NotRedirected,
+                redirect: ClientTrackinginfoRedirect::NotRedirected,
                 prefixes: vec!["a:".to_string()],
             }
         );
