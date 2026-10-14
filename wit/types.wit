@@ -7,12 +7,16 @@ interface types {
     // resp
 
     /// An encoding error, converting RESP values to or from bytes.
+    @since(version = 0.3.0-dev)
     type resp-error = string;
 
+    @since(version = 0.3.0-dev)
     type integer = s64;
 
+    @since(version = 0.3.0-dev)
     type double = f64;
 
+    @since(version = 0.3.0-dev)
     variant resp-value {
         %string(string),
         error(string),
@@ -32,11 +36,13 @@ interface types {
 
     /// Values nested within an aggregate type. Since WIT types are not allowed to depend on
     /// themselves, nested values are stored as encoded RESP.
+    @since(version = 0.3.0-dev)
     type resp-nested-value = list<u8>;
 
     // connection
 
     /// The errors of a connection and of every command interface.
+    @since(version = 0.3.0-dev)
     variant error {
         /// The transport closed while a reply was outstanding, or before the command was sent. Holds
         /// the transport's error when it did not close gracefully.
@@ -54,6 +60,7 @@ interface types {
     }
 
     /// Options for establishing a connection.
+    @since(version = 0.3.0-dev)
     record connect-opts {
         /// The username and password to authenticate with.
         auth: option<tuple<string, string>>,
@@ -64,6 +71,7 @@ interface types {
     }
 
     /// What a subscription is subscribed to, see `connection.subscription`.
+    @since(version = 0.3.0-dev)
     variant subscription-target {
         /// A channel, see SUBSCRIBE.
         channel(string),
@@ -77,6 +85,7 @@ interface types {
     ///
     /// A subscription with overlapping targets, e.g. a channel and a pattern matching it, receives
     /// a message once for each target.
+    @since(version = 0.3.0-dev)
     record subscription-message {
         payload: string,
         /// The channel the message was published to: a channel, published with PUBLISH, or a shard
@@ -90,6 +99,7 @@ interface types {
     }
 
     /// Why a target is no longer subscribed to.
+    @since(version = 0.3.0-dev)
     enum unsubscribe-reason {
         /// By the subscription, e.g. its `unsubscribe`.
         requested,
@@ -100,6 +110,7 @@ interface types {
     }
 
     /// What a subscription's stream carries, in the order it happened.
+    @since(version = 0.3.0-dev)
     variant subscription-event {
         /// The server confirmed the target, its messages may arrive from now on.
         subscribed(subscription-target),
@@ -111,22 +122,26 @@ interface types {
     // shared by the commands
 
     /// A duration in whole seconds, e.g. `EX seconds`.
+    @since(version = 0.3.0-dev)
     record duration-seconds {
         ex: u64,
     }
 
     /// A duration in whole milliseconds, e.g. `PX milliseconds`.
+    @since(version = 0.3.0-dev)
     record duration-milliseconds {
         px: u64,
     }
 
     /// A point in time as whole seconds since the Unix epoch, e.g. `EXAT unix-time-seconds`.
+    @since(version = 0.3.0-dev)
     record unix-time-seconds {
         exat: s64,
     }
 
     /// A point in time as whole milliseconds since the Unix epoch, e.g. `PXAT
     /// unix-time-milliseconds`.
+    @since(version = 0.3.0-dev)
     record unix-time-milliseconds {
         pxat: s64,
     }
@@ -135,6 +150,7 @@ interface types {
     ///
     /// A scan returns the cursor to resume from, always `resume`, none once the scan is complete.
     /// Pass it to the next call until then.
+    @since(version = 0.3.0-dev)
     variant cursor {
         /// Starts a new scan, the cursor `0`.
         start,
@@ -144,6 +160,7 @@ interface types {
     }
 
     /// The condition for setting an expiration, e.g. with EXPIRE or HEXPIRE.
+    @since(version = 0.3.0-dev)
     enum ttl-mode {
         /// Set expiration only when the field has no expiration.
         nx,
@@ -156,6 +173,7 @@ interface types {
     }
 
     /// The remaining time to live of a key or hash field, to the second, see `ttl` and `httl`.
+    @since(version = 0.3.0-dev)
     variant ttl-reply {
         /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
         does-not-exist,
@@ -166,9 +184,11 @@ interface types {
     }
 
     /// The remaining time to live of a field, see `httl`.
+    @since(version = 0.3.0-dev)
     type httl-reply = ttl-reply;
 
     /// The remaining time to live of a key or hash field, to the millisecond, see `pttl` and `hpttl`.
+    @since(version = 0.3.0-dev)
     variant pttl-reply {
         /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
         does-not-exist,
@@ -179,9 +199,11 @@ interface types {
     }
 
     /// The remaining time to live of a field, see `hpttl`.
+    @since(version = 0.3.0-dev)
     type hpttl-reply = pttl-reply;
 
     /// When a key or hash field expires, to the second, see `expiretime` and `hexpiretime`.
+    @since(version = 0.3.0-dev)
     variant expiretime-reply {
         /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
         does-not-exist,
@@ -192,9 +214,11 @@ interface types {
     }
 
     /// The expiration time of a field, see `hexpiretime`.
+    @since(version = 0.3.0-dev)
     type hexpiretime-reply = expiretime-reply;
 
     /// When a key or hash field expires, to the millisecond, see `pexpiretime` and `hpexpiretime`.
+    @since(version = 0.3.0-dev)
     variant pexpiretime-reply {
         /// -2: the key does not exist, or for a hash field, the field or the hash does not exist.
         does-not-exist,
@@ -205,9 +229,11 @@ interface types {
     }
 
     /// The expiration time of a field, see `hpexpiretime`.
+    @since(version = 0.3.0-dev)
     type hpexpiretime-reply = pexpiretime-reply;
 
     /// A range of a sorted result, `LIMIT offset count`.
+    @since(version = 0.3.0-dev)
     record limit {
         /// The number of elements skipped.
         offset: integer,
@@ -215,6 +241,7 @@ interface types {
         count: integer,
     }
 
+    @since(version = 0.3.0-dev)
     enum sort-order {
         /// ascending, smallest to largest.
         asc,
@@ -225,6 +252,7 @@ interface types {
     // admin commands
 
     /// Whether a user may run a command, see `acl-dryrun`.
+    @since(version = 0.3.0-dev)
     variant acl-dryrun-result {
         /// The user may run the command.
         allowed,
@@ -233,6 +261,7 @@ interface types {
     }
 
     /// A security event, a command or authentication the rules denied, see `acl-log`.
+    @since(version = 0.3.0-dev)
     record acl-log-entry {
         /// The number of events like this one, within 60 seconds of each other.
         count: integer,
@@ -256,6 +285,7 @@ interface types {
     }
 
     /// What BGSAVE does.
+    @since(version = 0.3.0-dev)
     enum bgsave-operation {
         /// `SCHEDULE`: saves once the rewrite of the append-only file in progress is done.
         schedule,
@@ -264,6 +294,7 @@ interface types {
     }
 
     /// The type of a connection, for the `client-filter`.
+    @since(version = 0.3.0-dev)
     enum client-type {
         /// `normal`
         normal,
@@ -276,6 +307,7 @@ interface types {
     }
 
     /// A filter of connections, for CLIENT KILL and CLIENT LIST.
+    @since(version = 0.3.0-dev)
     variant client-filter {
         /// `ID client-id [ client-id ... ]`
         id(list<integer>),
@@ -334,6 +366,7 @@ interface types {
     }
 
     /// Which commands CLIENT PAUSE suspends.
+    @since(version = 0.3.0-dev)
     enum client-pause-mode {
         /// `WRITE`: commands that may write.
         write,
@@ -342,6 +375,7 @@ interface types {
     }
 
     /// How CLIENT UNBLOCK unblocks a connection.
+    @since(version = 0.3.0-dev)
     enum client-unblock-type {
         /// `TIMEOUT`: as if the command timed out, the default.
         timeout,
@@ -350,6 +384,7 @@ interface types {
     }
 
     /// The outcome of CLUSTER BUMPEPOCH.
+    @since(version = 0.3.0-dev)
     variant cluster-bumpepoch-result {
         /// `BUMPED`: the config epoch was advanced, to this one.
         bumped(integer),
@@ -358,6 +393,7 @@ interface types {
     }
 
     /// How CLUSTER FAILOVER fails over.
+    @since(version = 0.3.0-dev)
     enum cluster-failover-mode {
         /// `FORCE`: without the agreement of the primary, which may be down.
         force,
@@ -366,6 +402,7 @@ interface types {
     }
 
     /// Which way a slot migration moves the slots.
+    @since(version = 0.3.0-dev)
     enum cluster-getslotmigrations-operation {
         /// `IMPORT`: to this node.
         %import,
@@ -374,6 +411,7 @@ interface types {
     }
 
     /// A slot migration, see `cluster-getslotmigrations`.
+    @since(version = 0.3.0-dev)
     record cluster-getslotmigrations-entry {
         /// The ID of the migration.
         link-name: string,
@@ -396,6 +434,7 @@ interface types {
     }
 
     /// Ranges of slots to migrate to a node, see `cluster-migrateslots`.
+    @since(version = 0.3.0-dev)
     record cluster-migrateslots-group {
         /// The ranges of slots, start and end both included.
         ranges: list<tuple<u16, u16>>,
@@ -406,6 +445,7 @@ interface types {
     }
 
     /// How CLUSTER RESET resets a node.
+    @since(version = 0.3.0-dev)
     enum cluster-reset-mode {
         /// `HARD`: also generates a new node ID and resets the epochs.
         hard,
@@ -414,6 +454,7 @@ interface types {
     }
 
     /// The state to set a slot to, see `cluster-setslot`.
+    @since(version = 0.3.0-dev)
     variant cluster-setslot-state {
         /// `IMPORTING node-id`: importing the slot from the node.
         importing(string),
@@ -426,6 +467,7 @@ interface types {
     }
 
     /// A command log, see `commandlog-get`.
+    @since(version = 0.3.0-dev)
     enum commandlog-type {
         /// `slow`: commands that took longer than `commandlog-execution-slower-than`.
         slow,
@@ -436,6 +478,7 @@ interface types {
     }
 
     /// An entry of the slow log or a command log.
+    @since(version = 0.3.0-dev)
     record commandlog-entry {
         /// The ID of the entry, unique until the server restarts.
         id: integer,
@@ -453,9 +496,11 @@ interface types {
     }
 
     /// An entry of the slow log, see `slowlog-get`.
+    @since(version = 0.3.0-dev)
     type slowlog-entry = commandlog-entry;
 
     /// Where FAILOVER fails over to.
+    @since(version = 0.3.0-dev)
     record failover-target {
         host: string,
         port: u16,
@@ -464,6 +509,7 @@ interface types {
     }
 
     /// The latency histogram of a command, see `latency-histogram`.
+    @since(version = 0.3.0-dev)
     record latency-histogram-entry {
         /// The number of times the command ran.
         calls: integer,
@@ -473,6 +519,7 @@ interface types {
     }
 
     /// The latest sample of the latency of an event, see `latency-latest`.
+    @since(version = 0.3.0-dev)
     record latency-latest-entry {
         event: string,
         /// When the latest sample was taken.
@@ -487,6 +534,7 @@ interface types {
     }
 
     /// A loaded module, see `module-list`.
+    @since(version = 0.3.0-dev)
     record module-list-entry {
         name: string,
         /// The module's version.
@@ -498,6 +546,7 @@ interface types {
     }
 
     /// A replica of a primary, see `role`.
+    @since(version = 0.3.0-dev)
     record role-primary-replica {
         ip: string,
         port: u16,
@@ -506,6 +555,7 @@ interface types {
     }
 
     /// The replication state of a primary, see `role`.
+    @since(version = 0.3.0-dev)
     record role-primary {
         /// The primary's replication offset.
         offset: integer,
@@ -513,6 +563,7 @@ interface types {
     }
 
     /// The replication state of a replica, see `role`.
+    @since(version = 0.3.0-dev)
     record role-replica {
         primary-host: string,
         primary-port: u16,
@@ -523,6 +574,7 @@ interface types {
     }
 
     /// The server's role in replication, see `role`.
+    @since(version = 0.3.0-dev)
     variant role-reply {
         /// `master`
         primary(role-primary),
@@ -533,6 +585,7 @@ interface types {
     }
 
     /// The modifiers of SHUTDOWN.
+    @since(version = 0.3.0-dev)
     flags shutdown-flags {
         /// `NOW`: does not wait for lagging replicas.
         now,
@@ -545,6 +598,7 @@ interface types {
     }
 
     /// Whether SHUTDOWN saves to disk.
+    @since(version = 0.3.0-dev)
     enum shutdown-save {
         /// `NOSAVE`: does not save, even with save points configured.
         nosave,
@@ -553,6 +607,7 @@ interface types {
     }
 
     /// A user and its rules, see `acl-list`.
+    @since(version = 0.3.0-dev)
     record acl-list-entry {
         username: string,
         /// The user's rules, as the server normalized them, e.g. `allkeys` is `~*`. Applied with
@@ -563,6 +618,7 @@ interface types {
     /// A rule of an ACL user, see `acl-setuser`.
     ///
     /// https://valkey.io/topics/acl/
+    @since(version = 0.3.0-dev)
     variant acl-rule {
         /// The keys the user may access.
         keys(acl-key-rule),
@@ -580,6 +636,7 @@ interface types {
 
     /// A rule of a selector, a set of permissions matched independently of the user's root permissions,
     /// the user may run a command when either permits it.
+    @since(version = 0.3.0-dev)
     variant acl-selector-rule {
         /// The keys the selector permits access to.
         keys(acl-key-rule),
@@ -594,6 +651,7 @@ interface types {
     }
 
     /// A rule for the keys a user may access.
+    @since(version = 0.3.0-dev)
     variant acl-key-rule {
         /// `~<pattern>`: allows reading and writing the keys matching the glob-style pattern.
         add(string),
@@ -611,6 +669,7 @@ interface types {
     }
 
     /// A rule for the Pub/Sub channels a user may access.
+    @since(version = 0.3.0-dev)
     variant acl-channel-rule {
         /// `&<pattern>`: allows access to the Pub/Sub channels matching the glob-style pattern.
         add(string),
@@ -622,6 +681,7 @@ interface types {
     }
 
     /// A rule for the commands a user may call.
+    @since(version = 0.3.0-dev)
     variant acl-command-rule {
         /// `+<command>`: allows the command, or a subcommand, e.g. `config|get`.
         add(string),
@@ -642,6 +702,7 @@ interface types {
     }
 
     /// A rule for the databases a user may access.
+    @since(version = 0.3.0-dev)
     variant acl-db-rule {
         /// `db=<id>[,<id>...]`: allows access to the databases with the given IDs.
         db(list<u8>),
@@ -652,6 +713,7 @@ interface types {
     }
 
     /// A rule for the user itself.
+    @since(version = 0.3.0-dev)
     variant acl-user-rule {
         /// `on`: enables the user, it is possible to authenticate as this user.
         on,
@@ -685,6 +747,7 @@ interface types {
     // bitmap commands
 
     /// A range of a string, negative from the end, for BITCOUNT and BITPOS.
+    @since(version = 0.3.0-dev)
     variant bit-range {
         /// `start`: the bytes from the start to the end of the string.
         %from(integer),
@@ -695,6 +758,7 @@ interface types {
     }
 
     /// The type of an integer field of a string, for BITFIELD.
+    @since(version = 0.3.0-dev)
     variant bitfield-encoding {
         /// `i1` to `i64`: a signed integer of the width in bits.
         signed(u8),
@@ -703,6 +767,7 @@ interface types {
     }
 
     /// Where an integer field of a string starts, for BITFIELD.
+    @since(version = 0.3.0-dev)
     variant bitfield-offset {
         /// The offset in bits.
         bit(u64),
@@ -712,6 +777,7 @@ interface types {
     }
 
     /// What a write does when the field overflows, `OVERFLOW`.
+    @since(version = 0.3.0-dev)
     enum bitfield-overflow {
         /// `WRAP`: wraps around, the default.
         wrap,
@@ -722,15 +788,18 @@ interface types {
     }
 
     /// `GET encoding offset`: the value of the field.
+    @since(version = 0.3.0-dev)
     record bitfield-get {
         encoding: bitfield-encoding,
         offset: bitfield-offset,
     }
 
     /// A GET operation, see `bitfield-ro`.
+    @since(version = 0.3.0-dev)
     type bitfield-ro-get = bitfield-get;
 
     /// `SET encoding offset value`: sets the field, the result is its previous value.
+    @since(version = 0.3.0-dev)
     record bitfield-set {
         encoding: bitfield-encoding,
         offset: bitfield-offset,
@@ -738,6 +807,7 @@ interface types {
     }
 
     /// `INCRBY encoding offset increment`: increments the field, the result is its new value.
+    @since(version = 0.3.0-dev)
     record bitfield-incrby {
         encoding: bitfield-encoding,
         offset: bitfield-offset,
@@ -748,6 +818,7 @@ interface types {
     ///
     /// A write is preceded by an optional overflow mode, `OVERFLOW WRAP | SAT | FAIL`, for it and
     /// the following writes. None keeps the current mode, `WRAP` at the start of the command.
+    @since(version = 0.3.0-dev)
     variant bitfield-operation {
         /// `GET encoding offset`
         get(bitfield-get),
@@ -758,6 +829,7 @@ interface types {
     }
 
     /// A bitwise operation of BITOP, and its source keys.
+    @since(version = 0.3.0-dev)
     variant bitop-operation {
         /// `AND`
         and(list<string>),
@@ -772,6 +844,7 @@ interface types {
     // connection commands
 
     /// How a key spec finds the first key, see `command-key-spec`.
+    @since(version = 0.3.0-dev)
     variant command-key-spec-begin-search {
         /// `index`: the argument at the index.
         index(integer),
@@ -782,6 +855,7 @@ interface types {
     }
 
     /// The keyword before the first key, see `command-key-spec-begin-search`.
+    @since(version = 0.3.0-dev)
     record command-key-spec-keyword {
         keyword: string,
         /// The index of the argument to start searching from, from the end when negative.
@@ -789,6 +863,7 @@ interface types {
     }
 
     /// How a key spec finds the keys after the first one, see `command-key-spec`.
+    @since(version = 0.3.0-dev)
     variant command-key-spec-find-keys {
         /// `range`: a range of arguments.
         range(command-key-spec-range),
@@ -799,6 +874,7 @@ interface types {
     }
 
     /// A range of keys, see `command-key-spec-find-keys`.
+    @since(version = 0.3.0-dev)
     record command-key-spec-range {
         /// The index of the last key, relative to the first, from the end when negative.
         lastkey: integer,
@@ -809,6 +885,7 @@ interface types {
     }
 
     /// A number of keys, see `command-key-spec-find-keys`.
+    @since(version = 0.3.0-dev)
     record command-key-spec-keynum {
         /// The index of the argument with the number of keys, relative to the first.
         keynumidx: integer,
@@ -819,6 +896,7 @@ interface types {
     }
 
     /// Where a command's keys are and how it uses them.
+    @since(version = 0.3.0-dev)
     record command-key-spec {
         notes: option<string>,
         /// How the command uses the keys, e.g. `RW`, `access` and `update`.
@@ -828,6 +906,7 @@ interface types {
     }
 
     /// A command, see `command` and `command-info`.
+    @since(version = 0.3.0-dev)
     record command-info-reply {
         /// The command's name, e.g. `get`, or for a subcommand, `config|get`.
         name: string,
@@ -849,9 +928,11 @@ interface types {
     }
 
     /// The details of a command, see `command`.
+    @since(version = 0.3.0-dev)
     type command-reply = command-info-reply;
 
     /// The type of an argument of a command, see `command-docs-argument`.
+    @since(version = 0.3.0-dev)
     variant command-docs-argument-type {
         /// `string`
         %string,
@@ -876,6 +957,7 @@ interface types {
     }
 
     /// An argument of a command, see `command-docs`.
+    @since(version = 0.3.0-dev)
     record command-docs-argument {
         /// The index of the `oneof` or `block` argument containing this one, in the command's
         /// arguments, none at the top level.
@@ -897,6 +979,7 @@ interface types {
     }
 
     /// The documentation of a command, see `command-docs`.
+    @since(version = 0.3.0-dev)
     record command-docs-reply {
         /// The command's name, e.g. `get`, or for a subcommand, `config|get`.
         name: string,
@@ -921,6 +1004,7 @@ interface types {
     }
 
     /// Information about the library of a connection, see `client-setinfo`.
+    @since(version = 0.3.0-dev)
     variant client-setinfo-attr {
         /// `LIB-NAME`: the name of the library, e.g. `valkey-wasm`.
         lib-name(string),
@@ -929,6 +1013,7 @@ interface types {
     }
 
     /// Which keys tracking tracks without CLIENT CACHING.
+    @since(version = 0.3.0-dev)
     enum client-tracking-mode {
         /// `OPTIN`: none, only those of commands after CLIENT CACHING YES.
         optin,
@@ -937,6 +1022,7 @@ interface types {
     }
 
     /// The options of CLIENT TRACKING ON.
+    @since(version = 0.3.0-dev)
     record client-tracking-options {
         /// `PREFIX prefix`: with `bcast`, only notifies about keys with the prefixes.
         prefixes: option<list<string>>,
@@ -951,6 +1037,7 @@ interface types {
     ///
     /// Redirecting is for RESP2, which the connection does not use, but CLIENT TRACKING REDIRECT may
     /// still be sent with `connection.exchange`.
+    @since(version = 0.3.0-dev)
     variant client-trackinginfo-redirect {
         /// -1: tracking is not on.
         not-tracking,
@@ -961,6 +1048,7 @@ interface types {
     }
 
     /// A connection's tracking state, see `client-trackinginfo`.
+    @since(version = 0.3.0-dev)
     record client-trackinginfo-reply {
         /// The tracking flags, e.g. `on`, `bcast`, `optin` or `noloop`.
         %flags: list<string>,
@@ -971,6 +1059,7 @@ interface types {
     }
 
     /// The filter of COMMAND LIST.
+    @since(version = 0.3.0-dev)
     variant command-list-filter {
         /// `MODULE module-name`: the commands of the module.
         module(string),
@@ -985,6 +1074,7 @@ interface types {
     /// A position on the Earth.
     ///
     /// The exact limits, as specified by EPSG:900913 / EPSG:3785 / OSGEO:41001
+    @since(version = 0.3.0-dev)
     record geo-coordinates {
         /// The longitude, from -180 to 180 degrees.
         longitude: double,
@@ -993,6 +1083,7 @@ interface types {
     }
 
     /// A unit of distance.
+    @since(version = 0.3.0-dev)
     enum geo-unit {
         /// `m`: meters.
         m,
@@ -1005,6 +1096,7 @@ interface types {
     }
 
     /// Only add or only update members, GEOADD's `NX` and `XX`.
+    @since(version = 0.3.0-dev)
     enum geoadd-condition {
         /// Only add new members, never update existing ones.
         nx,
@@ -1013,6 +1105,7 @@ interface types {
     }
 
     /// The center of a search, `FROMMEMBER` or `FROMLONLAT`.
+    @since(version = 0.3.0-dev)
     variant geosearch-from {
         /// `FROMMEMBER member`: the position of a member of the index.
         member(string),
@@ -1021,6 +1114,7 @@ interface types {
     }
 
     /// `BYRADIUS`: a circle around the center.
+    @since(version = 0.3.0-dev)
     record geosearch-radius {
         %from: geosearch-from,
         radius: double,
@@ -1028,6 +1122,7 @@ interface types {
     }
 
     /// `BYBOX`: a rectangle around the center.
+    @since(version = 0.3.0-dev)
     record geosearch-box {
         %from: geosearch-from,
         width: double,
@@ -1036,6 +1131,7 @@ interface types {
     }
 
     /// The area of a search.
+    @since(version = 0.3.0-dev)
     variant geosearch-shape {
         /// `[ FROMMEMBER member | FROMLONLAT longitude latitude ] BYRADIUS radius unit`
         radius(geosearch-radius),
@@ -1047,9 +1143,11 @@ interface types {
     }
 
     /// The area to search, see `geosearchstore`.
+    @since(version = 0.3.0-dev)
     type geosearchstore-shape = geosearch-shape;
 
     /// At most a count of the members, `COUNT count [ ANY ]`.
+    @since(version = 0.3.0-dev)
     record geosearch-count {
         count: integer,
         /// `ANY`: returns as soon as enough members are found, rather than the nearest ones.
@@ -1057,9 +1155,11 @@ interface types {
     }
 
     /// The number of members to store, see `geosearchstore`.
+    @since(version = 0.3.0-dev)
     type geosearchstore-count = geosearch-count;
 
     /// The details GEOSEARCH returns of each member it found.
+    @since(version = 0.3.0-dev)
     flags geosearch-with-flags {
         /// `WITHCOORD`: the position.
         withcoord,
@@ -1070,6 +1170,7 @@ interface types {
     }
 
     /// A member a search found, with the details asked for.
+    @since(version = 0.3.0-dev)
     record geosearch-with-result {
         member: string,
         /// `WITHDIST`: the distance from the center, in the unit of the shape.
@@ -1083,6 +1184,7 @@ interface types {
     // hash commands
 
     /// The outcome of removing the expiration of a hash field.
+    @since(version = 0.3.0-dev)
     enum hpersist-result {
         /// -2: the field does not exist, or the hash does not exist.
         does-not-exist,
@@ -1093,6 +1195,7 @@ interface types {
     }
 
     /// Only set the fields when the hash does, or does not, exist, HSETEX's `NX` and `XX`.
+    @since(version = 0.3.0-dev)
     enum hsetex-condition {
         /// Only set the fields when the hash does not exist.
         nx,
@@ -1101,6 +1204,7 @@ interface types {
     }
 
     /// Only set the fields when none, or all, of them exist, HSETEX's `FNX` and `FXX`.
+    @since(version = 0.3.0-dev)
     enum hsetex-field-condition {
         /// Only set the fields when none of them exist.
         fnx,
@@ -1109,6 +1213,7 @@ interface types {
     }
 
     /// The outcome of setting the expiration of a hash field, e.g. with HEXPIRE.
+    @since(version = 0.3.0-dev)
     enum hexpire-result {
         /// -2: key does not exist, or field does not exist in the HASH.
         does-not-exist,
@@ -1121,17 +1226,21 @@ interface types {
     }
 
     /// The result for a field, see `hexpireat`.
+    @since(version = 0.3.0-dev)
     type hexpireat-result = hexpire-result;
 
     /// The result for a field, see `hpexpire`.
+    @since(version = 0.3.0-dev)
     type hpexpire-result = hexpire-result;
 
     /// The result for a field, see `hpexpireat`.
+    @since(version = 0.3.0-dev)
     type hpexpireat-result = hexpire-result;
 
     // keyspace commands
 
     /// The type of the value stored at a key.
+    @since(version = 0.3.0-dev)
     variant key-type {
         /// `string`
         %string,
@@ -1150,6 +1259,7 @@ interface types {
     }
 
     /// The options of MIGRATE.
+    @since(version = 0.3.0-dev)
     flags migrate-flags {
         /// `COPY`: keeps the keys in this instance.
         copy,
@@ -1158,6 +1268,7 @@ interface types {
     }
 
     /// The credentials to authenticate to the other instance with, for MIGRATE.
+    @since(version = 0.3.0-dev)
     variant migrate-auth {
         /// `AUTH password`
         password(string),
@@ -1166,6 +1277,7 @@ interface types {
     }
 
     /// How SORT orders and projects the elements of a list, set or sorted set.
+    @since(version = 0.3.0-dev)
     record sort-opts {
         /// `BY pattern`: sorts by the values of the keys the pattern names, `*` replaced with each
         /// element, or `nosort` to skip sorting.
@@ -1182,11 +1294,13 @@ interface types {
     }
 
     /// The options of the sort, see `sort-ro`.
+    @since(version = 0.3.0-dev)
     type sort-ro-opts = sort-opts;
 
     // list commands
 
     /// An end of a list.
+    @since(version = 0.3.0-dev)
     enum list-side {
         /// `LEFT`: the head, the first element.
         left,
@@ -1195,6 +1309,7 @@ interface types {
     }
 
     /// Where LINSERT inserts an element, relative to the pivot.
+    @since(version = 0.3.0-dev)
     enum linsert-position {
         /// `BEFORE`: in front of the pivot.
         before,
@@ -1203,6 +1318,7 @@ interface types {
     }
 
     /// The outcome of LINSERT.
+    @since(version = 0.3.0-dev)
     variant linsert-result {
         /// The element was inserted, the length of the list after it.
         inserted(integer),
@@ -1215,6 +1331,7 @@ interface types {
     // scripting commands
 
     /// Whether a flush happens in the background, `ASYNC`, or before replying, `SYNC`.
+    @since(version = 0.3.0-dev)
     enum flush-mode {
         /// `ASYNC`
         %async,
@@ -1223,6 +1340,7 @@ interface types {
     }
 
     /// A function of a library.
+    @since(version = 0.3.0-dev)
     record function-list-function {
         name: string,
         description: option<string>,
@@ -1231,6 +1349,7 @@ interface types {
     }
 
     /// A library of functions.
+    @since(version = 0.3.0-dev)
     record function-list-library {
         library-name: string,
         /// The engine that runs the library, e.g. `LUA`.
@@ -1241,6 +1360,7 @@ interface types {
     }
 
     /// The function that is running.
+    @since(version = 0.3.0-dev)
     record function-stats-running {
         name: string,
         /// The command and its arguments that called the function.
@@ -1250,12 +1370,14 @@ interface types {
     }
 
     /// The libraries and functions of an engine.
+    @since(version = 0.3.0-dev)
     record function-stats-engine {
         libraries-count: integer,
         functions-count: integer,
     }
 
     /// The function that is running, and the libraries and functions of each engine.
+    @since(version = 0.3.0-dev)
     record function-stats-reply {
         /// None when no function is running.
         running-script: option<function-stats-running>,
@@ -1266,6 +1388,7 @@ interface types {
     // sortedset commands
 
     /// A bound of a range of scores.
+    @since(version = 0.3.0-dev)
     variant score-bound {
         /// The score, included in the range.
         inclusive(double),
@@ -1276,6 +1399,7 @@ interface types {
     }
 
     /// A bound of a range of members, for members of equal score, ordered lexicographically.
+    @since(version = 0.3.0-dev)
     variant lex-bound {
         /// `[member`: the member, included in the range.
         inclusive(string),
@@ -1286,6 +1410,7 @@ interface types {
     }
 
     /// Which end of a sorted set to pop from.
+    @since(version = 0.3.0-dev)
     enum zmpop-end {
         /// The members with the lowest scores.
         min,
@@ -1294,9 +1419,11 @@ interface types {
     }
 
     /// The end to pop from, see `bzmpop`.
+    @since(version = 0.3.0-dev)
     type bzmpop-end = zmpop-end;
 
     /// How scores combine for a member in several sorted sets.
+    @since(version = 0.3.0-dev)
     enum zset-aggregate {
         /// The sum of the weighted scores, the default.
         sum,
@@ -1308,6 +1435,7 @@ interface types {
 
     /// The range of ZRANGE and ZRANGESTORE, `start` and `stop`, given as they are sent: with `REV`,
     /// the higher bound first.
+    @since(version = 0.3.0-dev)
     variant zrange-by {
         /// Positions, both included, negative from the end.
         rank(tuple<integer, integer>),
@@ -1318,9 +1446,11 @@ interface types {
     }
 
     /// The range of members to store, see `zrangestore`.
+    @since(version = 0.3.0-dev)
     type zrangestore-by = zrange-by;
 
     /// The range of ZRANGE WITHSCORES, which does not support BYLEX, see `zrange-by`.
+    @since(version = 0.3.0-dev)
     variant zrange-withscores-by {
         /// Positions, both included, negative from the end.
         rank(tuple<integer, integer>),
@@ -1329,6 +1459,7 @@ interface types {
     }
 
     /// Only update or only add members, ZADD's `NX` and `XX`.
+    @since(version = 0.3.0-dev)
     enum zadd-condition {
         /// Only add new members, never update existing ones.
         nx,
@@ -1337,6 +1468,7 @@ interface types {
     }
 
     /// Only update a member's score when the new score is greater or less, ZADD's `GT` and `LT`.
+    @since(version = 0.3.0-dev)
     enum zadd-comparison {
         /// Only update when the new score is greater than the current one.
         gt,
@@ -1349,9 +1481,11 @@ interface types {
     /// The ID of a stream entry, `<milliseconds-time>-<sequence-number>`, e.g. `1526919030474-55`.
     ///
     /// Commands that add an entry also accept `*`, for the server to generate the ID.
+    @since(version = 0.3.0-dev)
     type stream-id = string;
 
     /// How a stream is trimmed, e.g. with XADD or XTRIM.
+    @since(version = 0.3.0-dev)
     variant stream-trim {
         /// Evicts entries as long as the stream's length exceeds the specified threshold, where threshold is a positive integer.
         maxlen(stream-trim-maxlen),
@@ -1360,6 +1494,7 @@ interface types {
     }
 
     /// Trims the stream to a maximum length, `MAXLEN [ = | ~ ] threshold [ LIMIT count ]`.
+    @since(version = 0.3.0-dev)
     record stream-trim-maxlen {
         /// Exact, `=`, when none.
         efficiency: option<stream-trim-efficiency>,
@@ -1370,6 +1505,7 @@ interface types {
     }
 
     /// Trims the entries with lower IDs, `MINID [ = | ~ ] threshold [ LIMIT count ]`.
+    @since(version = 0.3.0-dev)
     record stream-trim-minid {
         /// Exact, `=`, when none.
         efficiency: option<stream-trim-efficiency>,
@@ -1381,6 +1517,7 @@ interface types {
 
     /// How exactly a stream is trimmed. Nearly exact trimming is more efficient, the stream may keep a
     /// few entries more than the threshold.
+    @since(version = 0.3.0-dev)
     enum stream-trim-efficiency {
         /// `=`: exact trimming
         exact,
@@ -1389,6 +1526,7 @@ interface types {
     }
 
     /// Options of XCLAIM.
+    @since(version = 0.3.0-dev)
     record xclaim-opts {
         /// `IDLE ms`: sets the idle time of the entries, the time since they were last delivered, instead
         /// of resetting it.
@@ -1405,6 +1543,7 @@ interface types {
     }
 
     /// A consumer of a group, see `xinfo-consumers`.
+    @since(version = 0.3.0-dev)
     record xinfo-consumers-entry {
         /// The consumer's name.
         name: string,
@@ -1419,6 +1558,7 @@ interface types {
     }
 
     /// A consumer group of a stream, see `xinfo-groups`.
+    @since(version = 0.3.0-dev)
     record xinfo-groups-entry {
         /// The group's name.
         name: string,
@@ -1436,6 +1576,7 @@ interface types {
     }
 
     /// Information about a stream, see `xinfo-stream`.
+    @since(version = 0.3.0-dev)
     record xinfo-stream-reply {
         /// The number of entries in the stream.
         length: integer,
@@ -1460,6 +1601,7 @@ interface types {
     }
 
     /// Information about a stream, its entries and consumer groups, see `xinfo-stream-full`.
+    @since(version = 0.3.0-dev)
     record xinfo-stream-reply-full {
         /// The number of entries in the stream.
         length: integer,
@@ -1480,6 +1622,7 @@ interface types {
     }
 
     /// A consumer group of a stream, with its pending entries and consumers.
+    @since(version = 0.3.0-dev)
     record xinfo-stream-reply-full-group {
         /// The group's name.
         name: string,
@@ -1500,6 +1643,7 @@ interface types {
     }
 
     /// A consumer of a group, with its pending entries.
+    @since(version = 0.3.0-dev)
     record xinfo-stream-reply-full-consumer {
         /// The consumer's name.
         name: string,
@@ -1516,6 +1660,7 @@ interface types {
     }
 
     /// The pending entries of a consumer group, see `xpending`.
+    @since(version = 0.3.0-dev)
     record xpending-summary {
         /// The number of pending entries.
         count: integer,
@@ -1528,6 +1673,7 @@ interface types {
     }
 
     /// The pending entries of a consumer group, see `xpending-extended`.
+    @since(version = 0.3.0-dev)
     record xpending-extended-entry {
         /// The ID of the message.
         id: stream-id,
@@ -1542,6 +1688,7 @@ interface types {
     // string commands
 
     /// The expiration to set on a key, see `getex`.
+    @since(version = 0.3.0-dev)
     variant getex-ttl {
         /// Set the specified expire time, in seconds.
         ex(duration-seconds),
@@ -1556,9 +1703,11 @@ interface types {
     }
 
     /// The expiration to set on the fields, see `hgetex`.
+    @since(version = 0.3.0-dev)
     type hgetex-ttl = getex-ttl;
 
     /// The longest common subsequence of two strings, as the ranges matching in each, see `lcs-idx`.
+    @since(version = 0.3.0-dev)
     record lcs-idx-reply {
         /// The ranges that match, from the end of the strings to their start.
         matches: list<lcs-idx-match>,
@@ -1567,6 +1716,7 @@ interface types {
     }
 
     /// A part of the longest common subsequence.
+    @since(version = 0.3.0-dev)
     record lcs-idx-match {
         /// The inclusive start and end positions of the match in the first key's string.
         key1-range: tuple<integer, integer>,
@@ -1577,6 +1727,7 @@ interface types {
     }
 
     /// The condition for setting the keys, see `msetex`.
+    @since(version = 0.3.0-dev)
     variant msetex-precondition {
         /// Only set the keys if all of them do not already exist.
         nx,
@@ -1585,9 +1736,11 @@ interface types {
     }
 
     /// The expiration to set on the keys, see `msetex`.
+    @since(version = 0.3.0-dev)
     type msetex-ttl = set-ttl;
 
     /// The condition for setting a key, see `set`.
+    @since(version = 0.3.0-dev)
     variant set-precondition {
         /// Only set the key if it does not already exist.
         nx,
@@ -1600,6 +1753,7 @@ interface types {
     }
 
     /// The expiration to set on a key, see `set`.
+    @since(version = 0.3.0-dev)
     variant set-ttl {
         /// Set the specified expire time, in seconds.
         ex(duration-seconds),
@@ -1614,5 +1768,6 @@ interface types {
     }
 
     /// The expiration to set on the fields, see `hsetex`.
+    @since(version = 0.3.0-dev)
     type hsetex-ttl = set-ttl;
 }

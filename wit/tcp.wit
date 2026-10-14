@@ -5,6 +5,7 @@ interface tcp {
 
     /// A TCP connection to a Valkey server, framing the bytes it carries into RESP values in each
     /// direction.
+    @since(version = 0.3.0-dev)
     resource transport {
         /// Opens a transport to `host`, a hostname or an IP address. Each address the host resolves
         /// to is tried in turn.

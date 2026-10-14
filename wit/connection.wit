@@ -11,6 +11,7 @@
 interface connection {
     use types.{connect-opts, duration-milliseconds, error, resp-value, subscription-event, subscription-target};
 
+    @since(version = 0.3.0-dev)
     resource connection {
         /// Establishes a connection over a transport.
         ///
@@ -163,6 +164,7 @@ interface connection {
     /// Subscriptions sharing a connection may overlap, the server stays subscribed to a target while
     /// any subscription has it. The subscription stays open until it is dropped, with or without
     /// targets or streams, then it unsubscribes from its targets. It keeps its connection open.
+    @since(version = 0.3.0-dev)
     resource subscription {
         /// Subscribes to the targets, resolving once the server confirms each of them, see
         /// `subscription-event.subscribed`. Targets already subscribed to are left as they are. The
