@@ -526,6 +526,9 @@ impl Harness {
 
         let mut config = Config::new();
         config.wasm_component_model_map(true);
+        // for the sockets gate and latches
+        config.wasm_component_model_implements(true);
+        config.wasm_component_model_threading(true);
         let engine = Engine::new(&config)?;
         let component = Component::from_file(&engine, component_path(name))
             .with_context(|| format!("failed to load {name}"))?;

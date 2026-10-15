@@ -1,0 +1,34 @@
+package componentized:valkey-test;
+
+// wasi:sockets without a network, every operation succeeds, so only the gate can deny one
+let sockets = new local:test-stub-sockets {
+    ...
+};
+
+let logging = new local:dep-componentized-logging-to-stderr {
+    ...
+};
+
+// the latch under test, reading the connector config from the host
+let latch = new local:tcp-connector-latch {
+    "wasi:sockets/types@0.3.0": sockets["wasi:sockets/types@0.3.0"],
+    "wasi:logging/logging@0.1.0-draft": logging["wasi:logging/logging@0.1.0-draft"],
+    ...
+};
+
+let gate = new local:dep-componentized-sockets-gate {
+    "wasi:sockets/types@0.3.0": sockets["wasi:sockets/types@0.3.0"],
+    "wasi:sockets/ip-name-lookup@0.3.0": sockets["wasi:sockets/ip-name-lookup@0.3.0"],
+    "componentized:sockets/latch@0.1.0": latch["componentized:sockets/latch@0.1.0"],
+    "wasi:logging/logging@0.1.0-draft": logging["wasi:logging/logging@0.1.0-draft"],
+    ...
+};
+
+// the tests, their wasi:sockets from the gate
+let suite = new local:test-tcp-connector-latch-suite {
+    "wasi:sockets/types@0.3.0": gate["wasi:sockets/types@0.3.0"],
+    "wasi:sockets/ip-name-lookup@0.3.0": gate["wasi:sockets/ip-name-lookup@0.3.0"],
+    ...
+};
+
+export suite...;

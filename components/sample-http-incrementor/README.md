@@ -1,6 +1,6 @@
 # Sample HTTP incrementor
 
-Sample component that exposes wasi:http incrementing a counter based on the http path.
+Sample component that exposes `wasi:http` incrementing a counter based on the http path.
 
 
 Compose with the valkey client:

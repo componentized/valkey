@@ -1,4 +1,4 @@
-//! The tests of the commands, run inside `dep-test-commands`, composed with `commands` and
+//! The tests of the commands, run inside `test-commands-suite`, composed with `commands` and
 //! `connection` as `test-commands`. Each test plays the server over the streams of a connection,
 //! checking the command a function sends and how it converts the reply.
 //!

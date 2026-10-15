@@ -3,8 +3,10 @@ SIGN ?= true
 # append each published file and its image to this file, e.g. `gate.wasm ghcr.io/componentized/http/gate:0.1.0@sha256:...`
 PUBLISH_LOG ?=
 
-# the files that can be published, e.g. gate.wasm, published from target/components/gate/gate.wasm
-PUBLISH_FILES := interface.wasm $(foreach component,$(filter-out dep-% test-%,$(COMPONENTS)),$(component).wasm $(component).debug.wasm)
+# the files that can be published, e.g. gate.wasm, published from target/components/gate/gate.wasm.
+# Components are not published when they are pulled from elsewhere, `dep-`, built here for use by
+# other components, `internal-`, or tests, `test-`.
+PUBLISH_FILES := interface.wasm $(foreach component,$(filter-out dep-% internal-% test-%,$(COMPONENTS)),$(component).wasm $(component).debug.wasm)
 
 .PHONY: publish ## Publish each component in the target/components directory
 publish: $(addprefix publish-,$(PUBLISH_FILES))

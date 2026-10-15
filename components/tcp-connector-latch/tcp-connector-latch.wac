@@ -1,0 +1,49 @@
+package componentized:valkey;
+
+// the latch, denying an operation when any of these latches does, wasi:logging and wasi:config
+// are imported
+
+// the keys of the tcp-connector's config, and their defaults
+let tcp-connector-constants = new local:tcp-connector-constants {
+    ...
+};
+let lookup-config = new local:internal-tcp-connector-lookup-config {
+    "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
+    ...
+};
+// lookups are denied, except for the server's hostname
+let lookup-glob = new local:dep-componentized-sockets-latch-ip-name-lookup-glob {
+    "wasi:config/store@0.2.0-rc.1": lookup-config["wasi:config/store@0.2.0-rc.1"],
+    ...
+};
+// connections are denied, except to the addresses of an allowed lookup
+let connect = new local:dep-componentized-sockets-latch-deny-connect-unless-lookup-address {
+    ...
+};
+let egress-config = new local:internal-tcp-connector-egress-config {
+    "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
+    ...
+};
+// outbound traffic is denied, except to the server's port
+let cidr-egress = new local:dep-componentized-sockets-latch-cidr-egress {
+    "wasi:config/store@0.2.0-rc.1": egress-config["wasi:config/store@0.2.0-rc.1"],
+    ...
+};
+let udp = new local:dep-componentized-sockets-latch-deny-udp {
+    ...
+};
+let bind = new local:dep-componentized-sockets-latch-deny-bind {
+    ...
+};
+// asked in order until one denies, so the cheapest first, by component size as a proxy for the
+// cost of asking, each still observes every final decision
+let latch = new local:dep-componentized-sockets-latch-n5 {
+    latch0: udp["componentized:sockets/latch@0.1.0"],
+    latch1: bind["componentized:sockets/latch@0.1.0"],
+    latch2: connect["componentized:sockets/latch@0.1.0"],
+    latch3: lookup-glob["componentized:sockets/latch@0.1.0"],
+    latch4: cidr-egress["componentized:sockets/latch@0.1.0"],
+    ...
+};
+
+export latch["componentized:sockets/latch@0.1.0"];

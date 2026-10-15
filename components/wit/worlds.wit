@@ -22,9 +22,17 @@ world tcp {
 /// A connector for connections over TCP, to the server configured with wasi:config.
 world tcp-connector {
     import wasi:config/store@0.2.0-rc.1;
+    import componentized:valkey/tcp-connector-constants@0.3.0-dev;
     import componentized:valkey/tcp@0.3.0-dev;
     export componentized:valkey/connector@0.3.0-dev;
 }
+
+world tcp-connector-config {
+    import wasi:config/store@0.2.0-rc.1;
+    import componentized:valkey/tcp-connector-constants@0.3.0-dev;
+    export wasi:config/store@0.2.0-rc.1;
+}
+
 
 world as-keyvalue {
     import componentized:valkey/connector@0.3.0-dev;
@@ -47,6 +55,30 @@ world cli {
     include wasi:cli/imports@0.3.0;
     import componentized:valkey/connector@0.3.0-dev;
     export wasi:cli/run@0.3.0;
+}
+
+/// Opens a TCP connection to a host and port, and reports whether it could, e.g. to show what a
+/// gate allows.
+world tcp-probe {
+    import wasi:sockets/types@0.3.0;
+    import wasi:sockets/ip-name-lookup@0.3.0;
+    import wasi:cli/environment@0.3.0;
+    import wasi:cli/stdout@0.3.0;
+    import wasi:cli/stderr@0.3.0;
+    export wasi:cli/run@0.3.0;
+}
+
+/// wasi:sockets without a network, for tests of what a gate allows.
+world test-stub-sockets {
+    export wasi:sockets/types@0.3.0;
+    export wasi:sockets/ip-name-lookup@0.3.0;
+}
+
+/// The tests of the `tcp-connector-latch`, through a gate, over wasi:sockets without a network.
+world test-tcp-connector-latch-suite {
+    import wasi:sockets/types@0.3.0;
+    import wasi:sockets/ip-name-lookup@0.3.0;
+    export test-suite;
 }
 
 /// A suite of tests run inside a component, by the test harness, `crates/test-harness`.

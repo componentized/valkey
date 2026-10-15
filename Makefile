@@ -3,7 +3,8 @@ SHELL := /bin/bash
 export RUST_BACKTRACE ?= 1
 export WASMTIME_BACKTRACE_DETAILS ?= 1
 export WKG_CONFIG_FILE := $(abspath .config/wasm-pkg/config.toml)
-WASMTIME_RUN_FLAGS ?= -Sinherit-network -Sallow-ip-name-lookup -Sconfig -Wcomponent-model-map
+# the sockets gates of the `cli` need `implements` and `threading`
+WASMTIME_RUN_FLAGS ?= -Sinherit-network -Sallow-ip-name-lookup -Sconfig -Wcomponent-model-map -Wcomponent-model-implements -Wcomponent-model-threading
 
 # `make` without a goal runs all, otherwise the first target of an included file would run
 .DEFAULT_GOAL := all
@@ -48,7 +49,8 @@ test-valkey: components | $(call tool,wasmtime-cli)
 	until docker exec $$container valkey-cli ping > /dev/null 2>&1; do sleep 0.1; done; \
 	echo "Valkey $$(docker exec $$container valkey-server --version | sed 's/.* v=\([^ ]*\).*/\1/') on 127.0.0.1:$$port"; \
 	VALKEY_HOST=127.0.0.1 VALKEY_PORT=$$port cargo test --workspace --no-fail-fast -- --ignored with_valkey::; \
-	$(WASMTIME) run $(WASMTIME_RUN_FLAGS) -Sconfig-var=port=$$port ${COMPONENTS_DIR}/cli/cli.debug.wasm ping
+	$(WASMTIME) run $(WASMTIME_RUN_FLAGS) -Sconfig-var=port=$$port ${COMPONENTS_DIR}/cli/cli.debug.wasm ping; \
+	$(WASMTIME) run $(WASMTIME_RUN_FLAGS) -Sconfig-var=hostname=localhost -Sconfig-var=port=$$port ${COMPONENTS_DIR}/cli/cli.debug.wasm ping
 
 .PHONY: test
 test: components

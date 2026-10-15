@@ -937,7 +937,7 @@ async fn with_valkey() -> Result<(), String> {
 }
 
 wit_bindgen::generate!({
-    // `path` is relative to the manifest, `components/dep-test-commands/`
+    // `path` is relative to the manifest, `components/test-commands-suite/`
     path: "../wit",
     world: "test-commands",
     // the resp types shared by every component

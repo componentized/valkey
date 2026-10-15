@@ -5,40 +5,38 @@
 
 use componentized::valkey::connection::{ConnectOpts, Connection, DurationMilliseconds, Error};
 use componentized::valkey::tcp;
+// the keys of the config and their defaults
+use componentized::valkey::tcp_connector_constants as keys;
 use exports::componentized::valkey::connector::Guest;
 use wasi::config::store as config;
-
-const HOSTNAME_KEY: &str = "hostname";
-const HOSTNAME_DEFAULT: &str = "127.0.0.1";
-const PORT_KEY: &str = "port";
-const PORT_DEFAULT: &str = "6379";
-const USERNAME_KEY: &str = "username";
-const USERNAME_DEFAULT: &str = "default";
-const PASSWORD_KEY: &str = "password";
-const CLIENT_NAME_KEY: &str = "client-name";
-const KEEP_ALIVE_INTERVAL_MS_KEY: &str = "keep-alive-interval-ms";
 
 struct Component;
 
 impl Guest for Component {
     async fn connect() -> Result<Connection, Error> {
-        let hostname = get(HOSTNAME_KEY)?.unwrap_or(HOSTNAME_DEFAULT.to_string());
-        let port = get(PORT_KEY)?.unwrap_or(PORT_DEFAULT.to_string());
-        let port: u16 = port
-            .parse()
-            .map_err(|_| Error::Client(format!("{PORT_KEY} must be a port number: {port}")))?;
-        let auth = match get(PASSWORD_KEY)? {
+        let hostname = get(&keys::hostname_key())?.unwrap_or_else(keys::hostname_default);
+        let port = match get(&keys::port_key())? {
+            Some(port) => port.parse().map_err(|_| {
+                Error::Client(format!(
+                    "{} must be a port number: {port}",
+                    keys::port_key()
+                ))
+            })?,
+            None => keys::port_default(),
+        };
+        let auth = match get(&keys::password_key())? {
             Some(password) => {
-                let username = get(USERNAME_KEY)?.unwrap_or(USERNAME_DEFAULT.to_string());
+                let username = get(&keys::username_key())?.unwrap_or_else(keys::username_default);
                 Some((username, password))
             }
             None => None,
         };
-        let keep_alive_interval = match get(KEEP_ALIVE_INTERVAL_MS_KEY)? {
+        let keep_alive_interval = match get(&keys::keep_alive_interval_ms_key())? {
             Some(interval) => {
                 let px = interval.parse().map_err(|_| {
                     Error::Client(format!(
-                        "{KEEP_ALIVE_INTERVAL_MS_KEY} must be a number of milliseconds: {interval}"
+                        "{} must be a number of milliseconds: {interval}",
+                        keys::keep_alive_interval_ms_key()
                     ))
                 })?;
                 Some(DurationMilliseconds { px })
@@ -47,7 +45,7 @@ impl Guest for Component {
         };
         let opts = ConnectOpts {
             auth,
-            client_name: get(CLIENT_NAME_KEY)?,
+            client_name: get(&keys::client_name_key())?,
             keep_alive_interval,
         };
         tcp::connect(hostname, port, Some(opts)).await

@@ -16,7 +16,6 @@
 
 use std::cell::RefCell;
 use std::future::poll_fn;
-use std::net::IpAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -247,21 +246,15 @@ async fn connect_socket(host: &str, port: u16) -> Result<TcpSocket, Error> {
     Err(Error::Closed(Some(reason)))
 }
 
-/// The socket addresses of `host`, an IP address or a hostname to resolve.
+/// The socket addresses of `host`, an IP address or a hostname.
+///
+/// An IP address is resolved too, wasi:sockets returns it as is, so the lookup vouches for each
+/// address a socket connects to, e.g. for a gate that only allows connecting to looked up
+/// addresses.
 async fn resolve(host: &str, port: u16) -> Result<Vec<IpSocketAddress>, Error> {
-    let addresses = match host.parse() {
-        Ok(IpAddr::V4(address)) => {
-            let [a, b, c, d] = address.octets();
-            vec![IpAddress::Ipv4((a, b, c, d))]
-        }
-        Ok(IpAddr::V6(address)) => {
-            let [a, b, c, d, e, f, g, h] = address.segments();
-            vec![IpAddress::Ipv6((a, b, c, d, e, f, g, h))]
-        }
-        Err(_) => resolve_addresses(host.to_string())
-            .await
-            .map_err(|error| lookup_error(host, error))?,
-    };
+    let addresses = resolve_addresses(host.to_string())
+        .await
+        .map_err(|error| lookup_error(host, error))?;
     Ok(addresses
         .into_iter()
         .map(|address| match address {

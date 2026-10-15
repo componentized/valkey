@@ -1,0 +1,13 @@
+[package]
+name = "test-tcp-connector-latch-tests"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# only tests, the component is composed from test-tcp-connector-latch.wac
+
+[dev-dependencies]
+test-harness = { workspace = true }
+tokio = { workspace = true }
+wasmtime = { workspace = true }

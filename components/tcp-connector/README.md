@@ -1,6 +1,6 @@
 # tcp-connector
 
-A connector for connections over TCP, to the server configured with wasi:config.
+A connector for connections over TCP, to the server configured with `wasi:config`.
 
 | Key | Default | |
 | --- | --- | --- |
@@ -10,5 +10,7 @@ A connector for connections over TCP, to the server configured with wasi:config.
 | `password` | | authenticates when set |
 | `client-name` | | name of the connection, see `CLIENT SETNAME` |
 | `keep-alive-interval-ms` | | sends `PING` after this many milliseconds idle, disabled when unset or `0` |
+
+The keys and their defaults are constants, from [`tcp-connector-constants`](../tcp-connector-constants/), for the components that derive their config from the connector's.
 
 Compose with [`tcp`](../tcp/), e.g. to provide connections to [`as-keyvalue`](../as-keyvalue/).

@@ -422,24 +422,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dep-cli"
-version = "0.1.0"
-dependencies = [
- "componentized-valkey",
- "futures-channel",
- "futures-core",
- "wit-bindgen",
-]
-
-[[package]]
-name = "dep-test-commands"
-version = "0.3.0-dev"
-dependencies = [
- "componentized-valkey",
- "wit-bindgen",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -845,6 +827,30 @@ dependencies = [
  "hashbrown 0.17.0",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "internal-cli"
+version = "0.1.0"
+dependencies = [
+ "componentized-valkey",
+ "futures-channel",
+ "futures-core",
+ "wit-bindgen",
+]
+
+[[package]]
+name = "internal-tcp-connector-egress-config"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
+name = "internal-tcp-connector-lookup-config"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
 ]
 
 [[package]]
@@ -1485,6 +1491,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-commands-suite"
+version = "0.3.0-dev"
+dependencies = [
+ "componentized-valkey",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "test-harness"
 version = "0.3.0-dev"
 dependencies = [
@@ -1492,6 +1506,29 @@ dependencies = [
  "tokio",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "test-stub-sockets"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
+name = "test-tcp-connector-latch-suite"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
+name = "test-tcp-connector-latch-tests"
+version = "0.1.0"
+dependencies = [
+ "test-harness",
+ "tokio",
+ "wasmtime",
 ]
 
 [[package]]

@@ -15,12 +15,14 @@ path = "lib.rs"
 # the binaries each tool installs, the Makefile runs each by path from a variable named after it,
 # e.g. `$(WASM_TOOLS)` for `wasm-tools`
 [package.metadata.bins]
+componentized-constants-cli = ["constants"]
 wac-cli = ["wac"]
 wasm-tools = ["wasm-tools"]
 wasmtime-cli = ["wasmtime"]
 wkg = ["wkg"]
 
 [dependencies]
+componentized-constants-cli = "=0.1.1"
 wac-cli = "=0.12.0"
 wasm-tools = "=1.261.0"
 wasmtime-cli = "=49.0.2"

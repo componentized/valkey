@@ -443,7 +443,7 @@ fn indent(prefix: &str, text: &str) -> String {
 }
 
 wit_bindgen::generate!({
-    // `path` is relative to the manifest, `components/dep-cli/`
+    // `path` is relative to the manifest, `components/internal-cli/`
     path: "../wit",
     world: "cli",
     // the resp types shared by every component
