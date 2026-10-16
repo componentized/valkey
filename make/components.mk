@@ -79,5 +79,5 @@ ${WAC_DEPS_DIR}: components/wit/deps scripts/wac-deps.sh | $(call tool,wasm-tool
 
 ${COMPONENTS_DIR}/interface.wasm: wit/deps README.md | $(call tool,wkg)
 	@mkdir -p ${COMPONENTS_DIR}
-	$(WKG) build -o ${COMPONENTS_DIR}/interface.wasm
+	$(call wkg,.,build -o $(abspath ${COMPONENTS_DIR})/interface.wasm)
 	@cp README.md ${COMPONENTS_DIR}/README.md
