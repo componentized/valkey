@@ -2,13 +2,13 @@
 
 use crate::command::{IntoCommand, NonEmpty, Words};
 use crate::types::{
-    Error, FlushMode, FunctionListFunction, FunctionListLibrary, FunctionStatsEngine,
-    FunctionRestorePolicy, FunctionStatsReply, FunctionStatsRunning, RespValue, StringOrBytes,
+    ErrorCode, FlushMode, FunctionListFunction, FunctionListLibrary, FunctionRestorePolicy,
+    FunctionStatsEngine, FunctionStatsReply, FunctionStatsRunning, RespValue, StringOrBytes,
 };
 use crate::value::{Fields, FromValue};
 
 impl IntoCommand for FlushMode {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             FlushMode::Async => "ASYNC",
             FlushMode::Sync => "SYNC",
@@ -18,7 +18,7 @@ impl IntoCommand for FlushMode {
 }
 
 impl IntoCommand for FunctionRestorePolicy {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             FunctionRestorePolicy::Flush => "FLUSH",
             FunctionRestorePolicy::Append => "APPEND",
@@ -32,7 +32,7 @@ impl IntoCommand for FunctionRestorePolicy {
 pub struct KeysAndArgs(pub Option<Vec<String>>, pub Option<Vec<StringOrBytes>>);
 
 impl IntoCommand for KeysAndArgs {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         let KeysAndArgs(keys, args) = self;
         let numkeys = keys.as_ref().map_or(0, Vec::len);
         (
@@ -45,7 +45,7 @@ impl IntoCommand for KeysAndArgs {
 }
 
 impl FromValue for FunctionListFunction {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -56,7 +56,7 @@ impl FromValue for FunctionListFunction {
 }
 
 impl FromValue for FunctionListLibrary {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             library_name: fields.required("library_name")?,
@@ -69,7 +69,7 @@ impl FromValue for FunctionListLibrary {
 }
 
 impl FromValue for FunctionStatsRunning {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -80,7 +80,7 @@ impl FromValue for FunctionStatsRunning {
 }
 
 impl FromValue for FunctionStatsEngine {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             libraries_count: fields.required("libraries_count")?,
@@ -90,7 +90,7 @@ impl FromValue for FunctionStatsEngine {
 }
 
 impl FromValue for FunctionStatsReply {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             running_script: fields.required("running_script")?,

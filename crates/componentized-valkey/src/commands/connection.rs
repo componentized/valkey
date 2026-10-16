@@ -5,13 +5,13 @@ use crate::types::{
     ClientSetinfoAttr, ClientTrackingMode, ClientTrackingOptions, ClientTrackinginfoRedirect,
     ClientTrackinginfoReply, CommandDocsArgument, CommandDocsArgumentType, CommandDocsReply,
     CommandInfoReply, CommandKeySpec, CommandKeySpecBeginSearch, CommandKeySpecFindKeys,
-    CommandKeySpecKeynum, CommandKeySpecKeyword, CommandKeySpecRange, CommandListFilter, Error,
+    CommandKeySpecKeynum, CommandKeySpecKeyword, CommandKeySpecRange, CommandListFilter, ErrorCode,
     Integer, RespValue,
 };
 use crate::value::{Fields, FlatPairs, FromValue, entries, items};
 
 impl IntoCommand for ClientSetinfoAttr {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClientSetinfoAttr::LibName(name) => ("LIB-NAME", name).into_command(),
             ClientSetinfoAttr::LibVer(version) => ("LIB-VER", version).into_command(),
@@ -20,7 +20,7 @@ impl IntoCommand for ClientSetinfoAttr {
 }
 
 impl IntoCommand for ClientTrackingMode {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClientTrackingMode::Optin => "OPTIN",
             ClientTrackingMode::Optout => "OPTOUT",
@@ -31,7 +31,7 @@ impl IntoCommand for ClientTrackingMode {
 
 /// `[ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN | OPTOUT ] [ NOLOOP ]`
 impl IntoCommand for ClientTrackingOptions {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         // PREFIX before each prefix
         let prefixes = self.prefixes.map(|prefixes| {
             let prefixes = prefixes.into_iter().map(|prefix| ("PREFIX", prefix));
@@ -49,18 +49,18 @@ impl IntoCommand for ClientTrackingOptions {
 
 /// `-1` when tracking is off, `0` when not redirected, otherwise the ID of the connection.
 impl FromValue for ClientTrackinginfoRedirect {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match Integer::from_value(value)? {
             -1 => Ok(ClientTrackinginfoRedirect::NotTracking),
             0 => Ok(ClientTrackinginfoRedirect::NotRedirected),
             id if id > 0 => Ok(ClientTrackinginfoRedirect::Redirected(id)),
-            code => Err(Error::Client(format!("unexpected reply: {code}"))),
+            code => Err(ErrorCode::Client(format!("unexpected reply: {code}"))),
         }
     }
 }
 
 impl FromValue for ClientTrackinginfoReply {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             flags: fields.required("flags")?,
@@ -72,7 +72,7 @@ impl FromValue for ClientTrackinginfoReply {
 
 /// `FILTERBY 〈 MODULE module-name | ACLCAT category | PATTERN pattern 〉`
 impl IntoCommand for CommandListFilter {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         let (filter, value) = match self {
             CommandListFilter::Module(name) => ("MODULE", name),
             CommandListFilter::Aclcat(category) => ("ACLCAT", category),
@@ -86,7 +86,7 @@ impl IntoCommand for CommandListFilter {
 pub struct OnOff(pub bool);
 
 impl IntoCommand for OnOff {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         if self.0 { "ON" } else { "OFF" }.into_command()
     }
 }
@@ -96,7 +96,7 @@ impl IntoCommand for OnOff {
 pub struct CommandInfoList(pub Vec<CommandInfoReply>);
 
 impl FromValue for CommandInfoList {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut commands = vec![];
         for command in items(value)? {
             command_info(command, &mut commands)?;
@@ -107,7 +107,7 @@ impl FromValue for CommandInfoList {
 
 /// `[name, arity, flags, first-key, last-key, step, acl-categories, tips, key-specs, subcommands]`,
 /// the ACL categories since 6.0, the rest since 7.0.
-fn command_info(value: RespValue, commands: &mut Vec<CommandInfoReply>) -> Result<(), Error> {
+fn command_info(value: RespValue, commands: &mut Vec<CommandInfoReply>) -> Result<(), ErrorCode> {
     if value == RespValue::Null {
         return Ok(());
     }
@@ -115,7 +115,7 @@ fn command_info(value: RespValue, commands: &mut Vec<CommandInfoReply>) -> Resul
     let mut next = || {
         items
             .next()
-            .ok_or_else(|| Error::Client("too few items for a command".to_string()))
+            .ok_or_else(|| ErrorCode::Client("too few items for a command".to_string()))
     };
     let info = CommandInfoReply {
         name: FromValue::from_value(next()?)?,
@@ -137,7 +137,7 @@ fn command_info(value: RespValue, commands: &mut Vec<CommandInfoReply>) -> Resul
 }
 
 impl FromValue for CommandKeySpec {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         let mut begin_search: Fields = fields.required("begin_search")?;
         let mut find_keys: Fields = fields.required("find_keys")?;
@@ -151,7 +151,7 @@ impl FromValue for CommandKeySpec {
 }
 
 /// `{type, spec}`, a type this interface does not know is `unknown`.
-fn begin_search_spec(fields: &mut Fields) -> Result<CommandKeySpecBeginSearch, Error> {
+fn begin_search_spec(fields: &mut Fields) -> Result<CommandKeySpecBeginSearch, ErrorCode> {
     let kind: String = fields.required("type")?;
     let mut spec: Fields = fields.required("spec")?;
     Ok(match kind.as_str() {
@@ -165,7 +165,7 @@ fn begin_search_spec(fields: &mut Fields) -> Result<CommandKeySpecBeginSearch, E
 }
 
 /// `{type, spec}`, a type this interface does not know is `unknown`.
-fn find_keys_spec(fields: &mut Fields) -> Result<CommandKeySpecFindKeys, Error> {
+fn find_keys_spec(fields: &mut Fields) -> Result<CommandKeySpecFindKeys, ErrorCode> {
     let kind: String = fields.required("type")?;
     let mut spec: Fields = fields.required("spec")?;
     Ok(match kind.as_str() {
@@ -187,7 +187,7 @@ fn find_keys_spec(fields: &mut Fields) -> Result<CommandKeySpecFindKeys, Error> 
 pub struct CommandDocsList(pub Vec<CommandDocsReply>);
 
 impl FromValue for CommandDocsList {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut commands = vec![];
         for (name, doc) in entries::<String, Fields>(value)? {
             command_doc(name, doc, &mut commands)?;
@@ -200,7 +200,7 @@ fn command_doc(
     name: String,
     mut fields: Fields,
     commands: &mut Vec<CommandDocsReply>,
-) -> Result<(), Error> {
+) -> Result<(), ErrorCode> {
     let mut arguments = vec![];
     let nested: Option<Vec<Fields>> = fields.optional("arguments")?;
     command_arguments(nested.unwrap_or_default(), None, &mut arguments)?;
@@ -232,10 +232,10 @@ fn command_arguments(
     nested: Vec<Fields>,
     parent: Option<u32>,
     arguments: &mut Vec<CommandDocsArgument>,
-) -> Result<(), Error> {
+) -> Result<(), ErrorCode> {
     for mut fields in nested {
         let index = u32::try_from(arguments.len())
-            .map_err(|_| Error::Client("too many arguments".to_string()))?;
+            .map_err(|_| ErrorCode::Client("too many arguments".to_string()))?;
         let kind: String = fields.required("type")?;
         arguments.push(CommandDocsArgument {
             parent,

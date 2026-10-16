@@ -7,7 +7,7 @@ use test_harness::types::{
     SubscriptionTarget, UnsubscribeReason,
 };
 use test_harness::{
-    ConnectOpts, Error, Harness, RespValue, Transport, bulk, command, connect, establish,
+    ConnectOpts, ErrorCode, Harness, RespValue, Transport, bulk, command, connect, establish,
     handshake, hello_reply, ok, push, receive, resolve, strings, words,
 };
 
@@ -112,7 +112,9 @@ async fn hello_error_fails_to_establish() -> wasmtime::Result<()> {
             };
             assert_eq!(
                 error,
-                Error::Valkey("WRONGPASS invalid password".to_string())
+                ErrorCode::Server(StringOrBytes::String(
+                    "WRONGPASS invalid password".to_string()
+                ))
             );
             // the CLIENT SETINFO commands queued with HELLO, then the connection is dropped, which
             // closes the requests stream
@@ -137,10 +139,12 @@ async fn closing_before_hello_fails_to_establish() -> wasmtime::Result<()> {
         .run(async |accessor, exports| {
             let (mut transport, connection) = connect(accessor, exports, None).await?;
             transport.request().await;
-            transport.close(Err(Error::Closed(Some("connection refused".to_string()))));
+            transport.close(Err(ErrorCode::Closed(Some(
+                "connection refused".to_string(),
+            ))));
             assert_eq!(
                 resolve(accessor, connection).await?.err(),
-                Some(Error::Closed(Some("connection refused".to_string())))
+                Some(ErrorCode::Closed(Some("connection refused".to_string())))
             );
             Ok(())
         })
@@ -200,7 +204,7 @@ async fn binary_words_are_sent_as_given() -> wasmtime::Result<()> {
             let result = guest.call_emit(accessor, connection, reset).await?;
             assert_eq!(
                 result,
-                Err(Error::Client(
+                Err(ErrorCode::Client(
                     "RESET is rejected, use the connection's reset".to_string()
                 ))
             );
@@ -217,7 +221,9 @@ async fn binary_words_are_sent_as_given() -> wasmtime::Result<()> {
             let (result, ()) = tokio::join!(call, server);
             assert_eq!(
                 result?,
-                Err(Error::Valkey("ERR unknown command".to_string()))
+                Err(ErrorCode::Server(StringOrBytes::String(
+                    "ERR unknown command".to_string()
+                )))
             );
             Ok(())
         })
@@ -239,8 +245,41 @@ async fn error_replies_fail_the_exchange() -> wasmtime::Result<()> {
             let (result, ()) = tokio::join!(call, server);
             assert_eq!(
                 result?,
-                Err(Error::Valkey("ERR value is not an integer".to_string()))
+                Err(ErrorCode::Server(StringOrBytes::String(
+                    "ERR value is not an integer".to_string()
+                )))
             );
+            Ok(())
+        })
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bulk_errors_may_be_binary() -> wasmtime::Result<()> {
+    let mut harness = Harness::new("connection").await?;
+    harness
+        .run(async |accessor, exports| {
+            let guest = exports.connection();
+            let (mut transport, connection) = establish(accessor, exports).await?;
+            for (reply, expected) in [
+                // binary safe, like a bulk string
+                (
+                    b"ERR \x80".to_vec(),
+                    StringOrBytes::Bytes(b"ERR \x80".to_vec()),
+                ),
+                (
+                    b"ERR text".to_vec(),
+                    StringOrBytes::String("ERR text".to_string()),
+                ),
+            ] {
+                let call = guest.call_exchange(accessor, connection, words(&["PING"]));
+                let server = async {
+                    transport.request().await;
+                    transport.reply(RespValue::BulkError(reply));
+                };
+                let (result, ()) = tokio::join!(call, server);
+                assert_eq!(result?, Err(ErrorCode::Server(expected)));
+            }
             Ok(())
         })
         .await
@@ -364,7 +403,7 @@ async fn closing_fails_waiting_and_later_exchanges() -> wasmtime::Result<()> {
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let reset = Error::Closed(Some("connection reset".to_string()));
+            let reset = ErrorCode::Closed(Some("connection reset".to_string()));
             let call = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
             let server = async {
                 transport.request().await;
@@ -431,7 +470,7 @@ async fn commands_the_connection_manages_are_rejected() -> wasmtime::Result<()> 
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let rejected = |message: &str| Err(Error::Client(message.to_string()));
+            let rejected = |message: &str| Err(ErrorCode::Client(message.to_string()));
             let reset = "RESET is rejected, use the connection's reset";
             let hello = "HELLO is rejected, the connection sent it when it was established, see its server-properties";
             let reply = "CLIENT REPLY is rejected, every command has a reply, see the connection's emit";
@@ -446,7 +485,7 @@ async fn commands_the_connection_manages_are_rejected() -> wasmtime::Result<()> 
             let result = guest
                 .call_transaction(accessor, connection, vec![words(&["RESET"])])
                 .await?;
-            assert_eq!(result.err(), Some(Error::Client(reset.to_string())));
+            assert_eq!(result.err(), Some(ErrorCode::Client(reset.to_string())));
 
             // subscribing with exchange is allowed until the connection has a subscription
             let result = guest
@@ -641,7 +680,7 @@ async fn binary_property_names_fail_to_establish() -> wasmtime::Result<()> {
             )]));
             assert_eq!(
                 resolve(accessor, connection).await?.err(),
-                Some(Error::Client(
+                Some(ErrorCode::Client(
                     r#"unexpected property name in reply to HELLO: bulk-string<b"\x80">"#
                         .to_string()
                 ))
@@ -675,9 +714,9 @@ async fn error_replies_fail_a_subscribe() -> wasmtime::Result<()> {
             let (subscribed, got, ()) = tokio::join!(subscribe, get, server);
             assert_eq!(
                 subscribed?,
-                Err(Error::Valkey(
+                Err(ErrorCode::Server(StringOrBytes::String(
                     "NOPERM No permissions to access a channel".to_string()
-                ))
+                )))
             );
             assert_eq!(got?, Ok(bulk("1")));
             assert_eq!(
@@ -762,7 +801,9 @@ async fn reset_closes_the_connection_when_hello_fails() -> wasmtime::Result<()> 
         .run(async |accessor, exports| {
             let guest = exports.connection();
             let (mut transport, connection) = establish(accessor, exports).await?;
-            let wrongpass = Error::Valkey("WRONGPASS invalid username-password pair".to_string());
+            let wrongpass = ErrorCode::Server(StringOrBytes::String(
+                "WRONGPASS invalid username-password pair".to_string(),
+            ));
             let reset = guest.call_reset(accessor, connection);
             let get = guest.call_exchange(accessor, connection, words(&["GET", "a"]));
             let server = async {
@@ -809,9 +850,11 @@ async fn exchange_all_sends_the_commands_together() -> wasmtime::Result<()> {
             assert_eq!(
                 results?,
                 vec![
-                    Err(Error::Valkey("ERR oops".to_string())),
+                    Err(ErrorCode::Server(StringOrBytes::String(
+                        "ERR oops".to_string()
+                    ))),
                     // an empty command fails in its place, the others are sent
-                    Err(Error::Client(
+                    Err(ErrorCode::Client(
                         "a command requires at least one word".to_string()
                     )),
                     Ok(bulk("1")),
@@ -902,7 +945,9 @@ async fn transactions_wrap_the_commands_in_multi_and_exec() -> wasmtime::Result<
             let (result, ()) = tokio::join!(call, server);
             assert_eq!(
                 result?,
-                Err(Error::Valkey("ERR unknown command 'NOPE'".to_string()))
+                Err(ErrorCode::Server(StringOrBytes::String(
+                    "ERR unknown command 'NOPE'".to_string()
+                )))
             );
 
             // an empty command fails before MULTI is sent
@@ -911,7 +956,7 @@ async fn transactions_wrap_the_commands_in_multi_and_exec() -> wasmtime::Result<
                 .await?;
             assert_eq!(
                 result,
-                Err(Error::Client(
+                Err(ErrorCode::Client(
                     "a command requires at least one word".to_string()
                 ))
             );
@@ -950,7 +995,9 @@ async fn watch_and_unwatch() -> wasmtime::Result<()> {
             let result = guest.call_watch(accessor, connection, vec![]).await?;
             assert_eq!(
                 result,
-                Err(Error::Client("keys requires at least one item".to_string()))
+                Err(ErrorCode::Client(
+                    "keys requires at least one item".to_string()
+                ))
             );
             Ok(())
         })
@@ -998,7 +1045,9 @@ async fn mixed_kinds_are_subscribed_with_a_command_each() -> wasmtime::Result<()
             let (result, ()) = tokio::join!(call, server);
             assert_eq!(
                 result?,
-                Err(Error::Valkey("PSUBSCRIBE: NOPERM no patterns".to_string()))
+                Err(ErrorCode::Server(StringOrBytes::String(
+                    "PSUBSCRIBE: NOPERM no patterns".to_string()
+                )))
             );
             for target in [channel("news"), channel("sports"), shardchannel("orders")] {
                 assert_eq!(
@@ -1179,7 +1228,7 @@ async fn targets_end_by_the_server_reset_and_closing() -> wasmtime::Result<()> {
             );
 
             // closing the connection closes the stream with the error
-            let reason = Error::Closed(Some("connection reset".to_string()));
+            let reason = ErrorCode::Closed(Some("connection reset".to_string()));
             transport.close(Err(reason.clone()));
             assert_eq!(events.recv().await, None);
             assert_eq!(resolve(accessor, ended).await?, Err(reason));
@@ -1210,7 +1259,7 @@ mod with_valkey {
         exports: &Exports,
         connection: ResourceAny,
         command: &[&str],
-    ) -> wasmtime::Result<Result<RespValue, Error>> {
+    ) -> wasmtime::Result<Result<RespValue, ErrorCode>> {
         exports
             .connection()
             .call_exchange(accessor, connection, words(command))
@@ -1440,8 +1489,8 @@ mod with_valkey {
                     let result = subscriptions
                         .call_subscribe(accessor, subscription, targets)
                         .await?;
-                    let Err(Error::Valkey(message)) = result else {
-                        wasmtime::bail!("expected a valkey error, got {result:?}");
+                    let Err(ErrorCode::Server(StringOrBytes::String(message))) = result else {
+                        wasmtime::bail!("expected a server error, got {result:?}");
                     };
                     assert!(
                         message.starts_with("PSUBSCRIBE: NOPERM")
@@ -1564,8 +1613,8 @@ mod with_valkey {
                     words(&["SET", "t:conn:leak", "1"]),
                 );
                 let (reset, set) = tokio::join!(reset, set);
-                let wrongpass = |result: &Result<(), Error>| {
-                    matches!(result, Err(Error::Valkey(message)) if message.starts_with("WRONGPASS"))
+                let wrongpass = |result: &Result<(), ErrorCode>| {
+                    matches!(result, Err(ErrorCode::Server(StringOrBytes::String(message))) if message.starts_with("WRONGPASS"))
                 };
                 assert!(wrongpass(&reset?), "the reset fails");
                 assert!(wrongpass(&set?.map(|_| ())), "the command after it fails");
@@ -1622,7 +1671,7 @@ mod with_valkey {
                 while events.recv().await.is_some() {}
                 assert!(matches!(
                     resolve(accessor, ended).await?,
-                    Err(Error::Closed(_))
+                    Err(ErrorCode::Closed(_))
                 ));
                 assert_eq!(
                     subscriptions.call_targets(accessor, subscription).await?,
@@ -1632,7 +1681,7 @@ mod with_valkey {
                 let result = subscriptions
                     .call_subscribe(accessor, subscription, vec![channel("t:conn:k2")])
                     .await?;
-                assert!(matches!(result, Err(Error::Closed(_))));
+                assert!(matches!(result, Err(ErrorCode::Closed(_))));
                 Ok(())
             })
             .await
@@ -1653,7 +1702,7 @@ mod minimal {
                 let result = guest.call_subscription(accessor, connection).await?;
                 assert_eq!(
                     result.err(),
-                    Some(Error::Client(
+                    Some(ErrorCode::Client(
                         "subscriptions are not supported by this build of the connection, push messages arrive in dead-letters"
                             .to_string()
                     ))

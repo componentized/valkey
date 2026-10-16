@@ -1,7 +1,7 @@
 /// A transport for connections over wasi:sockets TCP.
 interface tcp {
     @since(version = 0.3.0-dev)
-    use types.{connect-opts, error, resp-value};
+    use types.{connect-opts, error-code, resp-value};
     @since(version = 0.3.0-dev)
     use connection.{connection};
 
@@ -12,7 +12,7 @@ interface tcp {
         /// Opens a transport to `host`, a hostname or an IP address. Each address the host resolves
         /// to is tried in turn.
         @since(version = 0.3.0-dev)
-        open: static async func(host: string, port: u16) -> result<transport, error>;
+        open: static async func(host: string, port: u16) -> result<transport, error-code>;
 
         /// Writes each value from `requests` to the server, in order.
         ///
@@ -20,7 +20,7 @@ interface tcp {
         /// socket. The future resolves once every value is written, or with the error that stopped
         /// writing.
         @since(version = 0.3.0-dev)
-        send: func(requests: stream<resp-value>) -> future<result<_, error>>;
+        send: func(requests: stream<resp-value>) -> future<result<_, error-code>>;
 
         /// The values the server sends, in order.
         ///
@@ -28,12 +28,12 @@ interface tcp {
         /// closes the socket, the future resolves to `ok` for a graceful close or to the error
         /// otherwise.
         @since(version = 0.3.0-dev)
-        receive: func() -> tuple<stream<resp-value>, future<result<_, error>>>;
+        receive: func() -> tuple<stream<resp-value>, future<result<_, error-code>>>;
     }
 
     /// Opens a transport and establishes a connection over it with `opts`, see `connection.new`.
     ///
     /// The connection keeps the transport alive.
     @since(version = 0.3.0-dev)
-    connect: async func(host: string, port: u16, opts: option<connect-opts>) -> result<connection, error>;
+    connect: async func(host: string, port: u16, opts: option<connect-opts>) -> result<connection, error-code>;
 }

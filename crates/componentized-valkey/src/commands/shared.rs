@@ -2,7 +2,7 @@
 
 use crate::command::{IntoCommand, Words};
 use crate::types::{
-    Cursor, DurationMilliseconds, DurationSeconds, Error, ExpiretimeReply, Integer, Limit,
+    Cursor, DurationMilliseconds, DurationSeconds, ErrorCode, ExpiretimeReply, Integer, Limit,
     PexpiretimeReply, PttlReply, RespValue, SortOrder, TtlMode, TtlReply, UnixTimeMilliseconds,
     UnixTimeSeconds,
 };
@@ -10,56 +10,56 @@ use crate::value::FromValue;
 
 /// Whole seconds, e.g. for EX.
 impl IntoCommand for DurationSeconds {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         self.ex.into_command()
     }
 }
 
 /// Whole seconds, never negative.
 impl FromValue for DurationSeconds {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         u64::from_value(value).map(|ex| DurationSeconds { ex })
     }
 }
 
 /// Whole milliseconds, e.g. for PX.
 impl IntoCommand for DurationMilliseconds {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         self.px.into_command()
     }
 }
 
 /// Whole milliseconds, never negative.
 impl FromValue for DurationMilliseconds {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         u64::from_value(value).map(|px| DurationMilliseconds { px })
     }
 }
 
 /// Whole seconds since the Unix epoch, e.g. for EXAT.
 impl IntoCommand for UnixTimeSeconds {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         self.exat.into_command()
     }
 }
 
 /// Whole seconds since the Unix epoch.
 impl FromValue for UnixTimeSeconds {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         Integer::from_value(value).map(|exat| UnixTimeSeconds { exat })
     }
 }
 
 /// Whole milliseconds since the Unix epoch, e.g. for PXAT.
 impl IntoCommand for UnixTimeMilliseconds {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         self.pxat.into_command()
     }
 }
 
 /// Whole milliseconds since the Unix epoch.
 impl FromValue for UnixTimeMilliseconds {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         Integer::from_value(value).map(|pxat| UnixTimeMilliseconds { pxat })
     }
 }
@@ -68,7 +68,7 @@ impl FromValue for UnixTimeMilliseconds {
 pub struct DecimalSeconds(pub DurationMilliseconds);
 
 impl IntoCommand for DecimalSeconds {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         let milliseconds = self.0.px;
         format!("{}.{:03}", milliseconds / 1_000, milliseconds % 1_000).into_command()
     }
@@ -76,10 +76,10 @@ impl IntoCommand for DecimalSeconds {
 
 /// `0` to start, failing to resume from `0`, which would restart the scan.
 impl IntoCommand for Cursor {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             Cursor::Start => "0".into_command(),
-            Cursor::Resume(cursor) if cursor == "0" => Err(Error::Client(
+            Cursor::Resume(cursor) if cursor == "0" => Err(ErrorCode::Client(
                 "resume requires the cursor a scan returned, use start to begin a scan".to_string(),
             )),
             Cursor::Resume(cursor) => cursor.into_command(),
@@ -91,7 +91,7 @@ impl IntoCommand for Cursor {
 pub struct NextCursor(pub Option<Cursor>);
 
 impl FromValue for NextCursor {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let cursor = String::from_value(value)?;
         Ok(NextCursor(
             (cursor != "0").then_some(Cursor::Resume(cursor)),
@@ -100,7 +100,7 @@ impl FromValue for NextCursor {
 }
 
 impl IntoCommand for TtlMode {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             TtlMode::Nx => "NX",
             TtlMode::Xx => "XX",
@@ -117,7 +117,7 @@ macro_rules! from_value_ttl_replies {
     ($($variant:ident($time:ident) => $case:ident),*) => {
         $(
             impl FromValue for $variant {
-                fn from_value(value: RespValue) -> Result<Self, Error> {
+                fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
                     match value {
                         RespValue::Integer(-2) => Ok($variant::DoesNotExist),
                         RespValue::Integer(-1) => Ok($variant::NoExpiration),
@@ -138,13 +138,13 @@ from_value_ttl_replies!(
 
 /// `LIMIT offset count`
 impl IntoCommand for Limit {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         ("LIMIT", self.offset, self.count).into_command()
     }
 }
 
 impl IntoCommand for SortOrder {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             SortOrder::Asc => "ASC",
             SortOrder::Desc => "DESC",

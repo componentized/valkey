@@ -19,15 +19,15 @@ use std::future::poll_fn;
 use std::pin::Pin;
 use std::rc::Rc;
 
-use componentized::valkey::connection::{ConnectOpts, Connection, Error};
+use componentized::valkey::connection::{ConnectOpts, Connection, ErrorCode};
 use componentized_valkey::types::RespValue;
 use exports::componentized::valkey::tcp::{Guest, GuestTransport, Transport};
 use futures_channel::{mpsc, oneshot};
 use futures_core::Stream;
 use wasi::sockets::ip_name_lookup::{ErrorCode as LookupErrorCode, resolve_addresses};
 use wasi::sockets::types::{
-    ErrorCode, IpAddress, IpAddressFamily, IpSocketAddress, Ipv4SocketAddress, Ipv6SocketAddress,
-    TcpSocket,
+    ErrorCode as SocketErrorCode, IpAddress, IpAddressFamily, IpSocketAddress, Ipv4SocketAddress,
+    Ipv6SocketAddress, TcpSocket,
 };
 use wit_bindgen::{
     FutureReader, FutureWriter, StreamReader, StreamResult, StreamWriter, spawn_local,
@@ -45,7 +45,7 @@ impl Guest for Component {
         host: String,
         port: u16,
         opts: Option<ConnectOpts>,
-    ) -> Result<Connection, Error> {
+    ) -> Result<Connection, ErrorCode> {
         let transport = open(&host, port).await?;
         let (replies, closed) = transport.receive();
         let (requests, connection) = Connection::new(replies, closed, opts).await;
@@ -60,18 +60,18 @@ pub struct TransportImpl {
     requests: RefCell<
         Option<(
             oneshot::Sender<StreamReader<RespValue>>,
-            FutureReader<Result<(), Error>>,
+            FutureReader<Result<(), ErrorCode>>,
         )>,
     >,
-    replies: RefCell<Option<(StreamReader<RespValue>, FutureReader<Result<(), Error>>)>>,
+    replies: RefCell<Option<(StreamReader<RespValue>, FutureReader<Result<(), ErrorCode>>)>>,
     /// Futures for the resolver to fail, a sync method can't write them itself.
-    failures: mpsc::UnboundedSender<(FutureWriter<Result<(), Error>>, &'static str)>,
+    failures: mpsc::UnboundedSender<(FutureWriter<Result<(), ErrorCode>>, &'static str)>,
 }
 
 impl TransportImpl {
     /// A future the resolver fails with `message`.
-    fn failed(&self, message: &'static str) -> FutureReader<Result<(), Error>> {
-        let (writer, reader) = wit_future::new(|| Err(Error::Closed(None)));
+    fn failed(&self, message: &'static str) -> FutureReader<Result<(), ErrorCode>> {
+        let (writer, reader) = wit_future::new(|| Err(ErrorCode::Closed(None)));
         // a transport whose resolver stopped drops the writer, resolving it to the default
         let _ = self.failures.unbounded_send((writer, message));
         reader
@@ -79,11 +79,11 @@ impl TransportImpl {
 }
 
 impl GuestTransport for TransportImpl {
-    async fn open(host: String, port: u16) -> Result<Transport, Error> {
+    async fn open(host: String, port: u16) -> Result<Transport, ErrorCode> {
         Ok(Transport::new(open(&host, port).await?))
     }
 
-    fn send(&self, requests: StreamReader<RespValue>) -> FutureReader<Result<(), Error>> {
+    fn send(&self, requests: StreamReader<RespValue>) -> FutureReader<Result<(), ErrorCode>> {
         match self.requests.borrow_mut().take() {
             Some((pump, sent)) => {
                 // the pump only stops waiting for the requests once the socket is closed
@@ -94,7 +94,7 @@ impl GuestTransport for TransportImpl {
         }
     }
 
-    fn receive(&self) -> (StreamReader<RespValue>, FutureReader<Result<(), Error>>) {
+    fn receive(&self) -> (StreamReader<RespValue>, FutureReader<Result<(), ErrorCode>>) {
         self.replies.borrow_mut().take().unwrap_or_else(|| {
             let (_, replies) = wit_stream::new();
             (replies, self.failed("receive may be called at most once"))
@@ -104,15 +104,17 @@ impl GuestTransport for TransportImpl {
 
 /// Fail each future handed over, until the transport is dropped.
 async fn resolve_failures(
-    mut failures: mpsc::UnboundedReceiver<(FutureWriter<Result<(), Error>>, &'static str)>,
+    mut failures: mpsc::UnboundedReceiver<(FutureWriter<Result<(), ErrorCode>>, &'static str)>,
 ) {
     while let Some((writer, message)) = poll_fn(|cx| Pin::new(&mut failures).poll_next(cx)).await {
-        let _ = writer.write(Err(Error::Client(message.to_string()))).await;
+        let _ = writer
+            .write(Err(ErrorCode::Client(message.to_string())))
+            .await;
     }
 }
 
 /// Connect a socket to `host` and start its pumps.
-async fn open(host: &str, port: u16) -> Result<TransportImpl, Error> {
+async fn open(host: &str, port: u16) -> Result<TransportImpl, ErrorCode> {
     let socket = Rc::new(connect_socket(host, port).await?);
 
     let (bytes_out, bytes_out_reader) = wit_stream::new();
@@ -121,8 +123,8 @@ async fn open(host: &str, port: u16) -> Result<TransportImpl, Error> {
 
     let (replies_writer, replies) = wit_stream::new();
     // the defaults are only written if a pump stops without a result, the socket closed under it
-    let (closed_writer, closed) = wit_future::new(|| Err(Error::Closed(None)));
-    let (sent_writer, sent) = wit_future::new(|| Err(Error::Closed(None)));
+    let (closed_writer, closed) = wit_future::new(|| Err(ErrorCode::Closed(None)));
+    let (sent_writer, sent) = wit_future::new(|| Err(ErrorCode::Closed(None)));
     let (requests_tx, requests_rx) = oneshot::channel();
     let (failures_tx, failures_rx) = mpsc::unbounded();
 
@@ -154,9 +156,9 @@ async fn open(host: &str, port: u16) -> Result<TransportImpl, Error> {
 async fn receive_pump(
     _socket: Rc<TcpSocket>,
     mut bytes: StreamReader<u8>,
-    received: FutureReader<Result<(), ErrorCode>>,
+    received: FutureReader<Result<(), SocketErrorCode>>,
     mut replies: StreamWriter<RespValue>,
-    closed: FutureWriter<Result<(), Error>>,
+    closed: FutureWriter<Result<(), ErrorCode>>,
 ) {
     // bytes read from the socket that are not part of a whole value yet
     let mut buffered: Vec<u8> = Vec::new();
@@ -176,11 +178,11 @@ async fn receive_pump(
                                 break 'pump Ok(());
                             }
                         }
-                        Err(error) => break 'pump Err(Error::Resp(error)),
+                        Err(error) => break 'pump Err(ErrorCode::Resp(error)),
                     }
                 }
                 Ok(None) => break,
-                Err(error) => break 'pump Err(Error::Resp(error)),
+                Err(error) => break 'pump Err(ErrorCode::Resp(error)),
             }
         }
         buffered.drain(..start);
@@ -203,8 +205,8 @@ async fn send_pump(
     _socket: Rc<TcpSocket>,
     requests: oneshot::Receiver<StreamReader<RespValue>>,
     mut bytes: StreamWriter<u8>,
-    socket_sent: FutureReader<Result<(), ErrorCode>>,
-    sent: FutureWriter<Result<(), Error>>,
+    socket_sent: FutureReader<Result<(), SocketErrorCode>>,
+    sent: FutureWriter<Result<(), ErrorCode>>,
 ) {
     // a transport dropped without sending half-closes the socket
     let Ok(mut requests) = requests.await else {
@@ -226,7 +228,7 @@ async fn send_pump(
 }
 
 /// Connect a socket to the first address of `host` that accepts it.
-async fn connect_socket(host: &str, port: u16) -> Result<TcpSocket, Error> {
+async fn connect_socket(host: &str, port: u16) -> Result<TcpSocket, ErrorCode> {
     let mut last_error = None;
     for address in resolve(host, port).await? {
         let family = match address {
@@ -243,7 +245,7 @@ async fn connect_socket(host: &str, port: u16) -> Result<TcpSocket, Error> {
         Some(error) => format!("unable to connect to {host}:{port}: {error:?}"),
         None => format!("unable to connect to {host}:{port}: no addresses"),
     };
-    Err(Error::Closed(Some(reason)))
+    Err(ErrorCode::Closed(Some(reason)))
 }
 
 /// The socket addresses of `host`, an IP address or a hostname.
@@ -251,7 +253,7 @@ async fn connect_socket(host: &str, port: u16) -> Result<TcpSocket, Error> {
 /// An IP address is resolved too, wasi:sockets returns it as is, so the lookup vouches for each
 /// address a socket connects to, e.g. for a gate that only allows connecting to looked up
 /// addresses.
-async fn resolve(host: &str, port: u16) -> Result<Vec<IpSocketAddress>, Error> {
+async fn resolve(host: &str, port: u16) -> Result<Vec<IpSocketAddress>, ErrorCode> {
     let addresses = resolve_addresses(host.to_string())
         .await
         .map_err(|error| lookup_error(host, error))?;
@@ -269,12 +271,12 @@ async fn resolve(host: &str, port: u16) -> Result<Vec<IpSocketAddress>, Error> {
         .collect())
 }
 
-fn socket_error(error: ErrorCode) -> Error {
-    Error::Closed(Some(format!("{error:?}")))
+fn socket_error(error: SocketErrorCode) -> ErrorCode {
+    ErrorCode::Closed(Some(format!("{error:?}")))
 }
 
-fn lookup_error(host: &str, error: LookupErrorCode) -> Error {
-    Error::Closed(Some(format!("unable to resolve {host}: {error:?}")))
+fn lookup_error(host: &str, error: LookupErrorCode) -> ErrorCode {
+    ErrorCode::Closed(Some(format!("unable to resolve {host}: {error:?}")))
 }
 
 wit_bindgen::generate!({

@@ -3,7 +3,7 @@
 // the test harness provides a main
 #![cfg_attr(not(test), no_main)]
 
-use componentized::valkey::connection::{ConnectOpts, Connection, DurationMilliseconds, Error};
+use componentized::valkey::connection::{ConnectOpts, Connection, DurationMilliseconds, ErrorCode};
 use componentized::valkey::tcp;
 // the keys of the config and their defaults
 use componentized::valkey::tcp_connector_constants as keys;
@@ -13,11 +13,11 @@ use wasi::config::store as config;
 struct Component;
 
 impl Guest for Component {
-    async fn connect() -> Result<Connection, Error> {
+    async fn connect() -> Result<Connection, ErrorCode> {
         let hostname = get(&keys::hostname_key())?.unwrap_or_else(keys::hostname_default);
         let port = match get(&keys::port_key())? {
             Some(port) => port.parse().map_err(|_| {
-                Error::Client(format!(
+                ErrorCode::Client(format!(
                     "{} must be a port number: {port}",
                     keys::port_key()
                 ))
@@ -34,7 +34,7 @@ impl Guest for Component {
         let keep_alive_interval = match get(&keys::keep_alive_interval_ms_key())? {
             Some(interval) => {
                 let px = interval.parse().map_err(|_| {
-                    Error::Client(format!(
+                    ErrorCode::Client(format!(
                         "{} must be a number of milliseconds: {interval}",
                         keys::keep_alive_interval_ms_key()
                     ))
@@ -52,10 +52,12 @@ impl Guest for Component {
     }
 }
 
-fn get(key: &str) -> Result<Option<String>, Error> {
+fn get(key: &str) -> Result<Option<String>, ErrorCode> {
     config::get(key).map_err(|error| match error {
-        config::Error::Upstream(message) => Error::Client(format!("config upstream: {message}")),
-        config::Error::Io(message) => Error::Client(format!("config io: {message}")),
+        config::Error::Upstream(message) => {
+            ErrorCode::Client(format!("config upstream: {message}"))
+        }
+        config::Error::Io(message) => ErrorCode::Client(format!("config io: {message}")),
     })
 }
 

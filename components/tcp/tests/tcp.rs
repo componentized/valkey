@@ -2,7 +2,7 @@
 //! played by the test over TCP.
 
 use test_harness::{
-    Client, Ctx, Error, Exports, Harness, RespValue, Server, bulk, command, hello_reply, ok,
+    Client, Ctx, ErrorCode, Exports, Harness, RespValue, Server, bulk, command, hello_reply, ok,
     resolve, setinfo, words,
 };
 use wasmtime::component::{Accessor, ResourceAny};
@@ -140,7 +140,7 @@ async fn server_closing_fails_exchanges() -> wasmtime::Result<()> {
                 .call_exchange(accessor, connection, words(&["PING"]))
                 .await?;
             assert!(
-                matches!(result, Err(Error::Closed(_))),
+                matches!(result, Err(ErrorCode::Closed(_))),
                 "expected a closed error, got {result:?}"
             );
             Ok(())
@@ -159,7 +159,7 @@ async fn refused_connections_fail_to_connect() -> wasmtime::Result<()> {
                 .tcp()
                 .call_connect(accessor, "127.0.0.1".to_string(), port, None)
                 .await?;
-            let Err(Error::Closed(Some(reason))) = result else {
+            let Err(ErrorCode::Closed(Some(reason))) = result else {
                 panic!("expected a closed error, got {result:?}");
             };
             assert!(
@@ -203,7 +203,7 @@ async fn transports_wire_to_connections() -> wasmtime::Result<()> {
             let (_, again) = transport.call_receive(accessor, transport_handle).await?;
             assert!(matches!(
                 resolve(accessor, again).await?,
-                Err(Error::Client(_))
+                Err(ErrorCode::Client(_))
             ));
             Ok(())
         })

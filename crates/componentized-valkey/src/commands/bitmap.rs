@@ -3,12 +3,12 @@
 use crate::command::{IntoCommand, Words};
 use crate::types::{
     BitRange, BitfieldEncoding, BitfieldGet, BitfieldIncrby, BitfieldOffset, BitfieldOperation,
-    BitfieldOverflow, BitfieldSet, Error,
+    BitfieldOverflow, BitfieldSet, ErrorCode,
 };
 
 /// `start [ end [ BIT ] ]`, BYTE is the default, and left out for servers before it existed.
 impl IntoCommand for BitRange {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             BitRange::From(start) => start.into_command(),
             BitRange::Bytes((start, end)) => (start, end).into_command(),
@@ -19,14 +19,14 @@ impl IntoCommand for BitRange {
 
 /// `i1` to `i64`, `u1` to `u63`, other widths fail.
 impl IntoCommand for BitfieldEncoding {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             BitfieldEncoding::Signed(width @ 1..=64) => format!("i{width}").into_command(),
             BitfieldEncoding::Unsigned(width @ 1..=63) => format!("u{width}").into_command(),
-            BitfieldEncoding::Signed(width) => Err(Error::Client(format!(
+            BitfieldEncoding::Signed(width) => Err(ErrorCode::Client(format!(
                 "a signed bitfield is 1 to 64 bits wide, not {width}"
             ))),
-            BitfieldEncoding::Unsigned(width) => Err(Error::Client(format!(
+            BitfieldEncoding::Unsigned(width) => Err(ErrorCode::Client(format!(
                 "an unsigned bitfield is 1 to 63 bits wide, not {width}"
             ))),
         }
@@ -35,7 +35,7 @@ impl IntoCommand for BitfieldEncoding {
 
 /// The offset in bits, or `#` and the index of a field of the encoding's width.
 impl IntoCommand for BitfieldOffset {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             BitfieldOffset::Bit(offset) => offset.into_command(),
             BitfieldOffset::Field(field) => format!("#{field}").into_command(),
@@ -44,7 +44,7 @@ impl IntoCommand for BitfieldOffset {
 }
 
 impl IntoCommand for BitfieldOverflow {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         let overflow = match self {
             BitfieldOverflow::Wrap => "WRAP",
             BitfieldOverflow::Sat => "SAT",
@@ -56,26 +56,26 @@ impl IntoCommand for BitfieldOverflow {
 
 /// Also `BitfieldRoGet`, the same type.
 impl IntoCommand for BitfieldGet {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         ("GET", self.encoding, self.offset).into_command()
     }
 }
 
 impl IntoCommand for BitfieldSet {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         ("SET", self.encoding, self.offset, self.value).into_command()
     }
 }
 
 impl IntoCommand for BitfieldIncrby {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         ("INCRBY", self.encoding, self.offset, self.increment).into_command()
     }
 }
 
 /// A write is preceded by its overflow mode, when given.
 impl IntoCommand for BitfieldOperation {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             BitfieldOperation::Get(get) => get.into_command(),
             BitfieldOperation::Set((overflow, set)) => (overflow, set).into_command(),
@@ -88,7 +88,7 @@ impl IntoCommand for BitfieldOperation {
 pub struct Bit(pub bool);
 
 impl IntoCommand for Bit {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         if self.0 { "1" } else { "0" }.into_command()
     }
 }

@@ -1,25 +1,25 @@
 //! Converting a reply into Rust values, the impls for Rust's own types and the helpers the commands
 //! share. The impls for the package's types are in [`crate::commands`].
 
-use crate::types::{Double, Error, Integer, RespNestedValue, RespValue, StringOrBytes};
+use crate::types::{Double, ErrorCode, Integer, RespNestedValue, RespValue, StringOrBytes};
 
 use wit_bindgen::rt::Map;
 
 /// Converts a reply into a Rust type, e.g. `Option<String>` for a bulk string or null.
 pub trait FromValue: Sized {
-    fn from_value(value: RespValue) -> Result<Self, Error>;
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode>;
 }
 
 /// The reply itself, e.g. for a field of mixed types.
 impl FromValue for RespValue {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         Ok(value)
     }
 }
 
 /// A simple string `OK`.
 impl FromValue for () {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match &value {
             RespValue::String(reply) if reply == "OK" => Ok(()),
             _ => Err(unexpected(&value)),
@@ -28,7 +28,7 @@ impl FromValue for () {
 }
 
 impl FromValue for Integer {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::Integer(value) => Ok(value),
             value => Err(unexpected(&value)),
@@ -38,7 +38,7 @@ impl FromValue for Integer {
 
 /// A double, or a bulk string holding one, e.g. the reply of INCRBYFLOAT, even with RESP3.
 impl FromValue for Double {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::Double(value) => Ok(value),
             RespValue::BulkString(bytes) => std::str::from_utf8(&bytes)
@@ -46,7 +46,7 @@ impl FromValue for Double {
                 .and_then(|text| text.parse().ok())
                 .ok_or_else(|| {
                     let reply = RespValue::BulkString(bytes);
-                    Error::Client(format!("unexpected reply, not a double: {reply}"))
+                    ErrorCode::Client(format!("unexpected reply, not a double: {reply}"))
                 }),
             value => Err(unexpected(&value)),
         }
@@ -55,16 +55,16 @@ impl FromValue for Double {
 
 /// A non-negative integer.
 impl FromValue for u64 {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let value = Integer::from_value(value)?;
         u64::try_from(value)
-            .map_err(|_| Error::Client(format!("unexpected negative reply: {value}")))
+            .map_err(|_| ErrorCode::Client(format!("unexpected negative reply: {value}")))
     }
 }
 
 /// An integer `0` or `1`, or a boolean.
 impl FromValue for bool {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::Integer(0) => Ok(false),
             RespValue::Integer(1) => Ok(true),
@@ -76,11 +76,11 @@ impl FromValue for bool {
 
 /// A bulk, simple or verbatim string.
 impl FromValue for String {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::BulkString(bytes) => String::from_utf8(bytes).map_err(|error| {
                 let reply = RespValue::BulkString(error.into_bytes());
-                Error::Client(format!("unexpected reply, not UTF-8: {reply}"))
+                ErrorCode::Client(format!("unexpected reply, not UTF-8: {reply}"))
             }),
             RespValue::String(value) | RespValue::VerbatimString((_, value)) => Ok(value),
             value => Err(unexpected(&value)),
@@ -91,7 +91,7 @@ impl FromValue for String {
 /// A bulk, simple or verbatim string, a string when it is UTF-8, otherwise its bytes, e.g. a value
 /// of GET.
 impl FromValue for StringOrBytes {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::BulkString(bytes) => Ok(StringOrBytes::from_bytes(bytes)),
             RespValue::String(text) | RespValue::VerbatimString((_, text)) => {
@@ -107,7 +107,7 @@ impl FromValue for StringOrBytes {
 pub struct Binary(pub Vec<u8>);
 
 impl FromValue for Binary {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::BulkString(bytes) => Ok(Binary(bytes)),
             value => Err(unexpected(&value)),
@@ -117,7 +117,7 @@ impl FromValue for Binary {
 
 /// Null, or a value.
 impl<T: FromValue> FromValue for Option<T> {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::Null => Ok(None),
             value => T::from_value(value).map(Some),
@@ -127,7 +127,7 @@ impl<T: FromValue> FromValue for Option<T> {
 
 /// An array, or a set.
 impl<T: FromValue> FromValue for Vec<T> {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         items(value)?.into_iter().map(T::from_value).collect()
     }
 }
@@ -138,10 +138,10 @@ macro_rules! from_value_tuples {
         $(
             impl<$($item: FromValue),+> FromValue for ($($item,)+) {
                 #[allow(non_snake_case)]
-                fn from_value(value: RespValue) -> Result<Self, Error> {
+                fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
                     match <[RespValue; $len]>::try_from(items(value)?) {
                         Ok([$($item),+]) => Ok(($($item::from_value($item)?,)+)),
-                        Err(items) => Err(Error::Client(format!(
+                        Err(items) => Err(ErrorCode::Client(format!(
                             "unexpected number of items, expected {}: {}",
                             $len,
                             items.len()
@@ -157,7 +157,7 @@ from_value_tuples!((2; A, B), (3; A, B, C), (4; A, B, C, D));
 
 /// A map, or a flat array of keys and values.
 impl<K: FromValue + Ord, V: FromValue> FromValue for Map<K, V> {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         Ok(entries(value)?.into_iter().collect())
     }
 }
@@ -168,14 +168,14 @@ impl<K: FromValue + Ord, V: FromValue> FromValue for Map<K, V> {
 pub struct Fields(Vec<(String, RespValue)>);
 
 impl FromValue for Fields {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         entries(value).map(Fields)
     }
 }
 
 impl Fields {
     /// Take the named field, if present.
-    pub fn optional<T: FromValue>(&mut self, name: &str) -> Result<Option<T>, Error> {
+    pub fn optional<T: FromValue>(&mut self, name: &str) -> Result<Option<T>, ErrorCode> {
         match self.0.iter().position(|(key, _)| key == name) {
             Some(index) => T::from_value(self.0.swap_remove(index).1).map(Some),
             None => Ok(None),
@@ -183,9 +183,9 @@ impl Fields {
     }
 
     /// Take the named field, failing if it is missing.
-    pub fn required<T: FromValue>(&mut self, name: &str) -> Result<T, Error> {
+    pub fn required<T: FromValue>(&mut self, name: &str) -> Result<T, ErrorCode> {
         self.optional(name)?
-            .ok_or_else(|| Error::Client(format!("missing field: {name}")))
+            .ok_or_else(|| ErrorCode::Client(format!("missing field: {name}")))
     }
 }
 
@@ -193,7 +193,7 @@ impl Fields {
 pub struct OrNever<T>(pub Option<T>);
 
 impl<T: FromValue> FromValue for OrNever<T> {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::Integer(-1) => Ok(OrNever(None)),
             value => T::from_value(value).map(|value| OrNever(Some(value))),
@@ -205,28 +205,28 @@ impl<T: FromValue> FromValue for OrNever<T> {
 pub struct FlatPairs<K, V>(pub Vec<(K, V)>);
 
 impl<K: FromValue, V: FromValue> FromValue for FlatPairs<K, V> {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         entries(value).map(FlatPairs)
     }
 }
 
 /// A number sent as a string, e.g. the port of a replica in ROLE.
-pub(crate) fn parse_string<T: std::str::FromStr>(value: RespValue) -> Result<T, Error> {
+pub(crate) fn parse_string<T: std::str::FromStr>(value: RespValue) -> Result<T, ErrorCode> {
     let text = String::from_value(value)?;
     text.parse()
-        .map_err(|_| Error::Client(format!("unexpected number: {text:?}")))
+        .map_err(|_| ErrorCode::Client(format!("unexpected number: {text:?}")))
 }
 
-pub(crate) fn unexpected(reply: &RespValue) -> Error {
-    Error::Client(format!("unexpected reply: {reply}"))
+pub(crate) fn unexpected(reply: &RespValue) -> ErrorCode {
+    ErrorCode::Client(format!("unexpected reply: {reply}"))
 }
 
-fn decode(value: RespNestedValue) -> Result<RespValue, Error> {
-    crate::resp::decode(&value).map_err(Error::Resp)
+fn decode(value: RespNestedValue) -> Result<RespValue, ErrorCode> {
+    crate::resp::decode(&value).map_err(ErrorCode::Resp)
 }
 
 /// The nested values of an array, or a set.
-pub(crate) fn items(reply: RespValue) -> Result<Vec<RespValue>, Error> {
+pub(crate) fn items(reply: RespValue) -> Result<Vec<RespValue>, ErrorCode> {
     match reply {
         RespValue::Array(items) | RespValue::Set(items) => items.into_iter().map(decode).collect(),
         reply => Err(unexpected(&reply)),
@@ -234,7 +234,7 @@ pub(crate) fn items(reply: RespValue) -> Result<Vec<RespValue>, Error> {
 }
 
 /// The entries of a map, or of a flat array of keys and values.
-pub fn entries<K: FromValue, V: FromValue>(reply: RespValue) -> Result<Vec<(K, V)>, Error> {
+pub fn entries<K: FromValue, V: FromValue>(reply: RespValue) -> Result<Vec<(K, V)>, ErrorCode> {
     let entry = |key, value| Ok((K::from_value(decode(key)?)?, V::from_value(decode(value)?)?));
     match reply {
         RespValue::Map(entries) => entries
@@ -243,7 +243,7 @@ pub fn entries<K: FromValue, V: FromValue>(reply: RespValue) -> Result<Vec<(K, V
             .collect(),
         RespValue::Array(items) => {
             if items.len() % 2 != 0 {
-                return Err(Error::Client(format!(
+                return Err(ErrorCode::Client(format!(
                     "unexpected odd number of keys and values: {}",
                     items.len()
                 )));
@@ -400,7 +400,7 @@ mod tests {
         assert_eq!(fields.optional::<Integer>("count").unwrap(), Some(2));
         assert_eq!(fields.optional::<Integer>("missing").unwrap(), None);
         match fields.required::<Integer>("missing") {
-            Err(Error::Client(message)) => assert_eq!(message, "missing field: missing"),
+            Err(ErrorCode::Client(message)) => assert_eq!(message, "missing field: missing"),
             result => panic!("expected a client error: {result:?}"),
         }
     }
@@ -423,7 +423,7 @@ mod tests {
     fn number_in_a_string() {
         assert_eq!(parse_string::<u16>(bulk("6379")).unwrap(), 6379);
         match parse_string::<u16>(bulk("port")) {
-            Err(Error::Client(message)) => assert_eq!(message, r#"unexpected number: "port""#),
+            Err(ErrorCode::Client(message)) => assert_eq!(message, r#"unexpected number: "port""#),
             result => panic!("expected a client error: {result:?}"),
         }
     }

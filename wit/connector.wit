@@ -6,11 +6,11 @@
 @since(version = 0.3.0-dev)
 interface connector {
     @since(version = 0.3.0-dev)
-    use types.{error};
+    use types.{error-code};
     @since(version = 0.3.0-dev)
     use connection.{connection};
 
     /// Establishes a new connection.
     @since(version = 0.3.0-dev)
-    connect: async func() -> result<connection, error>;
+    connect: async func() -> result<connection, error-code>;
 }

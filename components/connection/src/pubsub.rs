@@ -11,14 +11,16 @@ use componentized_valkey::types::{
 use futures_channel::{mpsc, oneshot};
 use wit_bindgen::{FutureReader, FutureWriter, StreamReader, StreamWriter};
 
-use crate::exports::componentized::valkey::connection::{Error, GuestSubscription, Subscription};
+use crate::exports::componentized::valkey::connection::{
+    ErrorCode, GuestSubscription, Subscription,
+};
 use crate::{
     Inner, PUSH_BUFFER, Reply, State, Task, closed_error, decode, enqueue, next, wit_future,
     wit_stream,
 };
 
 /// A new subscription, setting the ratchet, see `State::owns_subscriptions`.
-pub(crate) fn subscription(inner: &Rc<Inner>) -> Result<Subscription, Error> {
+pub(crate) fn subscription(inner: &Rc<Inner>) -> Result<Subscription, ErrorCode> {
     let id = {
         let mut state = inner.state.borrow_mut();
         state.owns_subscriptions = true;
@@ -40,20 +42,20 @@ pub(crate) enum Pending {
         /// The targets not confirmed yet.
         channels: Vec<String>,
         id: u64,
-        done: oneshot::Sender<Result<(), Error>>,
+        done: oneshot::Sender<Result<(), ErrorCode>>,
     },
     /// UNSUBSCRIBE and the like.
     Unsubscribe {
         kind: Kind,
         /// The targets not confirmed yet.
         channels: Vec<String>,
-        done: oneshot::Sender<Result<(), Error>>,
+        done: oneshot::Sender<Result<(), ErrorCode>>,
     },
 }
 
 impl Pending {
     /// A reply arrived in the place of the confirmations, the server refused the command.
-    pub(crate) fn refused(self, subscriptions: &mut Subscriptions, error: Error) {
+    pub(crate) fn refused(self, subscriptions: &mut Subscriptions, error: ErrorCode) {
         match self {
             Pending::Subscribe {
                 kind,
@@ -71,7 +73,7 @@ impl Pending {
     }
 
     /// The connection closed.
-    pub(crate) fn fail(self, error: Error) {
+    pub(crate) fn fail(self, error: ErrorCode) {
         match self {
             Pending::Subscribe { done, .. } | Pending::Unsubscribe { done, .. } => {
                 let _ = done.send(Err(error));
@@ -95,12 +97,12 @@ impl GuestSubscription for SubscriptionImpl {
             .collect()
     }
 
-    async fn subscribe(&self, targets: Vec<SubscriptionTarget>) -> Result<(), Error> {
+    async fn subscribe(&self, targets: Vec<SubscriptionTarget>) -> Result<(), ErrorCode> {
         let groups = by_kind(targets)?;
         subscribe(&self.0.inner, self.0.id, groups).await
     }
 
-    async fn unsubscribe(&self, targets: Option<Vec<SubscriptionTarget>>) -> Result<(), Error> {
+    async fn unsubscribe(&self, targets: Option<Vec<SubscriptionTarget>>) -> Result<(), ErrorCode> {
         let groups = match targets {
             Some(targets) => by_kind(targets)?
                 .into_iter()
@@ -114,7 +116,7 @@ impl GuestSubscription for SubscriptionImpl {
     fn events(&self) -> (StreamReader<SubscriptionEvent>, FutureReader<Ended>) {
         let (writer, stream) = wit_stream::new();
         // the default is only written if the subscription is gone before the stream ends
-        let (end_writer, end) = wit_future::new(|| Err(Error::Closed(None)));
+        let (end_writer, end) = wit_future::new(|| Err(ErrorCode::Closed(None)));
         let (mut events_tx, events_rx) = mpsc::channel(PUSH_BUFFER);
         let (end_tx, end_rx) = oneshot::channel();
         {
@@ -183,9 +185,9 @@ impl Kind {
 
 /// The names of the targets of each kind, in the order each kind first appears, failing unless
 /// there is at least one target.
-fn by_kind(targets: Vec<SubscriptionTarget>) -> Result<Vec<(Kind, Vec<String>)>, Error> {
+fn by_kind(targets: Vec<SubscriptionTarget>) -> Result<Vec<(Kind, Vec<String>)>, ErrorCode> {
     if targets.is_empty() {
-        return Err(Error::Client(
+        return Err(ErrorCode::Client(
             "targets requires at least one item".to_string(),
         ));
     }
@@ -219,7 +221,7 @@ enum Hold {
 }
 
 /// How a stream of events ended, `ok` once the subscription is dropped.
-type Ended = Result<(), Error>;
+type Ended = Result<(), ErrorCode>;
 
 /// A reader of a subscription's events, and where to send how its stream ended.
 struct Reader {
@@ -237,7 +239,7 @@ struct Sub {
     /// The events arriving while no stream is open, for the next stream.
     backlog: VecDeque<SubscriptionEvent>,
     /// The error that closed the connection, once it has.
-    closed: Option<Error>,
+    closed: Option<ErrorCode>,
 }
 
 impl Sub {
@@ -272,7 +274,7 @@ impl Sub {
             match reader.events.try_send(event.clone()) {
                 Ok(()) => self.readers.push(reader),
                 Err(error) if error.is_full() => {
-                    let _ = reader.end.send(Err(Error::Lagged));
+                    let _ = reader.end.send(Err(ErrorCode::Lagged));
                 }
                 Err(_) => self.orphans.push(reader.end),
             }
@@ -303,7 +305,7 @@ pub(crate) struct Subscriptions {
 }
 
 impl Subscriptions {
-    fn create(&mut self, closed: Option<Error>) -> u64 {
+    fn create(&mut self, closed: Option<ErrorCode>) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         self.subs.insert(
@@ -433,7 +435,7 @@ impl Subscriptions {
     }
 
     /// The connection closed, ending every stream.
-    pub(crate) fn close(&mut self, error: &Error) {
+    pub(crate) fn close(&mut self, error: &ErrorCode) {
         for sub in self.subs.values_mut() {
             sub.end(Err(error.clone()));
             sub.closed = Some(error.clone());
@@ -493,11 +495,15 @@ fn unique(names: Vec<String>) -> Vec<String> {
 }
 
 /// A command for one kind of targets, queued and waiting for the server to confirm it.
-type Confirmation = oneshot::Receiver<Result<(), Error>>;
+type Confirmation = oneshot::Receiver<Result<(), ErrorCode>>;
 
 /// Subscribe to the targets, one command for each kind, queued with no other command between
 /// them. Every command is sent, the error holds each that failed.
-async fn subscribe(inner: &Inner, id: u64, groups: Vec<(Kind, Vec<String>)>) -> Result<(), Error> {
+async fn subscribe(
+    inner: &Inner,
+    id: u64,
+    groups: Vec<(Kind, Vec<String>)>,
+) -> Result<(), ErrorCode> {
     let several = groups.len() > 1;
     // no await until every command is queued
     let queued: Vec<_> = groups
@@ -538,7 +544,7 @@ fn queue_subscribe(
     id: u64,
     kind: Kind,
     names: Vec<String>,
-) -> Result<Option<(Vec<String>, Confirmation)>, Error> {
+) -> Result<Option<(Vec<String>, Confirmation)>, ErrorCode> {
     let names: Vec<String> = {
         let mut state = inner.state.borrow_mut();
         // before the targets are touched, they stay as they were when the connection closed
@@ -610,7 +616,7 @@ async fn unsubscribe(
     inner: &Inner,
     id: u64,
     groups: Vec<(Kind, Option<Vec<String>>)>,
-) -> Result<(), Error> {
+) -> Result<(), ErrorCode> {
     let several = groups.len() > 1;
     // no await until every command is queued
     let queued: Vec<_> = groups
@@ -641,7 +647,7 @@ fn queue_unsubscribe(
     id: u64,
     kind: Kind,
     names: Option<Vec<String>>,
-) -> Result<Option<Confirmation>, Error> {
+) -> Result<Option<Confirmation>, ErrorCode> {
     let release = {
         let mut state = inner.state.borrow_mut();
         // before the targets are touched, they stay as they were when the connection closed
@@ -703,7 +709,7 @@ fn queue_unsubscribe(
 /// The errors of the commands of a call as one, each prefixed with its command when the call sent
 /// several. An error of one kind keeps it, e.g. every command was refused by the server, otherwise
 /// it is a client error.
-fn aggregate(errors: Vec<(&str, Error)>, several: bool) -> Result<(), Error> {
+fn aggregate(errors: Vec<(&str, ErrorCode)>, several: bool) -> Result<(), ErrorCode> {
     let mut errors = errors.into_iter();
     let Some((command, first)) = errors.next() else {
         return Ok(());
@@ -720,29 +726,30 @@ fn aggregate(errors: Vec<(&str, Error)>, several: bool) -> Result<(), Error> {
     }
     if messages.len() == 1 {
         return Err(match first {
-            Error::Valkey(_) => Error::Valkey(messages.remove(0)),
-            Error::Client(_) => Error::Client(messages.remove(0)),
-            Error::Resp(_) => Error::Resp(messages.remove(0)),
+            ErrorCode::Server(_) => ErrorCode::Server(messages.remove(0).into()),
+            ErrorCode::Client(_) => ErrorCode::Client(messages.remove(0)),
+            ErrorCode::Resp(_) => ErrorCode::Resp(messages.remove(0)),
             error => error,
         });
     }
     let message = messages.join("; ");
     Err(match first {
         // the connection closed, every command failed the same way
-        error @ (Error::Closed(_) | Error::Lagged) if same => error,
-        Error::Valkey(_) if same => Error::Valkey(message),
-        Error::Resp(_) if same => Error::Resp(message),
-        _ => Error::Client(message),
+        error @ (ErrorCode::Closed(_) | ErrorCode::Lagged) if same => error,
+        ErrorCode::Server(_) if same => ErrorCode::Server(message.into()),
+        ErrorCode::Resp(_) if same => ErrorCode::Resp(message),
+        _ => ErrorCode::Client(message),
     })
 }
 
 /// An error for people to read, in an aggregate of errors.
-fn describe_error(error: &Error) -> String {
+fn describe_error(error: &ErrorCode) -> String {
     match error {
-        Error::Closed(None) => "connection closed".to_string(),
-        Error::Closed(Some(reason)) => format!("connection closed: {reason}"),
-        Error::Client(message) | Error::Resp(message) | Error::Valkey(message) => message.clone(),
-        Error::Lagged => "fell behind".to_string(),
+        ErrorCode::Closed(None) => "connection closed".to_string(),
+        ErrorCode::Closed(Some(reason)) => format!("connection closed: {reason}"),
+        ErrorCode::Client(message) | ErrorCode::Resp(message) => message.clone(),
+        ErrorCode::Server(message) => message.to_string(),
+        ErrorCode::Lagged => "fell behind".to_string(),
     }
 }
 
@@ -918,6 +925,6 @@ async fn forward_events(
     }
     drop(events);
     drop(writer);
-    let end = end.await.unwrap_or_else(|_| Err(Error::Closed(None)));
+    let end = end.await.unwrap_or_else(|_| Err(ErrorCode::Closed(None)));
     let _ = end_writer.write(end).await;
 }

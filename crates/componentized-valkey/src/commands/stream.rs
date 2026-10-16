@@ -2,7 +2,7 @@
 
 use crate::command::{Flag, IntoCommand, NamedOption, Words};
 use crate::types::{
-    DurationMilliseconds, Error, RespValue, StreamId, StreamTrim, StreamTrimEfficiency,
+    DurationMilliseconds, ErrorCode, RespValue, StreamId, StreamTrim, StreamTrimEfficiency,
     UnixTimeMilliseconds, XclaimOpts, XinfoConsumersEntry, XinfoGroupsEntry, XinfoStreamReply,
     XinfoStreamReplyFull, XinfoStreamReplyFullConsumer, XinfoStreamReplyFullGroup,
     XpendingExtendedEntry, XpendingSummary,
@@ -10,7 +10,7 @@ use crate::types::{
 use crate::value::{Fields, FromValue, OrNever};
 
 impl IntoCommand for StreamTrim {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         //〈 MAXLEN | MINID 〉 [ = | ~ ] threshold [ LIMIT count ]
         match self {
             StreamTrim::Maxlen(trim) => (
@@ -32,7 +32,7 @@ impl IntoCommand for StreamTrim {
 }
 
 impl IntoCommand for StreamTrimEfficiency {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         //  = | ~
         (match self {
             StreamTrimEfficiency::Exact => "=",
@@ -43,7 +43,7 @@ impl IntoCommand for StreamTrimEfficiency {
 }
 
 impl IntoCommand for XclaimOpts {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         // [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] [ LASTID lastid ]
         (
             NamedOption("IDLE", self.idle),
@@ -64,13 +64,13 @@ pub const ZERO_ID: &str = "0-0";
 
 /// `0-0` for none, e.g. to start XAUTOCLAIM from the beginning.
 impl IntoCommand for OrZeroId {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         self.0.unwrap_or_else(|| ZERO_ID.to_string()).into_command()
     }
 }
 
 impl FromValue for OrZeroId {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let id = StreamId::from_value(value)?;
         Ok(OrZeroId((id != ZERO_ID).then_some(id)))
     }
@@ -79,7 +79,7 @@ impl FromValue for OrZeroId {
 /// `[count, lowest-id, highest-id, [[consumer, count]...]]`, the IDs and consumers are null when
 /// nothing is pending, and each consumer's count is a bulk string.
 impl FromValue for XpendingSummary {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let (count, lowest_id, highest_id, consumers): (_, _, _, Option<Vec<(String, String)>>) =
             FromValue::from_value(value)?;
         let consumers = consumers
@@ -87,13 +87,13 @@ impl FromValue for XpendingSummary {
             .into_iter()
             .map(|(consumer, count)| {
                 let count = count.parse().map_err(|_| {
-                    Error::Client(format!(
+                    ErrorCode::Client(format!(
                         "unexpected pending count, not an integer: {count:?}"
                     ))
                 })?;
                 Ok((consumer, count))
             })
-            .collect::<Result<_, Error>>()?;
+            .collect::<Result<_, ErrorCode>>()?;
         Ok(Self {
             count,
             lowest_id,
@@ -105,7 +105,7 @@ impl FromValue for XpendingSummary {
 
 /// `[id, consumer, milliseconds-since-delivery, delivery-count]`.
 impl FromValue for XpendingExtendedEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let (id, name, since_delivery, delivery_count) = FromValue::from_value(value)?;
         Ok(Self {
             id,
@@ -117,7 +117,7 @@ impl FromValue for XpendingExtendedEntry {
 }
 
 impl FromValue for XinfoConsumersEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -131,7 +131,7 @@ impl FromValue for XinfoConsumersEntry {
 }
 
 impl FromValue for XinfoGroupsEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -145,7 +145,7 @@ impl FromValue for XinfoGroupsEntry {
 }
 
 impl FromValue for XinfoStreamReply {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             length: fields.required("length")?,
@@ -162,7 +162,7 @@ impl FromValue for XinfoStreamReply {
 }
 
 impl FromValue for XinfoStreamReplyFull {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             length: fields.required("length")?,
@@ -178,7 +178,7 @@ impl FromValue for XinfoStreamReplyFull {
 }
 
 impl FromValue for XinfoStreamReplyFullGroup {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -193,7 +193,7 @@ impl FromValue for XinfoStreamReplyFullGroup {
 }
 
 impl FromValue for XinfoStreamReplyFullConsumer {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,

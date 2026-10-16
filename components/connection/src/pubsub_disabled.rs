@@ -8,12 +8,14 @@ use std::rc::Rc;
 use componentized_valkey::types::{RespValue, SubscriptionEvent, SubscriptionTarget};
 use wit_bindgen::{FutureReader, StreamReader};
 
-use crate::exports::componentized::valkey::connection::{Error, GuestSubscription, Subscription};
+use crate::exports::componentized::valkey::connection::{
+    ErrorCode, GuestSubscription, Subscription,
+};
 use crate::{Inner, State};
 
 /// Fails, there are no subscriptions in this build.
-pub(crate) fn subscription(_inner: &Rc<Inner>) -> Result<Subscription, Error> {
-    Err(Error::Client(
+pub(crate) fn subscription(_inner: &Rc<Inner>) -> Result<Subscription, ErrorCode> {
+    Err(ErrorCode::Client(
         "subscriptions are not supported by this build of the connection, push messages arrive in dead-letters"
             .to_string(),
     ))
@@ -23,11 +25,11 @@ pub(crate) fn subscription(_inner: &Rc<Inner>) -> Result<Subscription, Error> {
 pub(crate) enum Pending {}
 
 impl Pending {
-    pub(crate) fn refused(self, _subscriptions: &mut Subscriptions, _error: Error) {
+    pub(crate) fn refused(self, _subscriptions: &mut Subscriptions, _error: ErrorCode) {
         match self {}
     }
 
-    pub(crate) fn fail(self, _error: Error) {
+    pub(crate) fn fail(self, _error: ErrorCode) {
         match self {}
     }
 }
@@ -39,7 +41,7 @@ pub(crate) struct Subscriptions;
 impl Subscriptions {
     pub(crate) fn reset(&mut self) {}
 
-    pub(crate) fn close(&mut self, _error: &Error) {}
+    pub(crate) fn close(&mut self, _error: &ErrorCode) {}
 }
 
 /// No push message belongs to a subscription, each is a dead letter.
@@ -55,11 +57,14 @@ impl GuestSubscription for SubscriptionImpl {
         match *self {}
     }
 
-    async fn subscribe(&self, _targets: Vec<SubscriptionTarget>) -> Result<(), Error> {
+    async fn subscribe(&self, _targets: Vec<SubscriptionTarget>) -> Result<(), ErrorCode> {
         match *self {}
     }
 
-    async fn unsubscribe(&self, _targets: Option<Vec<SubscriptionTarget>>) -> Result<(), Error> {
+    async fn unsubscribe(
+        &self,
+        _targets: Option<Vec<SubscriptionTarget>>,
+    ) -> Result<(), ErrorCode> {
         match *self {}
     }
 
@@ -67,7 +72,7 @@ impl GuestSubscription for SubscriptionImpl {
         &self,
     ) -> (
         StreamReader<SubscriptionEvent>,
-        FutureReader<Result<(), Error>>,
+        FutureReader<Result<(), ErrorCode>>,
     ) {
         match *self {}
     }

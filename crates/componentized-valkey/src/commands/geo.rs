@@ -2,21 +2,21 @@
 
 use crate::command::{Flag, IntoCommand, NonEmpty, NumKeys, Words};
 use crate::types::{
-    Double, Error, GeoCoordinates, GeoUnit, GeoaddCondition, GeosearchCount, GeosearchFrom,
+    Double, ErrorCode, GeoCoordinates, GeoUnit, GeoaddCondition, GeosearchCount, GeosearchFrom,
     GeosearchShape, GeosearchWithResult, RespValue, StringOrBytes,
 };
 use crate::value::{FromValue, items, unexpected};
 
 /// `longitude latitude`
 impl IntoCommand for GeoCoordinates {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         (self.longitude, self.latitude).into_command()
     }
 }
 
 /// `[longitude, latitude]`
 impl FromValue for GeoCoordinates {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let (longitude, latitude) = FromValue::from_value(value)?;
         Ok(GeoCoordinates {
             longitude,
@@ -26,7 +26,7 @@ impl FromValue for GeoCoordinates {
 }
 
 impl IntoCommand for GeoUnit {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             GeoUnit::M => "m",
             GeoUnit::Km => "km",
@@ -38,7 +38,7 @@ impl IntoCommand for GeoUnit {
 }
 
 impl IntoCommand for GeoaddCondition {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             GeoaddCondition::Nx => "NX",
             GeoaddCondition::Xx => "XX",
@@ -48,7 +48,7 @@ impl IntoCommand for GeoaddCondition {
 }
 
 impl IntoCommand for GeosearchFrom {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             GeosearchFrom::Member(member) => ("FROMMEMBER", member).into_command(),
             GeosearchFrom::Lonlat(coordinates) => ("FROMLONLAT", coordinates).into_command(),
@@ -58,7 +58,7 @@ impl IntoCommand for GeosearchFrom {
 
 /// The center, when the shape has one, then the shape. Also `GeosearchstoreShape`, the same type.
 impl IntoCommand for GeosearchShape {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             GeosearchShape::Radius(circle) => {
                 (circle.from, "BYRADIUS", circle.radius, circle.unit).into_command()
@@ -80,7 +80,7 @@ impl IntoCommand for GeosearchShape {
 
 /// `COUNT count [ ANY ]`, also `GeosearchstoreCount`, the same type.
 impl IntoCommand for GeosearchCount {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         ("COUNT", self.count, Flag("ANY", self.any)).into_command()
     }
 }
@@ -88,7 +88,7 @@ impl IntoCommand for GeosearchCount {
 /// The member, or with any of WITHDIST, WITHHASH and WITHCOORD, an array of the member then the
 /// details, in that order, told apart by their types.
 impl FromValue for GeosearchWithResult {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut result = GeosearchWithResult {
             member: StringOrBytes::String(String::new()),
             distance: None,

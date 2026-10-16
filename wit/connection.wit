@@ -10,7 +10,7 @@
 /// functions in the `commands` interface that borrow the connection.
 interface connection {
     @since(version = 0.3.0-dev)
-    use types.{connect-opts, duration-milliseconds, error, resp-value, string-or-bytes, subscription-event, subscription-target};
+    use types.{connect-opts, duration-milliseconds, error-code, resp-value, string-or-bytes, subscription-event, subscription-target};
 
     @since(version = 0.3.0-dev)
     resource connection {
@@ -33,7 +33,7 @@ interface connection {
         /// Async so the connection keeps working between commands after it returns, e.g. to read
         /// push messages and to send keep-alive pings.
         @since(version = 0.3.0-dev)
-        new: static async func(replies: stream<resp-value>, closed: future<result<_, error>>, opts: option<connect-opts>) -> tuple<stream<resp-value>, future<result<connection, error>>>;
+        new: static async func(replies: stream<resp-value>, closed: future<result<_, error-code>>, opts: option<connect-opts>) -> tuple<stream<resp-value>, future<result<connection, error-code>>>;
 
         /// The server's properties from the reply to HELLO, e.g. `server`, `version` and `mode`.
         @since(version = 0.3.0-dev)
@@ -55,7 +55,7 @@ interface connection {
         ///
         /// A command has at least one word, an empty command fails with a client error.
         @since(version = 0.3.0-dev)
-        exchange: async func(command: list<string-or-bytes>) -> result<resp-value, error>;
+        exchange: async func(command: list<string-or-bytes>) -> result<resp-value, error-code>;
 
         /// Sends the commands one after another, with no other command sent between them, and waits
         /// for every reply.
@@ -64,7 +64,7 @@ interface connection {
         /// sharing a connection may otherwise be interleaved with other callers' commands, which
         /// matters for a sequence that must not be interrupted, e.g. MULTI, its commands and EXEC.
         @since(version = 0.3.0-dev)
-        exchange-all: async func(commands: list<list<string-or-bytes>>) -> list<result<resp-value, error>>;
+        exchange-all: async func(commands: list<list<string-or-bytes>>) -> list<result<resp-value, error-code>>;
 
         /// Sends a command without waiting for its reply, resolving once the command is written.
         ///
@@ -74,7 +74,7 @@ interface connection {
         ///
         /// A command has at least one word, an empty command fails with a client error.
         @since(version = 0.3.0-dev)
-        emit: async func(command: list<string-or-bytes>) -> result<_, error>;
+        emit: async func(command: list<string-or-bytes>) -> result<_, error-code>;
 
         /// Marks the keys to watch, EXEC aborts the next transaction when any of them changed.
         ///
@@ -87,14 +87,14 @@ interface connection {
         ///
         /// At least one key, no keys fails with a client error.
         @since(version = 0.3.0-dev)
-        watch: async func(keys: list<string>) -> result<_, error>;
+        watch: async func(keys: list<string>) -> result<_, error-code>;
 
         /// Forgets all the watched keys.
         ///
         /// UNWATCH
         /// https://valkey.io/commands/unwatch/
         @since(version = 0.3.0-dev)
-        unwatch: async func() -> result<_, error>;
+        unwatch: async func() -> result<_, error-code>;
 
         /// Runs the commands as a transaction, MULTI, each command, then EXEC, with no other command
         /// sent between them, see `exchange-all`.
@@ -111,7 +111,7 @@ interface connection {
         /// https://valkey.io/commands/multi/
         /// https://valkey.io/commands/exec/
         @since(version = 0.3.0-dev)
-        transaction: async func(commands: list<list<string-or-bytes>>) -> result<option<list<resp-value>>, error>;
+        transaction: async func(commands: list<list<string-or-bytes>>) -> result<option<list<resp-value>>, error-code>;
 
         /// A new subscription, subscribed to nothing yet, see the subscription's `subscribe`.
         ///
@@ -125,7 +125,7 @@ interface connection {
         /// e.g. `connection-minimal`. Its push messages are then all dead letters, and SUBSCRIBE and
         /// the like may still be sent with `exchange`.
         @since(version = 0.3.0-dev)
-        subscription: func() -> result<subscription, error>;
+        subscription: func() -> result<subscription, error-code>;
 
         /// The values nothing else claims, kept apart from replies.
         ///
@@ -160,7 +160,7 @@ interface connection {
         /// RESET
         /// https://valkey.io/commands/reset/
         @since(version = 0.3.0-dev)
-        reset: async func() -> result<_, error>;
+        reset: async func() -> result<_, error-code>;
 
         /// Sends PING when no command has been sent and no reply is outstanding for `interval`,
         /// `none` disables it. A PING that fails closes the connection. Disabled by default.
@@ -198,7 +198,7 @@ interface connection {
         ///
         /// At least one target, no targets fails with a client error.
         @since(version = 0.3.0-dev)
-        subscribe: async func(targets: list<subscription-target>) -> result<_, error>;
+        subscribe: async func(targets: list<subscription-target>) -> result<_, error-code>;
 
         /// The events arriving after the call: targets subscribed to and unsubscribed from, and
         /// messages, in the order they happened.
@@ -220,7 +220,7 @@ interface connection {
         /// events it missed, messages and changes of targets alike, are lost. The future resolves
         /// after the stream delivered what it holds, read the stream to its end first.
         @since(version = 0.3.0-dev)
-        events: func() -> tuple<stream<subscription-event>, future<result<_, error>>>;
+        events: func() -> tuple<stream<subscription-event>, future<result<_, error-code>>>;
 
         /// The targets the server confirmed, in the order they were subscribed to, until they are
         /// unsubscribed from.
@@ -248,6 +248,6 @@ interface connection {
         /// A list of targets has at least one target, otherwise fails with a client error. None
         /// unsubscribes from every target.
         @since(version = 0.3.0-dev)
-        unsubscribe: async func(targets: option<list<subscription-target>>) -> result<_, error>;
+        unsubscribe: async func(targets: option<list<subscription-target>>) -> result<_, error-code>;
     }
 }

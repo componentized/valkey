@@ -2,7 +2,8 @@
 
 use crate::command::{IntoCommand, NonEmpty, NumKeys, Words};
 use crate::types::{
-    Error, HexpireResult, HpersistResult, HsetexCondition, HsetexFieldCondition, Integer, RespValue,
+    ErrorCode, HexpireResult, HpersistResult, HsetexCondition, HsetexFieldCondition, Integer,
+    RespValue,
 };
 use crate::value::FromValue;
 
@@ -10,37 +11,37 @@ use crate::value::FromValue;
 pub struct Fields<T>(pub NonEmpty<T>);
 
 impl<T: IntoCommand> IntoCommand for Fields<T> {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         ("FIELDS", NumKeys(self.0)).into_command()
     }
 }
 
 /// Also `HexpireatResult`, `HpexpireResult` and `HpexpireatResult`, the same type.
 impl FromValue for HexpireResult {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match Integer::from_value(value)? {
             -2 => Ok(Self::DoesNotExist),
             0 => Ok(Self::ConditionNotMet),
             1 => Ok(Self::Applied),
             2 => Ok(Self::ZeroSeconds),
-            code => Err(Error::Client(format!("unexpected reply: {code}"))),
+            code => Err(ErrorCode::Client(format!("unexpected reply: {code}"))),
         }
     }
 }
 
 impl FromValue for HpersistResult {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match Integer::from_value(value)? {
             -2 => Ok(Self::DoesNotExist),
             -1 => Ok(Self::NoExpiration),
             1 => Ok(Self::Removed),
-            code => Err(Error::Client(format!("unexpected reply: {code}"))),
+            code => Err(ErrorCode::Client(format!("unexpected reply: {code}"))),
         }
     }
 }
 
 impl IntoCommand for HsetexCondition {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             HsetexCondition::Nx => "NX",
             HsetexCondition::Xx => "XX",
@@ -50,7 +51,7 @@ impl IntoCommand for HsetexCondition {
 }
 
 impl IntoCommand for HsetexFieldCondition {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             HsetexFieldCondition::Fnx => "FNX",
             HsetexFieldCondition::Fxx => "FXX",

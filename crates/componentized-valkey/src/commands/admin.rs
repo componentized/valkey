@@ -7,16 +7,16 @@ use crate::types::{
     AclLogEntry, AclRule, AclSelectorRule, AclUserRule, BgsaveOperation, ClientFilter,
     ClientPauseMode, ClientType, ClientUnblockType, ClusterBumpepochResult, ClusterFailoverMode,
     ClusterGetslotmigrationsEntry, ClusterGetslotmigrationsOperation, ClusterMigrateslotsGroup,
-    ClusterResetMode, ClusterSetslotState, CommandlogEntry, CommandlogType, Error, FailoverTarget,
-    Integer, LatencyHistogramEntry, LatencyLatestEntry, ModuleListEntry, RespValue, RolePrimary,
-    RolePrimaryReplica, RoleReplica, RoleReply, ShutdownSave,
+    ClusterResetMode, ClusterSetslotState, CommandlogEntry, CommandlogType, ErrorCode,
+    FailoverTarget, Integer, LatencyHistogramEntry, LatencyLatestEntry, ModuleListEntry, RespValue,
+    RolePrimary, RolePrimaryReplica, RoleReplica, RoleReply, ShutdownSave,
 };
 use crate::value::{Fields, FlatPairs, FromValue, items, parse_string};
 
 use wit_bindgen::rt::Map;
 
 impl IntoCommand for AclRule {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             AclRule::Keys(rule) => rule.into_command(),
             AclRule::Channel(rule) => rule.into_command(),
@@ -29,7 +29,7 @@ impl IntoCommand for AclRule {
 }
 
 impl IntoCommand for AclSelectorRule {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             AclSelectorRule::Keys(rule) => rule.into_command(),
             AclSelectorRule::Channel(rule) => rule.into_command(),
@@ -41,7 +41,7 @@ impl IntoCommand for AclSelectorRule {
 }
 
 impl IntoCommand for AclKeyRule {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             AclKeyRule::Add(pattern) => format!("~{pattern}"),
             AclKeyRule::AddRead(pattern) => format!("%R~{pattern}"),
@@ -55,7 +55,7 @@ impl IntoCommand for AclKeyRule {
 }
 
 impl IntoCommand for AclChannelRule {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             AclChannelRule::Add(pattern) => format!("&{pattern}"),
             AclChannelRule::All => "allchannels".to_string(),
@@ -66,7 +66,7 @@ impl IntoCommand for AclChannelRule {
 }
 
 impl IntoCommand for AclCommandRule {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             AclCommandRule::Add(command) => format!("+{command}"),
             AclCommandRule::AddCategory(category) => format!("+@{category}"),
@@ -82,10 +82,12 @@ impl IntoCommand for AclCommandRule {
 
 /// `db=` requires at least one database.
 impl IntoCommand for AclDbRule {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             AclDbRule::Db(dbs) if dbs.is_empty() => {
-                return Err(Error::Client("db requires at least one item".to_string()));
+                return Err(ErrorCode::Client(
+                    "db requires at least one item".to_string(),
+                ));
             }
             AclDbRule::Db(dbs) => format!(
                 "db={}",
@@ -102,7 +104,7 @@ impl IntoCommand for AclDbRule {
 }
 
 impl IntoCommand for AclUserRule {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             AclUserRule::On => "on".into_command(),
             AclUserRule::Off => "off".into_command(),
@@ -122,7 +124,7 @@ impl IntoCommand for AclUserRule {
 
 /// `OK` when the user may run the command, otherwise why not.
 impl FromValue for AclDryrunResult {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match value {
             RespValue::String(reply) if reply == "OK" => Ok(AclDryrunResult::Allowed),
             value => String::from_value(value).map(AclDryrunResult::Denied),
@@ -135,7 +137,7 @@ impl FromValue for AclDryrunResult {
 pub struct AclUserRules(pub Vec<AclRule>);
 
 impl FromValue for AclUserRules {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         let flags: Vec<String> = fields.required("flags")?;
         let passwords: Vec<String> = fields.required("passwords")?;
@@ -160,7 +162,7 @@ impl FromValue for AclUserRules {
 ///
 /// The channels are preceded by `resetchannels`, as ACL LIST writes them, so the server's
 /// `acl-pubsub-default` does not add to them.
-fn selector_rules(fields: &mut Fields) -> Result<Vec<AclSelectorRule>, Error> {
+fn selector_rules(fields: &mut Fields) -> Result<Vec<AclSelectorRule>, ErrorCode> {
     let keys: String = fields.required("keys")?;
     let channels: String = fields.required("channels")?;
     // since Valkey 9.1
@@ -254,7 +256,7 @@ fn command_rule(rule: &str) -> AclSelectorRule {
 pub struct AclList(pub Vec<AclListEntry>);
 
 impl FromValue for AclList {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let lines: Vec<String> = FromValue::from_value(value)?;
         lines
             .iter()
@@ -264,8 +266,8 @@ impl FromValue for AclList {
     }
 }
 
-fn acl_list_entry(line: &str) -> Result<AclListEntry, Error> {
-    let invalid = || Error::Client(format!("unexpected ACL LIST line: {line:?}"));
+fn acl_list_entry(line: &str) -> Result<AclListEntry, ErrorCode> {
+    let invalid = || ErrorCode::Client(format!("unexpected ACL LIST line: {line:?}"));
     let mut words = line
         .strip_prefix("user ")
         .ok_or_else(invalid)?
@@ -347,7 +349,7 @@ fn root_rule(rule: AclSelectorRule) -> AclRule {
 }
 
 impl FromValue for AclLogEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             count: fields.required("count")?,
@@ -366,7 +368,7 @@ impl FromValue for AclLogEntry {
 }
 
 impl IntoCommand for BgsaveOperation {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             BgsaveOperation::Schedule => "SCHEDULE",
             BgsaveOperation::Cancel => "CANCEL",
@@ -377,7 +379,7 @@ impl IntoCommand for BgsaveOperation {
 
 /// `master` rather than `primary`, which servers before Valkey 8.0 do not know.
 impl IntoCommand for ClientType {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClientType::Normal => "normal",
             ClientType::Primary => "master",
@@ -389,7 +391,7 @@ impl IntoCommand for ClientType {
 }
 
 impl IntoCommand for ClientFilter {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClientFilter::Id(ids) => ("ID", NonEmpty::new("id", ids)).into_command(),
             ClientFilter::Type(client_type) => ("TYPE", client_type).into_command(),
@@ -429,7 +431,7 @@ impl IntoCommand for ClientFilter {
 pub struct ClientList(pub Vec<Map<String, String>>);
 
 impl FromValue for ClientList {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let text = String::from_value(value)?;
         let clients = text
             .lines()
@@ -446,7 +448,7 @@ impl FromValue for ClientList {
 }
 
 impl IntoCommand for ClientPauseMode {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClientPauseMode::Write => "WRITE",
             ClientPauseMode::All => "ALL",
@@ -456,7 +458,7 @@ impl IntoCommand for ClientPauseMode {
 }
 
 impl IntoCommand for ClientUnblockType {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClientUnblockType::Timeout => "TIMEOUT",
             ClientUnblockType::Error => "ERROR",
@@ -467,9 +469,9 @@ impl IntoCommand for ClientUnblockType {
 
 /// `BUMPED epoch` or `STILL epoch`.
 impl FromValue for ClusterBumpepochResult {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let reply = String::from_value(value)?;
-        let invalid = || Error::Client(format!("unexpected reply: {reply:?}"));
+        let invalid = || ErrorCode::Client(format!("unexpected reply: {reply:?}"));
         let (outcome, epoch) = reply.split_once(' ').ok_or_else(invalid)?;
         let epoch = epoch.parse().map_err(|_| invalid())?;
         match outcome {
@@ -481,7 +483,7 @@ impl FromValue for ClusterBumpepochResult {
 }
 
 impl IntoCommand for ClusterFailoverMode {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClusterFailoverMode::Force => "FORCE",
             ClusterFailoverMode::Takeover => "TAKEOVER",
@@ -491,11 +493,11 @@ impl IntoCommand for ClusterFailoverMode {
 }
 
 impl FromValue for ClusterGetslotmigrationsOperation {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match String::from_value(value)?.as_str() {
             "IMPORT" => Ok(ClusterGetslotmigrationsOperation::Import),
             "EXPORT" => Ok(ClusterGetslotmigrationsOperation::Export),
-            operation => Err(Error::Client(format!(
+            operation => Err(ErrorCode::Client(format!(
                 "unexpected operation: {operation:?}"
             ))),
         }
@@ -506,9 +508,9 @@ impl FromValue for ClusterGetslotmigrationsOperation {
 pub struct SlotRanges(pub Vec<(u16, u16)>);
 
 impl FromValue for SlotRanges {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let ranges = String::from_value(value)?;
-        let invalid = || Error::Client(format!("unexpected slot ranges: {ranges:?}"));
+        let invalid = || ErrorCode::Client(format!("unexpected slot ranges: {ranges:?}"));
         ranges
             .split_whitespace()
             .map(|range| {
@@ -524,7 +526,7 @@ impl FromValue for SlotRanges {
 }
 
 impl FromValue for ClusterGetslotmigrationsEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         let slot_ranges: SlotRanges = fields.required("slot_ranges")?;
         Ok(Self {
@@ -545,7 +547,7 @@ impl FromValue for ClusterGetslotmigrationsEntry {
 
 /// `SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ]`
 impl IntoCommand for ClusterMigrateslotsGroup {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         (
             "SLOTSRANGE",
             NonEmpty::new("ranges", self.ranges),
@@ -559,7 +561,7 @@ impl IntoCommand for ClusterMigrateslotsGroup {
 }
 
 impl IntoCommand for ClusterResetMode {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClusterResetMode::Hard => "HARD",
             ClusterResetMode::Soft => "SOFT",
@@ -569,7 +571,7 @@ impl IntoCommand for ClusterResetMode {
 }
 
 impl IntoCommand for ClusterSetslotState {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ClusterSetslotState::Importing(node_id) => ("IMPORTING", node_id).into_command(),
             ClusterSetslotState::Migrating(node_id) => ("MIGRATING", node_id).into_command(),
@@ -580,7 +582,7 @@ impl IntoCommand for ClusterSetslotState {
 }
 
 impl IntoCommand for CommandlogType {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             CommandlogType::Slow => "slow",
             CommandlogType::LargeRequest => "large-request",
@@ -593,7 +595,7 @@ impl IntoCommand for CommandlogType {
 /// `[id, timestamp, value, [argument ...], client-address, client-name]`, of SLOWLOG GET and
 /// COMMANDLOG GET.
 impl FromValue for CommandlogEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match <[RespValue; 6]>::try_from(items(value)?) {
             Ok([id, timestamp, value, arguments, client_address, client_name]) => Ok(Self {
                 id: FromValue::from_value(id)?,
@@ -603,7 +605,7 @@ impl FromValue for CommandlogEntry {
                 client_address: FromValue::from_value(client_address)?,
                 client_name: FromValue::from_value(client_name)?,
             }),
-            Err(items) => Err(Error::Client(format!(
+            Err(items) => Err(ErrorCode::Client(format!(
                 "unexpected number of items, expected 6: {}",
                 items.len()
             ))),
@@ -613,13 +615,13 @@ impl FromValue for CommandlogEntry {
 
 /// `TO host port [ FORCE ]`
 impl IntoCommand for FailoverTarget {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         ("TO", self.host, self.port, Flag("FORCE", self.force)).into_command()
     }
 }
 
 impl FromValue for LatencyHistogramEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         // a map of each bucket to its cumulative count
         let histogram: FlatPairs<Integer, Integer> = fields.required("histogram_usec")?;
@@ -632,7 +634,7 @@ impl FromValue for LatencyHistogramEntry {
 
 /// `[event, timestamp, latest, max, sum, count]`
 impl FromValue for LatencyLatestEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match <[RespValue; 6]>::try_from(items(value)?) {
             Ok([event, timestamp, latest, max, sum, count]) => Ok(Self {
                 event: FromValue::from_value(event)?,
@@ -642,7 +644,7 @@ impl FromValue for LatencyLatestEntry {
                 sum: FromValue::from_value(sum)?,
                 count: FromValue::from_value(count)?,
             }),
-            Err(items) => Err(Error::Client(format!(
+            Err(items) => Err(ErrorCode::Client(format!(
                 "unexpected number of items, expected 6: {}",
                 items.len()
             ))),
@@ -651,7 +653,7 @@ impl FromValue for LatencyLatestEntry {
 }
 
 impl FromValue for ModuleListEntry {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             name: fields.required("name")?,
@@ -664,7 +666,7 @@ impl FromValue for ModuleListEntry {
 
 /// `[ip, port, offset]`, the port and offset are strings.
 impl FromValue for RolePrimaryReplica {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let (ip, port, offset) = FromValue::from_value(value)?;
         Ok(Self {
             ip,
@@ -677,13 +679,13 @@ impl FromValue for RolePrimaryReplica {
 /// `["master", offset, [replica ...]]`, `["slave", host, port, state, offset]` or
 /// `["sentinel", [primary ...]]`.
 impl FromValue for RoleReply {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut items = items(value)?.into_iter();
         let role = String::from_value(items.next().unwrap_or(RespValue::Null))?;
         let mut next = || {
             items
                 .next()
-                .ok_or_else(|| Error::Client(format!("too few items for the role {role:?}")))
+                .ok_or_else(|| ErrorCode::Client(format!("too few items for the role {role:?}")))
         };
         match role.as_str() {
             "master" => Ok(RoleReply::Primary(RolePrimary {
@@ -694,18 +696,18 @@ impl FromValue for RoleReply {
                 primary_host: FromValue::from_value(next()?)?,
                 primary_port: u64::from_value(next()?)?
                     .try_into()
-                    .map_err(|_| Error::Client("unexpected port".to_string()))?,
+                    .map_err(|_| ErrorCode::Client("unexpected port".to_string()))?,
                 state: FromValue::from_value(next()?)?,
                 offset: FromValue::from_value(next()?)?,
             })),
             "sentinel" => Ok(RoleReply::Sentinel(FromValue::from_value(next()?)?)),
-            role => Err(Error::Client(format!("unexpected role: {role:?}"))),
+            role => Err(ErrorCode::Client(format!("unexpected role: {role:?}"))),
         }
     }
 }
 
 impl IntoCommand for ShutdownSave {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ShutdownSave::Nosave => "NOSAVE",
             ShutdownSave::Save => "SAVE",

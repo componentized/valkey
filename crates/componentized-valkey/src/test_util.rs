@@ -1,7 +1,7 @@
 //! Helpers for the tests of the conversions, to build replies and check the outcomes.
 
 use crate::resp::encode;
-use crate::types::{Error, RespValue};
+use crate::types::{ErrorCode, RespValue};
 use crate::{FromValue, IntoCommand};
 
 /// The words of a command that converts.
@@ -12,7 +12,7 @@ pub fn words(command: impl IntoCommand) -> crate::command::Words {
 /// The message of the client error a command fails to convert with.
 pub fn words_error(command: impl IntoCommand) -> String {
     match command.into_command() {
-        Err(Error::Client(message)) => message,
+        Err(ErrorCode::Client(message)) => message,
         result => panic!("expected a client error: {result:?}"),
     }
 }
@@ -25,7 +25,7 @@ pub fn from<T: FromValue>(value: RespValue) -> T {
 /// The message of the client error a reply fails to convert with.
 pub fn from_error<T: FromValue>(value: RespValue) -> String {
     match T::from_value(value) {
-        Err(Error::Client(message)) => message,
+        Err(ErrorCode::Client(message)) => message,
         Err(error) => panic!("expected a client error: {error:?}"),
         Ok(_) => panic!("expected a client error"),
     }

@@ -30,7 +30,7 @@ use std::rc::{Rc, Weak};
 
 use componentized_valkey::types::{RespValue, StringOrBytes};
 use exports::componentized::valkey::connection::{
-    ConnectOpts, Connection, DurationMilliseconds, Error, Guest, GuestConnection, Subscription,
+    ConnectOpts, Connection, DurationMilliseconds, ErrorCode, Guest, GuestConnection, Subscription,
 };
 use futures_channel::{mpsc, oneshot};
 use futures_core::Stream;
@@ -59,19 +59,19 @@ impl Guest for Component {
 /// Where the reply to a command goes.
 enum Reply {
     /// To the caller waiting for it.
-    Call(oneshot::Sender<Result<RespValue, Error>>),
+    Call(oneshot::Sender<Result<RespValue, ErrorCode>>),
     /// Nowhere, the command was sent without waiting for its reply.
     Discard,
     /// A subscription's SUBSCRIBE, UNSUBSCRIBE or the like, see `pubsub::Pending`.
     #[cfg_attr(not(feature = "pubsub"), allow(dead_code))]
     Pubsub(pubsub::Pending),
     /// RESET, whose reply ends the subscriptions the server dropped.
-    Reset(oneshot::Sender<Result<(), Error>>),
+    Reset(oneshot::Sender<Result<(), ErrorCode>>),
     /// The HELLO after RESET, the writer waits for its reply before sending another command, and
     /// the connection closes when it fails.
     Rehello {
         proceed: oneshot::Sender<bool>,
-        done: oneshot::Sender<Result<(), Error>>,
+        done: oneshot::Sender<Result<(), ErrorCode>>,
     },
 }
 
@@ -101,7 +101,7 @@ struct State {
     /// Where each reply goes, in the order the commands were sent.
     pending: VecDeque<Reply>,
     /// Why the connection closed, once it has.
-    closed: Option<Error>,
+    closed: Option<ErrorCode>,
     /// Counts the commands written and the values read, it stays the same while the connection is
     /// idle.
     activity: u64,
@@ -135,15 +135,15 @@ pub struct ConnectionImpl(Rc<Inner>);
 impl GuestConnection for ConnectionImpl {
     async fn new(
         replies: StreamReader<RespValue>,
-        closed: FutureReader<Result<(), Error>>,
+        closed: FutureReader<Result<(), ErrorCode>>,
         opts: Option<ConnectOpts>,
     ) -> (
         StreamReader<RespValue>,
-        FutureReader<Result<Connection, Error>>,
+        FutureReader<Result<Connection, ErrorCode>>,
     ) {
         let (output, requests) = wit_stream::new();
         // the default is only written if the connection is dropped before it is established
-        let (connection_writer, connection) = wit_future::new(|| Err(Error::Closed(None)));
+        let (connection_writer, connection) = wit_future::new(|| Err(ErrorCode::Closed(None)));
 
         let state = Rc::new(RefCell::new(State::default()));
         let (requests_tx, requests_rx) = mpsc::unbounded();
@@ -166,46 +166,48 @@ impl GuestConnection for ConnectionImpl {
         self.0.state.borrow().server_properties.clone()
     }
 
-    async fn exchange(&self, command: Vec<StringOrBytes>) -> Result<RespValue, Error> {
+    async fn exchange(&self, command: Vec<StringOrBytes>) -> Result<RespValue, ErrorCode> {
         exchange(&self.0, bytes(command)).await
     }
 
     async fn exchange_all(
         &self,
         commands: Vec<Vec<StringOrBytes>>,
-    ) -> Vec<Result<RespValue, Error>> {
+    ) -> Vec<Result<RespValue, ErrorCode>> {
         exchange_all(&self.0, commands.into_iter().map(bytes).collect()).await
     }
 
-    async fn emit(&self, command: Vec<StringOrBytes>) -> Result<(), Error> {
+    async fn emit(&self, command: Vec<StringOrBytes>) -> Result<(), ErrorCode> {
         emit(&self.0, bytes(command)).await
     }
 
-    async fn watch(&self, keys: Vec<String>) -> Result<(), Error> {
+    async fn watch(&self, keys: Vec<String>) -> Result<(), ErrorCode> {
         if keys.is_empty() {
-            return Err(Error::Client("keys requires at least one item".to_string()));
+            return Err(ErrorCode::Client(
+                "keys requires at least one item".to_string(),
+            ));
         }
         let keys = keys.into_iter().map(String::into_bytes);
         let command = std::iter::once(b"WATCH".to_vec()).chain(keys).collect();
         ok(exchange(&self.0, command).await?)
     }
 
-    async fn unwatch(&self) -> Result<(), Error> {
+    async fn unwatch(&self) -> Result<(), ErrorCode> {
         ok(exchange(&self.0, words(&["UNWATCH"])).await?)
     }
 
     async fn transaction(
         &self,
         commands: Vec<Vec<StringOrBytes>>,
-    ) -> Result<Option<Vec<RespValue>>, Error> {
+    ) -> Result<Option<Vec<RespValue>>, ErrorCode> {
         transaction(&self.0, commands.into_iter().map(bytes).collect()).await
     }
 
-    fn subscription(&self) -> Result<Subscription, Error> {
+    fn subscription(&self) -> Result<Subscription, ErrorCode> {
         pubsub::subscription(&self.0)
     }
 
-    async fn reset(&self) -> Result<(), Error> {
+    async fn reset(&self) -> Result<(), ErrorCode> {
         reset(&self.0).await
     }
 
@@ -248,7 +250,7 @@ impl GuestConnection for ConnectionImpl {
 /// The writer sends no other command until HELLO succeeds, so none runs on the connection RESET
 /// leaves: RESP2, the default user, no name. When HELLO fails, e.g. the credentials no longer work,
 /// the reader closes the connection, and the commands queued after it fail without being sent.
-async fn reset(inner: &Inner) -> Result<(), Error> {
+async fn reset(inner: &Inner) -> Result<(), ErrorCode> {
     let mut state = inner.state.borrow_mut();
     if let Some(error) = &state.closed {
         return Err(error.clone());
@@ -272,7 +274,7 @@ async fn reset(inner: &Inner) -> Result<(), Error> {
                 written: None,
                 barrier,
             })
-            .map_err(|_| Error::Closed(None))?;
+            .map_err(|_| ErrorCode::Closed(None))?;
     }
     state.pending.push_back(Reply::Reset(reset_tx));
     state.pending.push_back(Reply::Rehello {
@@ -297,9 +299,9 @@ fn enqueue(
     command: Vec<Word>,
     reply: Option<Reply>,
     written: Option<oneshot::Sender<()>>,
-) -> Result<(), Error> {
+) -> Result<(), ErrorCode> {
     if command.is_empty() {
-        return Err(Error::Client(
+        return Err(ErrorCode::Client(
             "a command requires at least one word".to_string(),
         ));
     }
@@ -321,12 +323,12 @@ fn enqueue(
             written,
             barrier: None,
         })
-        .map_err(|_| Error::Closed(None))?;
+        .map_err(|_| ErrorCode::Closed(None))?;
     state.pending.extend(reply);
     Ok(())
 }
 
-async fn exchange(inner: &Inner, command: Vec<Word>) -> Result<RespValue, Error> {
+async fn exchange(inner: &Inner, command: Vec<Word>) -> Result<RespValue, ErrorCode> {
     reject_managed(inner, &command)?;
     if replies_with_pushes(&command) {
         return emit(inner, command).await.map(|()| RespValue::Null);
@@ -336,7 +338,7 @@ async fn exchange(inner: &Inner, command: Vec<Word>) -> Result<RespValue, Error>
 
 /// Send a command and wait for its reply, for the commands the connection sends itself, e.g. HELLO,
 /// which callers may not.
-async fn request(inner: &Inner, command: Vec<Word>) -> Result<RespValue, Error> {
+async fn request(inner: &Inner, command: Vec<Word>) -> Result<RespValue, ErrorCode> {
     let (reply_tx, reply_rx) = oneshot::channel();
     enqueue(inner, command, Some(Reply::Call(reply_tx)), None)?;
     // the reply is dropped unsent when the connection closes, the reader fails it first
@@ -346,9 +348,12 @@ async fn request(inner: &Inner, command: Vec<Word>) -> Result<RespValue, Error> 
 }
 
 /// Queue every command before waiting for any reply, so no other command is sent between them.
-async fn exchange_all(inner: &Inner, commands: Vec<Vec<Word>>) -> Vec<Result<RespValue, Error>> {
+async fn exchange_all(
+    inner: &Inner,
+    commands: Vec<Vec<Word>>,
+) -> Vec<Result<RespValue, ErrorCode>> {
     // no await until every command is queued
-    let queued: Vec<Result<Option<oneshot::Receiver<_>>, Error>> = commands
+    let queued: Vec<Result<Option<oneshot::Receiver<_>>, ErrorCode>> = commands
         .into_iter()
         .map(|command| {
             reject_managed(inner, &command)?;
@@ -378,10 +383,10 @@ async fn exchange_all(inner: &Inner, commands: Vec<Vec<Word>>) -> Vec<Result<Res
 async fn transaction(
     inner: &Inner,
     commands: Vec<Vec<Word>>,
-) -> Result<Option<Vec<RespValue>>, Error> {
+) -> Result<Option<Vec<RespValue>>, ErrorCode> {
     // before MULTI is sent, so an invalid command fails the transaction rather than being left out
     if commands.iter().any(Vec::is_empty) {
-        return Err(Error::Client(
+        return Err(ErrorCode::Client(
             "a command requires at least one word".to_string(),
         ));
     }
@@ -411,7 +416,7 @@ async fn transaction(
     }
 }
 
-async fn emit(inner: &Inner, command: Vec<Word>) -> Result<(), Error> {
+async fn emit(inner: &Inner, command: Vec<Word>) -> Result<(), ErrorCode> {
     reject_managed(inner, &command)?;
     let reply = (!replies_with_pushes(&command)).then_some(Reply::Discard);
     let (written_tx, written_rx) = oneshot::channel();
@@ -427,7 +432,7 @@ async fn emit(inner: &Inner, command: Vec<Word>) -> Result<(), Error> {
 /// - CLIENT REPLY, which stops replies from pairing with commands
 /// - SUBSCRIBE and the like once the connection owns the subscriptions, see
 ///   `State::owns_subscriptions`, e.g. an UNSUBSCRIBE would end a subscription without it asking
-fn reject_managed(inner: &Inner, command: &[Word]) -> Result<(), Error> {
+fn reject_managed(inner: &Inner, command: &[Word]) -> Result<(), ErrorCode> {
     let is = |index: usize, word: &str| {
         command
             .get(index)
@@ -445,11 +450,11 @@ fn reject_managed(inner: &Inner, command: &[Word]) -> Result<(), Error> {
         None
     };
     if let Some(reason) = reason {
-        return Err(Error::Client(reason.to_string()));
+        return Err(ErrorCode::Client(reason.to_string()));
     }
     if replies_with_pushes(command) && inner.state.borrow().owns_subscriptions {
         let name = String::from_utf8_lossy(&command[0]).to_uppercase();
-        return Err(Error::Client(format!(
+        return Err(ErrorCode::Client(format!(
             "{name} is rejected once the connection has a subscription, use the subscription's methods"
         )));
     }
@@ -478,13 +483,17 @@ fn replies_with_pushes(command: &[Word]) -> bool {
 }
 
 /// The error a command fails with once the connection closed.
-fn closed_error(state: &RefCell<State>) -> Error {
-    state.borrow().closed.clone().unwrap_or(Error::Closed(None))
+fn closed_error(state: &RefCell<State>) -> ErrorCode {
+    state
+        .borrow()
+        .closed
+        .clone()
+        .unwrap_or(ErrorCode::Closed(None))
 }
 
 /// Close the connection, failing every command waiting for a reply, closing the readers of dead
 /// letters, and ending the subscriptions.
-fn close(state: &RefCell<State>, error: Error) {
+fn close(state: &RefCell<State>, error: ErrorCode) {
     let mut state = state.borrow_mut();
     let error = state.closed.get_or_insert(error).clone();
     for reply in state.pending.drain(..).collect::<Vec<_>>() {
@@ -566,7 +575,7 @@ async fn write_requests(
 async fn read_replies(
     state: Rc<RefCell<State>>,
     mut replies: StreamReader<RespValue>,
-    closed: FutureReader<Result<(), Error>>,
+    closed: FutureReader<Result<(), ErrorCode>>,
 ) {
     // the error to close the connection with, before the transport closes
     let mut closing = None;
@@ -643,7 +652,7 @@ async fn read_replies(
         Ok(()) => None,
         Err(error) => describe(error),
     };
-    close(&state, Error::Closed(reason));
+    close(&state, ErrorCode::Closed(reason));
 }
 
 /// Start the work methods ask for that outlives them.
@@ -710,7 +719,7 @@ fn keep_alive_activity(inner: &Weak<Inner>, generation: u64) -> Option<u64> {
 async fn establish(
     inner: Rc<Inner>,
     opts: Option<ConnectOpts>,
-    connection: FutureWriter<Result<Connection, Error>>,
+    connection: FutureWriter<Result<Connection, ErrorCode>>,
 ) {
     let (auth, client_name, keep_alive_interval) = match opts {
         Some(opts) => (opts.auth, opts.client_name, opts.keep_alive_interval),
@@ -763,15 +772,17 @@ async fn establish(
 }
 
 /// The server's properties from the reply to HELLO, a map of property names to values.
-fn server_properties(reply: RespValue) -> Result<Vec<(String, RespValue)>, Error> {
+fn server_properties(reply: RespValue) -> Result<Vec<(String, RespValue)>, ErrorCode> {
     let RespValue::Map(entries) = reply else {
-        return Err(Error::Client(format!("unexpected reply to HELLO: {reply}")));
+        return Err(ErrorCode::Client(format!(
+            "unexpected reply to HELLO: {reply}"
+        )));
     };
     entries
         .into_iter()
         .map(|(name, value)| {
             let invalid = |name: RespValue| {
-                Error::Client(format!(
+                ErrorCode::Client(format!(
                     "unexpected property name in reply to HELLO: {name}"
                 ))
             };
@@ -787,36 +798,39 @@ fn server_properties(reply: RespValue) -> Result<Vec<(String, RespValue)>, Error
         .collect()
 }
 
-fn decode(value: &[u8]) -> Result<RespValue, Error> {
-    componentized_valkey::resp::decode(value).map_err(Error::Resp)
+fn decode(value: &[u8]) -> Result<RespValue, ErrorCode> {
+    componentized_valkey::resp::decode(value).map_err(ErrorCode::Resp)
 }
 
 /// An error value from the server fails the command.
 /// A simple string `OK`.
-fn ok(reply: RespValue) -> Result<(), Error> {
+fn ok(reply: RespValue) -> Result<(), ErrorCode> {
     match reply {
         RespValue::String(text) if text == "OK" => Ok(()),
         reply => Err(unexpected(&reply)),
     }
 }
 
-fn unexpected(reply: &RespValue) -> Error {
-    Error::Client(format!("unexpected reply: {reply:?}"))
+fn unexpected(reply: &RespValue) -> ErrorCode {
+    ErrorCode::Client(format!("unexpected reply: {reply:?}"))
 }
 
-fn reply_result(value: RespValue) -> Result<RespValue, Error> {
+fn reply_result(value: RespValue) -> Result<RespValue, ErrorCode> {
     match value {
-        RespValue::Error(message) | RespValue::BulkError(message) => Err(Error::Valkey(message)),
+        RespValue::Error(message) => Err(ErrorCode::Server(StringOrBytes::String(message))),
+        // binary safe, like a bulk string
+        RespValue::BulkError(message) => Err(ErrorCode::Server(StringOrBytes::from_bytes(message))),
         value => Ok(value),
     }
 }
 
 /// A transport's error as the reason a connection closed.
-fn describe(error: Error) -> Option<String> {
+fn describe(error: ErrorCode) -> Option<String> {
     match error {
-        Error::Closed(reason) => reason,
-        Error::Client(message) | Error::Resp(message) | Error::Valkey(message) => Some(message),
-        Error::Lagged => Some("a stream fell behind".to_string()),
+        ErrorCode::Closed(reason) => reason,
+        ErrorCode::Client(message) | ErrorCode::Resp(message) => Some(message),
+        ErrorCode::Server(message) => Some(message.to_string()),
+        ErrorCode::Lagged => Some("a stream fell behind".to_string()),
     }
 }
 

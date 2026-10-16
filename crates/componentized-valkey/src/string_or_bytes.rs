@@ -38,6 +38,17 @@ impl StringOrBytes {
     }
 }
 
+/// The text of a string, bytes escaped as in a Rust byte string literal, e.g. `\x80` and `\r`, for
+/// people to read, e.g. in an error message.
+impl std::fmt::Display for StringOrBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StringOrBytes::String(text) => f.write_str(text),
+            StringOrBytes::Bytes(bytes) => write!(f, "{}", bytes.escape_ascii()),
+        }
+    }
+}
+
 impl From<String> for StringOrBytes {
     fn from(text: String) -> Self {
         StringOrBytes::String(text)
@@ -72,6 +83,15 @@ impl PartialEq<String> for StringOrBytes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display() {
+        assert_eq!(StringOrBytes::from("ERR oops").to_string(), "ERR oops");
+        assert_eq!(
+            StringOrBytes::Bytes(b"ERR \x80\r\n".to_vec()).to_string(),
+            r"ERR \x80\r\n"
+        );
+    }
 
     #[test]
     fn from_bytes() {

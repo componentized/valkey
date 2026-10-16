@@ -24,7 +24,7 @@ use wasmtime::{Config, Engine, Result, Store, StoreContextMut, bail, format_err}
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 pub use bindings::componentized::valkey::types::{
-    self, ConnectOpts, Error, RespNestedValue, RespValue, StringOrBytes,
+    self, ConnectOpts, ErrorCode, RespNestedValue, RespValue, StringOrBytes,
 };
 
 mod server;
@@ -172,7 +172,7 @@ pub fn hello_reply() -> RespValue {
 pub struct Transport {
     requests: mpsc::UnboundedReceiver<RespValue>,
     replies: Option<mpsc::UnboundedSender<RespValue>>,
-    closed: Option<oneshot::Sender<Result<(), Error>>>,
+    closed: Option<oneshot::Sender<Result<(), ErrorCode>>>,
 }
 
 impl Transport {
@@ -198,7 +198,7 @@ impl Transport {
     }
 
     /// Close the transport, gracefully with `Ok(())`, or with the error.
-    pub fn close(&mut self, result: Result<(), Error>) {
+    pub fn close(&mut self, result: Result<(), ErrorCode>) {
         self.replies.take();
         if let Some(closed) = self.closed.take() {
             let _ = closed.send(result);
@@ -212,7 +212,7 @@ pub async fn connect(
     accessor: &Accessor<Ctx>,
     exports: &Exports,
     opts: Option<ConnectOpts>,
-) -> Result<(Transport, FutureReader<Result<ResourceAny, Error>>)> {
+) -> Result<(Transport, FutureReader<Result<ResourceAny, ErrorCode>>)> {
     let (replies_tx, replies_rx) = mpsc::unbounded_channel();
     let (closed_tx, closed_rx) = oneshot::channel();
     let replies = accessor.with(|store| StreamReader::new(store, ChannelProducer(replies_rx)))?;

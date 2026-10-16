@@ -10,7 +10,7 @@ use std::pin::pin;
 use std::task::Poll;
 
 use componentized::valkey::commands;
-use componentized::valkey::connection::{Connection, Error};
+use componentized::valkey::connection::{Connection, ErrorCode};
 use componentized::valkey::connector;
 use componentized_valkey::types::{
     AclRule, AclUserRule, Bytes, Cursor, DurationMilliseconds, DurationSeconds,
@@ -160,7 +160,7 @@ struct Server {
     requests: StreamReader<RespValue>,
     replies: StreamWriter<RespValue>,
     /// Resolved to `ok` when the server is dropped, the transport closed gracefully.
-    _closed: FutureWriter<Result<(), Error>>,
+    _closed: FutureWriter<Result<(), ErrorCode>>,
 }
 
 impl Server {
@@ -768,11 +768,11 @@ async fn invalid_arguments() -> Result<(), String> {
     let (mut server, conn) = establish().await?;
     check_eq!(
         commands::del(&conn, vec![]).await,
-        Err(Error::Client(s("keys requires at least one item")))
+        Err(ErrorCode::Client(s("keys requires at least one item")))
     );
     check_eq!(
         commands::scan(&conn, Cursor::Resume(s("0")), None, None, None).await,
-        Err(Error::Client(s(
+        Err(ErrorCode::Client(s(
             "resume requires the cursor a scan returned, use start to begin a scan"
         )))
     );
@@ -797,7 +797,7 @@ async fn unexpected_replies() -> Result<(), String> {
     .await?;
     check_eq!(
         result,
-        Err(Error::Client(s("unexpected reply: integer<7>")))
+        Err(ErrorCode::Client(s("unexpected reply: integer<7>")))
     );
     Ok(())
 }
@@ -814,9 +814,9 @@ async fn error_replies() -> Result<(), String> {
     .await?;
     check_eq!(
         result,
-        Err(Error::Valkey(s(
-            "WRONGTYPE Operation against a key holding the wrong kind of value"
-        )))
+        Err(ErrorCode::Server(
+            "WRONGTYPE Operation against a key holding the wrong kind of value".into()
+        ))
     );
     Ok(())
 }
@@ -826,7 +826,7 @@ async fn with_valkey() -> Result<(), String> {
     let conn = connector::connect()
         .await
         .map_err(|error| format!("failed to connect: {error:?}"))?;
-    let check = |result: Result<(), Error>| result.map_err(|error| format!("{error:?}"));
+    let check = |result: Result<(), ErrorCode>| result.map_err(|error| format!("{error:?}"));
     let key = || s("commands-test:string");
 
     check(commands::ping(&conn, None).await)?;

@@ -1,6 +1,6 @@
 //! RESP serialization, from <https://github.com/iorust/resp/tree/v1.0.3>.
 
-use crate::types::{RespError as Error, RespNestedValue, RespValue};
+use crate::types::{RespError as ErrorCode, RespNestedValue, RespValue};
 
 /// up to 512 MB in length
 const RESP_MAX_SIZE: i64 = 512 * 1024 * 1024;
@@ -79,7 +79,7 @@ fn buf_encode(value: RespValue, buf: &mut Vec<u8>) {
             buf.push(b'!');
             buf.extend_from_slice(val.len().to_string().as_bytes());
             buf.extend_from_slice(CRLF_BYTES);
-            buf.extend_from_slice(val.as_bytes());
+            buf.extend_from_slice(val);
             buf.extend_from_slice(CRLF_BYTES);
         }
         RespValue::VerbatimString((ref encoding, ref value)) => {
@@ -130,7 +130,7 @@ fn buf_encode(value: RespValue, buf: &mut Vec<u8>) {
 /// let value = RespValue::BulkString(b"Hello".to_vec());
 /// assert_eq!(decode(&encode(value.clone())), Ok(value));
 /// ```
-pub fn decode(value: &[u8]) -> Result<RespValue, Error> {
+pub fn decode(value: &[u8]) -> Result<RespValue, ErrorCode> {
     match frame_end(value, 0)? {
         Some(end) if end == value.len() => decode_frame(value),
         Some(end) => Err(format!(
@@ -143,12 +143,12 @@ pub fn decode(value: &[u8]) -> Result<RespValue, Error> {
 
 /// The length of the first complete RESP value in `buf`, or `None` when the value is incomplete
 /// and more bytes are needed. Only the framing is checked, the value is not decoded.
-pub fn frame_len(buf: &[u8]) -> Result<Option<usize>, Error> {
+pub fn frame_len(buf: &[u8]) -> Result<Option<usize>, ErrorCode> {
     frame_end(buf, 0)
 }
 
 /// The end of the RESP value starting at `start`, or `None` when it is incomplete.
-fn frame_end(buf: &[u8], start: usize) -> Result<Option<usize>, Error> {
+fn frame_end(buf: &[u8], start: usize) -> Result<Option<usize>, ErrorCode> {
     let Some(prefix) = buf.get(start) else {
         return Ok(None);
     };
@@ -159,14 +159,14 @@ fn frame_end(buf: &[u8], start: usize) -> Result<Option<usize>, Error> {
     let header = &buf[start + 1..start + crlf];
     let end = start + crlf + 2;
 
-    let length = |min: i64| -> Result<i64, Error> {
+    let length = |min: i64| -> Result<i64, ErrorCode> {
         let int = parse_integer(header)?;
         if int < min || int >= RESP_MAX_SIZE {
             Err(format!("invalid length: {}", int))?
         }
         Ok(int)
     };
-    let children = |end: usize, count: i64| -> Result<Option<usize>, Error> {
+    let children = |end: usize, count: i64| -> Result<Option<usize>, ErrorCode> {
         let mut end = end;
         for _ in 0..count {
             match frame_end(buf, end)? {
@@ -210,7 +210,7 @@ fn frame_end(buf: &[u8], start: usize) -> Result<Option<usize>, Error> {
 }
 
 /// Decodes the whole RESP value at the start of `buf`, its framing already checked by `frame_end`.
-fn decode_frame(buf: &[u8]) -> Result<RespValue, Error> {
+fn decode_frame(buf: &[u8]) -> Result<RespValue, ErrorCode> {
     let crlf = buf
         .windows(2)
         .position(|w| w == CRLF_BYTES)
@@ -219,12 +219,12 @@ fn decode_frame(buf: &[u8]) -> Result<RespValue, Error> {
     let body = crlf + 2;
 
     // the bytes of a blob value, after its length line
-    let blob = || -> Result<&[u8], Error> {
+    let blob = || -> Result<&[u8], ErrorCode> {
         let len = parse_integer(header)? as usize;
         Ok(&buf[body..body + len])
     };
     // the elements of an aggregate value, each kept as its RESP
-    let elements = |count: i64| -> Result<Vec<RespNestedValue>, Error> {
+    let elements = |count: i64| -> Result<Vec<RespNestedValue>, ErrorCode> {
         let mut start = body;
         let mut elements = Vec::with_capacity(count as usize);
         for _ in 0..count {
@@ -252,7 +252,7 @@ fn decode_frame(buf: &[u8]) -> Result<RespValue, Error> {
             -1 => Ok(RespValue::Null),
             _ => Ok(RespValue::BulkString(blob()?.to_vec())),
         },
-        b'!' => parse_string(blob()?).map(RespValue::BulkError),
+        b'!' => Ok(RespValue::BulkError(blob()?.to_vec())),
         b'=' => {
             let value = parse_string(blob()?)?;
             let Some((encoding, value)) = value.split_once(':') else {
@@ -300,7 +300,10 @@ impl std::fmt::Display for RespValue {
             Self::Boolean(value) => write!(f, "boolean<{value}>"),
             Self::Double(value) => write!(f, "double<{value}>"),
             Self::BigNumber(value) => write!(f, "big-number<{value}>"),
-            Self::BulkError(value) => write!(f, "bulk-error<{value:?}>"),
+            Self::BulkError(value) => match std::str::from_utf8(value) {
+                Ok(text) => write!(f, "bulk-error<{text:?}>"),
+                Err(_) => write!(f, "bulk-error<b\"{}\">", value.escape_ascii()),
+            },
             Self::VerbatimString((format, value)) => {
                 write!(f, "verbatim-string<{format}, {value:?}>")
             }
@@ -346,18 +349,18 @@ fn write_nested(f: &mut std::fmt::Formatter<'_>, value: &[u8]) -> std::fmt::Resu
 }
 
 #[inline]
-fn parse_string(bytes: &[u8]) -> Result<String, Error> {
+fn parse_string(bytes: &[u8]) -> Result<String, ErrorCode> {
     String::from_utf8(bytes.to_vec()).map_err(|err| err.to_string())
 }
 
 #[inline]
-fn parse_integer(bytes: &[u8]) -> Result<i64, Error> {
+fn parse_integer(bytes: &[u8]) -> Result<i64, ErrorCode> {
     let str_integer = parse_string(bytes)?;
     (str_integer.parse::<i64>()).map_err(|err| err.to_string())
 }
 
 #[inline]
-fn parse_double(bytes: &[u8]) -> Result<f64, Error> {
+fn parse_double(bytes: &[u8]) -> Result<f64, ErrorCode> {
     let str_double = parse_string(bytes)?;
     (str_double.parse::<f64>()).map_err(|err| err.to_string())
 }
@@ -428,7 +431,8 @@ mod tests {
             RespValue::Boolean(false),
             RespValue::Double(1.5),
             RespValue::BigNumber("12345678901234567890".to_string()),
-            RespValue::BulkError("SYNTAX invalid".to_string()),
+            RespValue::BulkError(b"SYNTAX invalid".to_vec()),
+            RespValue::BulkError(b"ERR \x80\r\n".to_vec()),
             RespValue::VerbatimString(("txt".to_string(), "a:b".to_string())),
             RespValue::Array(vec![encode(RespValue::Integer(1)), encode(RespValue::Null)]),
             RespValue::Set(vec![encode(RespValue::String("a".to_string()))]),
@@ -522,8 +526,12 @@ mod tests {
             "big-number<1>"
         );
         assert_eq!(
-            display(RespValue::BulkError("SYNTAX".to_string())),
+            display(RespValue::BulkError(b"SYNTAX".to_vec())),
             r#"bulk-error<"SYNTAX">"#
+        );
+        assert_eq!(
+            display(RespValue::BulkError(b"ERR \x80".to_vec())),
+            r#"bulk-error<b"ERR \x80">"#
         );
         assert_eq!(
             display(RespValue::VerbatimString((

@@ -1,7 +1,7 @@
 //! Tests for the `tcp-connector` component, composed with `tcp` and `connection` as `test-tcp`,
 //! configured with `wasi:config`, against a server played by the test over TCP.
 
-use test_harness::{Client, Error, Harness, Server, command, hello_reply, ok, setinfo};
+use test_harness::{Client, ErrorCode, Harness, Server, command, hello_reply, ok, setinfo};
 
 /// Answer the handshake of a connection, expecting `hello`.
 async fn handshake(client: &mut Client, hello: &[&str]) {
@@ -82,7 +82,7 @@ async fn keep_alive_pings_an_idle_connection() -> wasmtime::Result<()> {
 }
 
 /// The error connecting with an invalid configuration, nothing is sent to a server.
-async fn fails_with(config: &[(&str, &str)]) -> wasmtime::Result<Error> {
+async fn fails_with(config: &[(&str, &str)]) -> wasmtime::Result<ErrorCode> {
     let mut harness = Harness::with_config("test-tcp", config).await?;
     harness
         .run(async |accessor, exports| {
@@ -96,11 +96,13 @@ async fn fails_with(config: &[(&str, &str)]) -> wasmtime::Result<Error> {
 async fn invalid_configuration_fails_to_connect() -> wasmtime::Result<()> {
     assert_eq!(
         fails_with(&[("port", "http")]).await?,
-        Error::Client("port must be a port number: http".to_string())
+        ErrorCode::Client("port must be a port number: http".to_string())
     );
     assert_eq!(
         fails_with(&[("keep-alive-interval-ms", "soon")]).await?,
-        Error::Client("keep-alive-interval-ms must be a number of milliseconds: soon".to_string())
+        ErrorCode::Client(
+            "keep-alive-interval-ms must be a number of milliseconds: soon".to_string()
+        )
     );
     Ok(())
 }
@@ -110,6 +112,6 @@ async fn unreachable_servers_fail_to_connect() -> wasmtime::Result<()> {
     // a port nothing listens on
     let port = Server::bind().await?.port().to_string();
     let error = fails_with(&[("port", &port)]).await?;
-    assert!(matches!(error, Error::Closed(Some(_))), "{error:?}");
+    assert!(matches!(error, ErrorCode::Closed(Some(_))), "{error:?}");
     Ok(())
 }

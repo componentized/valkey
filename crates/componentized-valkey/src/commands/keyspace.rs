@@ -1,12 +1,12 @@
 //! The keyspace commands: MIGRATE, SCAN, SORT, TYPE and the like.
 
 use crate::command::{Flag, IntoCommand, NamedOption, NonEmpty, Words};
-use crate::types::{Error, KeyType, MigrateAuth, RespValue, SortOpts};
+use crate::types::{ErrorCode, KeyType, MigrateAuth, RespValue, SortOpts};
 use crate::value::{FromValue, unexpected};
 
 /// The name of the type, e.g. for SCAN's TYPE.
 impl IntoCommand for KeyType {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             KeyType::String => "string".to_string(),
             KeyType::List => "list".to_string(),
@@ -24,7 +24,7 @@ impl IntoCommand for KeyType {
 pub struct OptionalKeyType(pub Option<KeyType>);
 
 impl FromValue for OptionalKeyType {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         // `none` rather than null, though the reply schema has null
         let name: Option<String> = FromValue::from_value(value)?;
         Ok(OptionalKeyType(match name.as_deref() {
@@ -41,7 +41,7 @@ impl FromValue for OptionalKeyType {
 }
 
 impl IntoCommand for MigrateAuth {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             MigrateAuth::Password(password) => ("AUTH", password).into_command(),
             MigrateAuth::UsernamePassword((username, password)) => {
@@ -55,7 +55,7 @@ impl IntoCommand for MigrateAuth {
 pub struct Migrated(pub bool);
 
 impl FromValue for Migrated {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match &value {
             RespValue::String(reply) if reply == "OK" => Ok(Migrated(true)),
             RespValue::String(reply) if reply == "NOKEY" => Ok(Migrated(false)),
@@ -67,7 +67,7 @@ impl FromValue for Migrated {
 /// `[ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]`, also
 /// `SortRoOpts`, the same type.
 impl IntoCommand for SortOpts {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         // GET before each pattern
         let get = self.get.map(|patterns| {
             let patterns = patterns.into_iter().map(|pattern| ("GET", pattern));

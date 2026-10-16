@@ -1,5 +1,5 @@
 use componentized::valkey::commands::{self, Cursor, DurationMilliseconds, StringOrBytes};
-use componentized::valkey::connection::{Connection, Error as ValkeyError};
+use componentized::valkey::connection::{Connection, ErrorCode as ValkeyError};
 use componentized::valkey::connector;
 use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
 use exports::wasmcloud::keyvalue::batch::Guest as BatchGuest;

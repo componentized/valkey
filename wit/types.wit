@@ -39,7 +39,7 @@ interface types {
         boolean(bool),
         double(double),
         big-number(string),
-        bulk-error(string),
+        bulk-error(bytes),
         verbatim-string(tuple<string, string>),
         %map(list<tuple<resp-nested-value, resp-nested-value>>),
         set(list<resp-nested-value>),
@@ -55,7 +55,7 @@ interface types {
 
     /// The errors of a connection and of every command interface.
     @since(version = 0.3.0-dev)
-    variant error {
+    variant error-code {
         /// The transport closed while a reply was outstanding, or before the command was sent. Holds
         /// the transport's error when it did not close gracefully.
         closed(option<string>),
@@ -64,8 +64,9 @@ interface types {
         client(string),
         /// RESP errors are encoding issues converting values to/from bytes.
         resp(resp-error),
-        /// Valkey errors are Error or BulkError values returned directly from the server.
-        valkey(string),
+        /// Server errors are Error or BulkError RESP values returned directly from the server. An Error
+        /// is a string, a BulkError a string when it is UTF-8, bytes otherwise.
+        server(string-or-bytes),
         /// The reader of a stream fell too far behind and its stream was closed, rather than
         /// holding up the connection. What the stream missed is lost.
         lagged,

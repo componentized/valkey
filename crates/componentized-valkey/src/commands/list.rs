@@ -1,11 +1,11 @@
 //! The list commands: LINSERT, LMOVE, LMPOP and the like.
 
 use crate::command::{IntoCommand, Words};
-use crate::types::{Error, Integer, LinsertPosition, LinsertResult, ListSide, RespValue};
+use crate::types::{ErrorCode, Integer, LinsertPosition, LinsertResult, ListSide, RespValue};
 use crate::value::FromValue;
 
 impl IntoCommand for ListSide {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ListSide::Left => "LEFT",
             ListSide::Right => "RIGHT",
@@ -15,7 +15,7 @@ impl IntoCommand for ListSide {
 }
 
 impl IntoCommand for LinsertPosition {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             LinsertPosition::Before => "BEFORE",
             LinsertPosition::After => "AFTER",
@@ -27,12 +27,12 @@ impl IntoCommand for LinsertPosition {
 /// The length of the list after the insert, `0` when the key does not exist, `-1` when the pivot
 /// was not found.
 impl FromValue for LinsertResult {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         match Integer::from_value(value)? {
             -1 => Ok(Self::PivotNotFound),
             0 => Ok(Self::NoSuchKey),
             length if length > 0 => Ok(Self::Inserted(length)),
-            code => Err(Error::Client(format!("unexpected reply: {code}"))),
+            code => Err(ErrorCode::Client(format!("unexpected reply: {code}"))),
         }
     }
 }

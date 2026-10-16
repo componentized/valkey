@@ -2,14 +2,14 @@
 
 use crate::command::{IntoCommand, Words};
 use crate::types::{
-    Error, GetexTtl, LcsIdxMatch, LcsIdxReply, MsetexPrecondition, RespValue, SetPrecondition,
+    ErrorCode, GetexTtl, LcsIdxMatch, LcsIdxReply, MsetexPrecondition, RespValue, SetPrecondition,
     SetTtl,
 };
 use crate::value::{Fields, FromValue, items};
 
 /// Also `HgetexTtl`, the same type.
 impl IntoCommand for GetexTtl {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             GetexTtl::Ex(duration) => ("EX", duration).into_command(),
             GetexTtl::Px(duration) => ("PX", duration).into_command(),
@@ -22,7 +22,7 @@ impl IntoCommand for GetexTtl {
 
 /// A map of the matches and the length of the longest common subsequence.
 impl FromValue for LcsIdxReply {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut fields = Fields::from_value(value)?;
         Ok(Self {
             matches: fields.required("matches")?,
@@ -33,12 +33,12 @@ impl FromValue for LcsIdxReply {
 
 /// The inclusive ranges of a match in each key and, with `WITHMATCHLEN`, its length.
 impl FromValue for LcsIdxMatch {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let mut items = items(value)?.into_iter();
         let (Some(key1_range), Some(key2_range), len, None) =
             (items.next(), items.next(), items.next(), items.next())
         else {
-            return Err(Error::Client(
+            return Err(ErrorCode::Client(
                 "unexpected LCS match, expected 2 or 3 items".to_string(),
             ));
         };
@@ -51,7 +51,7 @@ impl FromValue for LcsIdxMatch {
 }
 
 impl IntoCommand for MsetexPrecondition {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             MsetexPrecondition::Nx => "NX".into_command(),
             MsetexPrecondition::Xx => "XX".into_command(),
@@ -60,7 +60,7 @@ impl IntoCommand for MsetexPrecondition {
 }
 
 impl IntoCommand for SetPrecondition {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             SetPrecondition::Nx => "NX".into_command(),
             SetPrecondition::Xx => "XX".into_command(),
@@ -72,7 +72,7 @@ impl IntoCommand for SetPrecondition {
 
 /// Also `MsetexTtl` and `HsetexTtl`, the same type.
 impl IntoCommand for SetTtl {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             SetTtl::Ex(duration) => ("EX", duration).into_command(),
             SetTtl::Px(duration) => ("PX", duration).into_command(),

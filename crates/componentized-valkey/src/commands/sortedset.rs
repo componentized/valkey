@@ -2,7 +2,7 @@
 
 use crate::command::{Flag, IntoCommand, Words};
 use crate::types::{
-    Double, Error, LexBound, Limit, RespValue, ScoreBound, StringOrBytes, ZaddComparison,
+    Double, ErrorCode, LexBound, Limit, RespValue, ScoreBound, StringOrBytes, ZaddComparison,
     ZaddCondition, ZmpopEnd, ZrangeBy, ZsetAggregate,
 };
 use crate::value::{FromValue, items};
@@ -15,7 +15,7 @@ pub struct ScoreRange {
 }
 
 impl IntoCommand for ScoreRange {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         let bound = |bound, unbounded: &str| match bound {
             ScoreBound::Inclusive(score) => score.to_string().into(),
             ScoreBound::Exclusive(score) => format!("({score}").into(),
@@ -35,7 +35,7 @@ pub struct LexRange {
 }
 
 impl IntoCommand for LexRange {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         // a member may be bytes, the prefix keeps it so
         let bound = |bound, unbounded: &str| match bound {
             LexBound::Inclusive(member) => StringOrBytes::prefixed(member, "["),
@@ -56,7 +56,7 @@ pub struct Zrange {
 }
 
 impl IntoCommand for Zrange {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         let Zrange { range, rev, limit } = self;
         let (range, by) = match range {
             ZrangeBy::Rank((start, stop)) => ((start, stop).into_command()?, None),
@@ -73,7 +73,7 @@ impl IntoCommand for Zrange {
 }
 
 impl IntoCommand for ZsetAggregate {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         let aggregate = match self {
             ZsetAggregate::Sum => "SUM",
             ZsetAggregate::Min => "MIN",
@@ -85,7 +85,7 @@ impl IntoCommand for ZsetAggregate {
 
 /// Also `BzmpopEnd`, the same type.
 impl IntoCommand for ZmpopEnd {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ZmpopEnd::Min => "MIN",
             ZmpopEnd::Max => "MAX",
@@ -95,7 +95,7 @@ impl IntoCommand for ZmpopEnd {
 }
 
 impl IntoCommand for ZaddCondition {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ZaddCondition::Nx => "NX",
             ZaddCondition::Xx => "XX",
@@ -105,7 +105,7 @@ impl IntoCommand for ZaddCondition {
 }
 
 impl IntoCommand for ZaddComparison {
-    fn into_command(self) -> Result<Words, Error> {
+    fn into_command(self) -> Result<Words, ErrorCode> {
         match self {
             ZaddComparison::Gt => "GT",
             ZaddComparison::Lt => "LT",
@@ -119,7 +119,7 @@ impl IntoCommand for ZaddComparison {
 pub struct ScoredMembers(pub Vec<(StringOrBytes, Double)>);
 
 impl FromValue for ScoredMembers {
-    fn from_value(value: RespValue) -> Result<Self, Error> {
+    fn from_value(value: RespValue) -> Result<Self, ErrorCode> {
         let items = items(value)?;
         match items.first() {
             None => Ok(ScoredMembers(vec![])),
@@ -133,7 +133,7 @@ impl FromValue for ScoredMembers {
                     StringOrBytes::from_value(member)?,
                     Double::from_value(score)?,
                 )])),
-                Err(items) => Err(Error::Client(format!(
+                Err(items) => Err(ErrorCode::Client(format!(
                     "unexpected number of items, expected a member and its score: {}",
                     items.len()
                 ))),

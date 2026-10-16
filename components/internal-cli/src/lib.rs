@@ -10,13 +10,13 @@ use std::future::{Future, poll_fn};
 use std::pin::{Pin, pin};
 use std::task::Poll;
 
-use componentized::valkey::connection::{Connection, Error};
+use componentized::valkey::connection::{Connection, ErrorCode};
 use componentized::valkey::connector;
 use componentized_valkey::types::{RespNestedValue, RespValue, StringOrBytes};
 use exports::wasi::cli::run::Guest;
 use futures_channel::mpsc;
 use futures_core::Stream;
-use wasi::cli::{environment, stderr, stdin, stdout, types::ErrorCode};
+use wasi::cli::{environment, stderr, stdin, stdout, types::ErrorCode as CliErrorCode};
 use wit_bindgen::{FutureReader, StreamReader, StreamResult, StreamWriter};
 
 const USAGE: &str = "\
@@ -67,7 +67,7 @@ impl Guest for Cli {
 }
 
 /// Sends the command, printing its reply, or the push messages a command without one causes.
-async fn exec(command: Vec<StringOrBytes>, out: &mut Output) -> Result<(), Error> {
+async fn exec(command: Vec<StringOrBytes>, out: &mut Output) -> Result<(), ErrorCode> {
     let connection = connector::connect().await?;
     // before the command is sent, so none of the push messages it causes are missed
     let mut pushes = connection.dead_letters();
@@ -105,16 +105,19 @@ async fn print_pushes(
     pushes: &mut StreamReader<RespValue>,
     out: &mut Output,
     limit: Option<usize>,
-) -> Result<(), Error> {
+) -> Result<(), ErrorCode> {
     for _ in 0..limit.unwrap_or(usize::MAX) {
         match pushes.next().await {
             // sent unprompted, e.g. for a SUBSCRIBE missing its channels
-            Some(RespValue::Error(message) | RespValue::BulkError(message)) => {
-                return Err(Error::Valkey(message));
+            Some(RespValue::Error(message)) => {
+                return Err(ErrorCode::Server(StringOrBytes::String(message)));
+            }
+            Some(RespValue::BulkError(message)) => {
+                return Err(ErrorCode::Server(StringOrBytes::from_bytes(message)));
             }
             Some(push) => out.line(&render(push)).await,
             None => {
-                return Err(Error::Client(
+                return Err(ErrorCode::Client(
                     "push messages stopped, the connection closed or they were not read fast enough"
                         .to_string(),
                 ));
@@ -126,7 +129,7 @@ async fn print_pushes(
 
 /// Sends each line of stdin as a command, printing the replies, and push messages as they arrive,
 /// until stdin closes.
-async fn session(out: &mut Output) -> Result<(), Error> {
+async fn session(out: &mut Output) -> Result<(), ErrorCode> {
     let connection = connector::connect().await?;
     let pushes = connection.dead_letters();
     let (stdin, _stdin_result) = stdin::read_via_stream();
@@ -163,7 +166,7 @@ async fn send_lines(
     connection: &Connection,
     stdin: StreamReader<u8>,
     lines: mpsc::UnboundedSender<String>,
-) -> Result<(), Error> {
+) -> Result<(), ErrorCode> {
     let mut input = Lines::new(stdin);
     while let Some(line) = input.next().await {
         let words: Vec<StringOrBytes> = match split(&line) {
@@ -194,8 +197,8 @@ async fn send_lines(
         let text = match reply {
             Ok(reply) => render(reply),
             // the command failed, not the session
-            Err(Error::Valkey(message)) => format!("(error) {message}"),
-            Err(Error::Client(message)) => format!("(error) {message}"),
+            Err(ErrorCode::Server(message)) => format!("(error) {message}"),
+            Err(ErrorCode::Client(message)) => format!("(error) {message}"),
             Err(error) => return Err(error),
         };
         let _ = lines.unbounded_send(text);
@@ -333,11 +336,13 @@ fn name(command: &[StringOrBytes]) -> String {
 /// A stream to stdout or stderr.
 struct Output {
     writer: StreamWriter<u8>,
-    written: FutureReader<Result<(), ErrorCode>>,
+    written: FutureReader<Result<(), CliErrorCode>>,
 }
 
 impl Output {
-    fn new(write_via_stream: fn(StreamReader<u8>) -> FutureReader<Result<(), ErrorCode>>) -> Self {
+    fn new(
+        write_via_stream: fn(StreamReader<u8>) -> FutureReader<Result<(), CliErrorCode>>,
+    ) -> Self {
         let (writer, reader) = wit_stream::new();
         let written = write_via_stream(reader);
         Output { writer, written }
@@ -359,7 +364,7 @@ impl Output {
 
 /// Prints a line to a new stream to stdout or stderr.
 async fn print(
-    write_via_stream: fn(StreamReader<u8>) -> FutureReader<Result<(), ErrorCode>>,
+    write_via_stream: fn(StreamReader<u8>) -> FutureReader<Result<(), CliErrorCode>>,
     text: &str,
 ) {
     let mut output = Output::new(write_via_stream);
@@ -367,14 +372,14 @@ async fn print(
     output.close().await;
 }
 
-fn render_error(error: Error) -> String {
+fn render_error(error: ErrorCode) -> String {
     match error {
-        Error::Valkey(message) => format!("(error) {message}"),
-        Error::Closed(None) => "connection closed".to_string(),
-        Error::Closed(Some(reason)) => format!("connection closed: {reason}"),
-        Error::Client(message) => message,
-        Error::Resp(message) => format!("invalid RESP: {message}"),
-        Error::Lagged => "fell behind, values were lost".to_string(),
+        ErrorCode::Server(message) => format!("(error) {message}"),
+        ErrorCode::Closed(None) => "connection closed".to_string(),
+        ErrorCode::Closed(Some(reason)) => format!("connection closed: {reason}"),
+        ErrorCode::Client(message) => message,
+        ErrorCode::Resp(message) => format!("invalid RESP: {message}"),
+        ErrorCode::Lagged => "fell behind, values were lost".to_string(),
     }
 }
 
@@ -382,7 +387,8 @@ fn render_error(error: Error) -> String {
 fn render(value: RespValue) -> String {
     match value {
         RespValue::String(text) => text,
-        RespValue::Error(message) | RespValue::BulkError(message) => format!("(error) {message}"),
+        RespValue::Error(message) => format!("(error) {message}"),
+        RespValue::BulkError(message) => format!("(error) {}", StringOrBytes::from_bytes(message)),
         RespValue::Integer(value) => format!("(integer) {value}"),
         // quoted, bytes outside printable ASCII escaped as valkey-cli does, binary or not
         RespValue::BulkString(bytes) => format!("\"{}\"", bytes.escape_ascii()),
@@ -548,7 +554,7 @@ mod tests {
             "(error) ERR oops"
         );
         assert_eq!(
-            render(RespValue::BulkError("SYNTAX".to_string())),
+            render(RespValue::BulkError(b"SYNTAX".to_vec())),
             "(error) SYNTAX"
         );
         assert_eq!(render(RespValue::Integer(-1)), "(integer) -1");
@@ -640,19 +646,22 @@ mod tests {
     #[test]
     fn render_errors() {
         assert_eq!(
-            render_error(Error::Valkey("ERR oops".to_string())),
+            render_error(ErrorCode::Server("ERR oops".into())),
             "(error) ERR oops"
         );
-        assert_eq!(render_error(Error::Closed(None)), "connection closed");
+        assert_eq!(render_error(ErrorCode::Closed(None)), "connection closed");
         assert_eq!(
-            render_error(Error::Closed(Some("reset".to_string()))),
+            render_error(ErrorCode::Closed(Some("reset".to_string()))),
             "connection closed: reset"
         );
-        assert_eq!(render_error(Error::Client("bad".to_string())), "bad");
+        assert_eq!(render_error(ErrorCode::Client("bad".to_string())), "bad");
         assert_eq!(
-            render_error(Error::Resp("bad".to_string())),
+            render_error(ErrorCode::Resp("bad".to_string())),
             "invalid RESP: bad"
         );
-        assert_eq!(render_error(Error::Lagged), "fell behind, values were lost");
+        assert_eq!(
+            render_error(ErrorCode::Lagged),
+            "fell behind, values were lost"
+        );
     }
 }
