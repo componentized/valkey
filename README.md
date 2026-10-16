@@ -74,11 +74,13 @@ The cli tools the build uses, [`constants`](https://github.com/componentized/con
 make test
 ```
 
-Tests the components without a Valkey server, playing the server themselves, then runs the cli against a Valkey server on `localhost:6379`. The tests against a Valkey server, ignored by `cargo test`, run with:
+Tests the components without a Valkey server, playing the server themselves. The tests against a Valkey server, ignored by `cargo test`, run with:
 
 ```sh
 make test-valkey
 ```
+
+It runs Valkey in a new container, on a free port, removed afterwards. `VALKEY_VERSION` picks the version, e.g. `make test-valkey VALKEY_VERSION=8.1`.
 
 ## Run
 
