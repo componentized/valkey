@@ -2,15 +2,34 @@
 resolver = "2"
 members = [
     "components/as-keyvalue",
-    "components/dep-cli",
-    "components/ops",
+    "components/commands",
+    "components/connection",
+    "components/connection-minimal",
+    "components/internal-cli",
+    "components/test-commands-suite",
+    "components/test-stub-sockets",
+    "components/test-tcp-connector-latch",
+    "components/test-tcp-connector-latch-suite",
     "components/sample-http-incrementor",
+    "components/tcp",
+    "components/tcp-connector",
+    "components/internal-tcp-connector-egress-config",
+    "components/internal-tcp-connector-lookup-config",
+    "crates/componentized-valkey",
+    "crates/test-harness",
 ]
 
 [workspace.package]
 version = "0.3.0-dev"
 
 [workspace.dependencies]
+futures-channel = "0.3"
+futures-core = "0.3"
+componentized-valkey = { path = "./crates/componentized-valkey" }
+test-harness = { path = "./crates/test-harness" }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+wasmtime = { version = "49", features = ["component-model-async"] }
+wasmtime-wasi = { version = "49", features = ["p3"] }
 wit-bindgen = "0.61.0"
 
 [profile.release]
@@ -18,3 +37,12 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 strip = "debuginfo"
+
+[profile.component-debug]
+inherits = "dev"
+opt-level = 1        # most of the size win; locals mostly still visible
+lto = true
+codegen-units = 1
+incremental = false  # no benefit with one codegen unit
+debug = "full"       # variables and types for lldb, file:line in backtraces
+# kept from dev: debug-assertions, overflow-checks, no strip

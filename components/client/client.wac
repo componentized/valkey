@@ -1,11 +1,35 @@
 package componentized:valkey;
 
-let ops = new local:ops { ... };
+let connection = new local:connection {
+    ...
+};
+let tcp = new local:tcp {
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    ...
+};
+let commands = new local:commands {
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    ...
+};
+// the keys of the tcp-connector's config, and their defaults
+let tcp-connector-constants = new local:tcp-connector-constants {
+    ...
+};
+let connector = new local:tcp-connector {
+    "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/tcp@0.3.0-dev": tcp.tcp,
+    ...
+};
 let keyvalue = new local:as-keyvalue {
-    "componentized:valkey/store@0.3.0-dev": ops.store,
-    "componentized:valkey/resp@0.3.0-dev": ops.resp,
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/connector@0.3.0-dev": connector.connector,
+    "componentized:valkey/commands@0.3.0-dev": commands.commands,
     ...
 };
 
-export ops...;
+export connection.connection;
+export tcp.tcp;
+export connector.connector;
+export commands...;
 export keyvalue...;

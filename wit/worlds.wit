@@ -1,6 +1,10 @@
 package componentized:valkey@0.3.0-dev;
 
 world imports {
-    import resp;
-    import store;
+    import commands;
+    import connection;
+    import connector;
+    import tcp;
+    import tcp-connector-constants;
+    import types;
 }

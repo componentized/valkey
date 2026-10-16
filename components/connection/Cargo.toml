@@ -1,0 +1,24 @@
+[package]
+name = "connection"
+version.workspace = true
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["pubsub"]
+# subscriptions, see `connection.subscription`, without it every push message is a dead letter
+pubsub = []
+
+[dependencies]
+futures-channel = { workspace = true }
+futures-core = { workspace = true }
+componentized-valkey = { workspace = true }
+wit-bindgen = { workspace = true, features = ["async-spawn", "inter-task-wakeup"] }
+
+[dev-dependencies]
+test-harness = { workspace = true }
+tokio = { workspace = true }
+wasmtime = { workspace = true }

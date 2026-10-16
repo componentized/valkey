@@ -1,6 +1,6 @@
-#![no_main]
-
-use componentized::valkey::store::{self as valkey, Connection, Duration, HelloOpts, HscanOpts};
+use componentized::valkey::commands::{self, Cursor, DurationMilliseconds, StringOrBytes};
+use componentized::valkey::connection::{Connection, ErrorCode as ValkeyError};
+use componentized::valkey::connector;
 use exports::wasmcloud::keyvalue::atomics::Guest as AtomicsGuest;
 use exports::wasmcloud::keyvalue::batch::Guest as BatchGuest;
 use exports::wasmcloud::keyvalue::store::Guest as StoreGuest;
@@ -9,13 +9,6 @@ use exports::wasmcloud::keyvalue::types::{
 };
 use wasi::config::store::{self as config};
 
-const HOSTNAME_KEY: &str = "hostname";
-const HOSTNAME_DEFAULT: &str = "127.0.0.1";
-const PORT_KEY: &str = "port";
-const PORT_DEFAULT: &str = "6379";
-const USERNAME_KEY: &str = "username";
-const USERNAME_DEFAULT: &str = "default";
-const PASSWORD_KEY: &str = "password";
 const KEY_PREFIX_KEY: &str = "key-prefix";
 const KEY_PREFIX_DEFAULT: &str = "";
 
@@ -28,25 +21,8 @@ impl TypesGuest for AsKeyvalue {
 
 impl StoreGuest for AsKeyvalue {
     async fn open(identifier: String) -> Result<Bucket, Error> {
-        let hostname: String = config::get(HOSTNAME_KEY)?.unwrap_or(HOSTNAME_DEFAULT.to_string());
-        let port = config::get(PORT_KEY)?.unwrap_or(PORT_DEFAULT.to_string());
-        let port: u16 = port
-            .parse()
-            .map_err(|_| Error::Other(String::from("port must be an integer")))?;
-
-        let opts = HelloOpts {
-            proto_ver: Some("3".to_string()),
-            auth: match config::get(PASSWORD_KEY)? {
-                Some(password) => {
-                    let username: String =
-                        config::get(USERNAME_KEY)?.unwrap_or(USERNAME_DEFAULT.to_string());
-                    Some((username, password))
-                }
-                None => None,
-            },
-            client_name: None,
-        };
-        let connection = valkey::connect(hostname, port, Some(opts))
+        // the connector decides the transport and the server, e.g. from its own configuration
+        let connection = connector::connect()
             .await
             .map_err(|_| Error::StoreUnavailable)?;
 
@@ -67,10 +43,11 @@ struct KeyvalueToValkeyBucket {
 
 impl GuestBucket for KeyvalueToValkeyBucket {
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
-        match self.connection.hget(self.hash_key.clone(), key).await? {
-            Some(value) => Ok(Some(value.into_bytes())),
-            None => Ok(None),
-        }
+        let value = commands::hget(&self.connection, self.hash_key.clone(), key).await?;
+        Ok(value.map(|value| match value {
+            StringOrBytes::String(value) => value.into_bytes(),
+            StringOrBytes::Bytes(value) => value,
+        }))
     }
 
     async fn set(
@@ -79,41 +56,48 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         value: Vec<u8>,
         options: Option<SetOptions>,
     ) -> Result<(), Error> {
-        let value = String::from_utf8(value).map_err(|e| Error::Other(e.to_string()))?;
+        let value = StringOrBytes::Bytes(value);
         let options = options.unwrap_or(SetOptions {
             ttl_ms: None,
             if_not_exists: false,
         });
 
         if options.if_not_exists {
-            match self
-                .connection
-                .hsetnx(self.hash_key.clone(), key.clone(), value)
+            match commands::hsetnx(&self.connection, self.hash_key.clone(), key.clone(), value)
                 .await?
             {
                 true => (),
                 false => Err(Error::PreconditionFailed)?,
             }
         } else {
-            self.connection
-                .hset(self.hash_key.clone(), key.clone(), value)
-                .await?
+            commands::hset(
+                &self.connection,
+                self.hash_key.clone(),
+                vec![(key.clone(), value)],
+            )
+            .await?;
         }
         if let Some(ttl_ms) = options.ttl_ms {
-            let ttl: Duration = ttl_ms / 1000;
-            self.connection
-                .hexpire(self.hash_key.clone(), ttl, None, vec![key])
-                .await?;
+            let ttl = DurationMilliseconds { px: ttl_ms };
+            commands::hpexpire(
+                &self.connection,
+                self.hash_key.clone(),
+                ttl,
+                None,
+                vec![key],
+            )
+            .await?;
         }
         Ok(())
     }
 
     async fn delete(&self, key: String) -> Result<(), Error> {
-        Ok(self.connection.hdel(self.hash_key.clone(), key).await?)
+        commands::hdel(&self.connection, self.hash_key.clone(), vec![key]).await?;
+        Ok(())
     }
 
     async fn exists(&self, key: String) -> Result<bool, Error> {
-        Ok(self.connection.hexists(self.hash_key.clone(), key).await?)
+        Ok(commands::hexists(&self.connection, self.hash_key.clone(), key).await?)
     }
 
     async fn list_keys(
@@ -121,20 +105,26 @@ impl GuestBucket for KeyvalueToValkeyBucket {
         prefix: Option<String>,
         cursor: Option<String>,
     ) -> Result<KeyResponse, Error> {
-        let opts = HscanOpts {
-            match_: prefix.map(|prefix| format!("{}*", escape_glob(&prefix))),
-            count: None,
-            no_values: Some(true),
-        };
-        let (cursor, fields) = self
-            .connection
-            .hscan(self.hash_key.clone(), cursor, Some(opts))
-            .await?;
+        let match_ = prefix.map(|prefix| format!("{}*", escape_glob(&prefix)));
+        let count = None;
 
-        Ok(KeyResponse {
-            keys: fields.into_iter().map(|(key, _)| key).collect(),
+        // the keyvalue cursor is none to start, and none once the keys are listed, like a scan's
+        let cursor = cursor.map_or(Cursor::Start, Cursor::Resume);
+        let (cursor, keys) = commands::hscan_novalues(
+            &self.connection,
+            self.hash_key.clone(),
             cursor,
-        })
+            match_,
+            count,
+        )
+        .await?;
+
+        // a returned cursor is always one to resume from
+        let cursor = cursor.map(|cursor| match cursor {
+            Cursor::Resume(cursor) => cursor,
+            Cursor::Start => unreachable!("a scan never returns start"),
+        });
+        Ok(KeyResponse { keys, cursor })
     }
 }
 
@@ -142,10 +132,7 @@ impl AtomicsGuest for AsKeyvalue {
     async fn increment(bucket: BucketBorrow<'_>, key: String, delta: i64) -> Result<i64, Error> {
         let bucket: &KeyvalueToValkeyBucket = bucket.get();
 
-        Ok(bucket
-            .connection
-            .hincrby(bucket.hash_key.clone(), key, delta)
-            .await?)
+        Ok(commands::hincrby(&bucket.connection, bucket.hash_key.clone(), key, delta).await?)
     }
 }
 
@@ -214,10 +201,13 @@ impl From<config::Error> for Error {
     }
 }
 
-impl From<valkey::Error> for Error {
-    fn from(e: valkey::Error) -> Self {
-        // TODO distinguish between IO, auth and other types of errors
-        Self::Other(format!("Valkey: {e}"))
+impl From<ValkeyError> for Error {
+    fn from(e: ValkeyError) -> Self {
+        match e {
+            // the transport closed, retrying with a new bucket may succeed
+            ValkeyError::Closed(_) => Self::StoreUnavailable,
+            e => Self::Other(format!("Valkey: {e}")),
+        }
     }
 }
 

@@ -1,10 +1,75 @@
-package componentized:valkey;
+package componentized:valkey-cli;
 
-let ops = new local:ops { ... };
-let cli = new local:dep-cli {
-    "componentized:valkey/store@0.3.0-dev": ops.store,
-    "componentized:valkey/resp@0.3.0-dev": ops.resp,
+// The host interfaces the components behind the gate may use. Their imports are wired explicitly,
+// without `...`, so an import of anything else, like wasi:sockets of any version, fails to compose
+// instead of reaching the host around the gate.
+import clocks-types: wasi:clocks/types@0.3.0;
+import monotonic-clock: wasi:clocks/monotonic-clock@0.3.0;
+import config: wasi:config/store@0.2.0-rc.1;
+import environment: wasi:cli/environment@0.3.0;
+import cli-types: wasi:cli/types@0.3.0;
+import stdin: wasi:cli/stdin@0.3.0;
+import stdout: wasi:cli/stdout@0.3.0;
+import stderr: wasi:cli/stderr@0.3.0;
+import valkey-types: componentized:valkey/types@0.3.0-dev;
+
+// The gate, the latch and the logger see the host, wasi:sockets included, the interfaces they
+// share with the components behind the gate are wired to the same imports.
+
+// wasmtime does not provide wasi:logging, so the composition does, for the latch and the gate
+let logging = new local:dep-componentized-logging-to-stderr {
+    "wasi:cli/types@0.3.0": cli-types,
+    "wasi:cli/stderr@0.3.0": stderr,
     ...
+};
+
+// the latch, limiting sockets to the server in the tcp-connector's config
+let latch = new local:tcp-connector-latch {
+    "wasi:config/store@0.2.0-rc.1": config,
+    "wasi:logging/logging@0.1.0-draft": logging["wasi:logging/logging@0.1.0-draft"],
+    ...
+};
+
+// wasi:sockets, behind the gate, opened by the latch
+let gate = new local:dep-componentized-sockets-gate {
+    "wasi:clocks/types@0.3.0": clocks-types,
+    "componentized:sockets/latch@0.1.0": latch["componentized:sockets/latch@0.1.0"],
+    "wasi:logging/logging@0.1.0-draft": logging["wasi:logging/logging@0.1.0-draft"],
+    ...
+};
+
+// Behind the gate, every import is wired explicitly.
+
+let connection = new local:connection {
+    "wasi:clocks/types@0.3.0": clocks-types,
+    "wasi:clocks/monotonic-clock@0.3.0": monotonic-clock,
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
+};
+// connections over wasi:sockets from the gate instead of the host
+let tcp = new local:tcp {
+    "wasi:sockets/types@0.3.0": gate["wasi:sockets/types@0.3.0"],
+    "wasi:sockets/ip-name-lookup@0.3.0": gate["wasi:sockets/ip-name-lookup@0.3.0"],
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+};
+// the keys of the tcp-connector's config, and their defaults
+let tcp-connector-constants = new local:tcp-connector-constants {};
+let connector = new local:tcp-connector {
+    "wasi:config/store@0.2.0-rc.1": config,
+    "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/tcp@0.3.0-dev": tcp.tcp,
+};
+let cli = new local:internal-cli {
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
+    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/connector@0.3.0-dev": connector.connector,
+    "wasi:cli/environment@0.3.0": environment,
+    "wasi:cli/types@0.3.0": cli-types,
+    "wasi:cli/stdin@0.3.0": stdin,
+    "wasi:cli/stdout@0.3.0": stdout,
+    "wasi:cli/stderr@0.3.0": stderr,
 };
 
 export cli...;

@@ -1,0 +1,2 @@
+ghcr.io/componentized/sockets/latch-deny-connect-unless-lookup-address:0.1.0@sha256:cb2ac10d0dfe34e5665f4ac86fa64ebb66d494e867dc4f3cc85d6a6f90a72bb7
+ghcr.io/componentized/sockets/latch-deny-connect-unless-lookup-address:0.1.0_debug@sha256:a259ec4f884c967f1a65198b9a8cdb61d8c4c3482c8ff6cf274e1ff835ef5238

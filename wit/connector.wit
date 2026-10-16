@@ -1,0 +1,16 @@
+/// Establishes connections, with a transport and settings chosen by whoever provides it, e.g. from
+/// configuration.
+///
+/// A component that needs a connection, but not a say in how it is made, imports a connector, the
+/// composition decides which one, e.g. `tcp-connector`.
+@since(version = 0.3.0-dev)
+interface connector {
+    @since(version = 0.3.0-dev)
+    use types.{error-code};
+    @since(version = 0.3.0-dev)
+    use connection.{connection};
+
+    /// Establishes a new connection.
+    @since(version = 0.3.0-dev)
+    connect: async func() -> result<connection, error-code>;
+}

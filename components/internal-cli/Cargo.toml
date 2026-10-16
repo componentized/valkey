@@ -1,0 +1,14 @@
+[package]
+name = "internal-cli"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+futures-channel = { workspace = true }
+futures-core = { workspace = true }
+componentized-valkey = { workspace = true }
+wit-bindgen = { workspace = true }

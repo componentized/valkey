@@ -1,0 +1,58 @@
+/// The keys of the `tcp-connector`'s wasi:config, and their defaults, for the components that derive
+/// their config from it. The values are provided by the `tcp-connector-constants` component.
+@since(version = 0.3.0-dev)
+interface tcp-connector-constants {
+    /// The key of the server's hostname or IP address.
+    ///
+    /// @value "hostname"
+    @since(version = 0.3.0-dev)
+    hostname-key: func() -> string;
+
+    /// The server's hostname or IP address without one.
+    ///
+    /// @value "127.0.0.1"
+    @since(version = 0.3.0-dev)
+    hostname-default: func() -> string;
+
+    /// The key of the server's port.
+    ///
+    /// @value "port"
+    @since(version = 0.3.0-dev)
+    port-key: func() -> string;
+
+    /// The server's port without one.
+    ///
+    /// @value 6379
+    @since(version = 0.3.0-dev)
+    port-default: func() -> u16;
+
+    /// The key of the user to authenticate as, with a password.
+    ///
+    /// @value "username"
+    @since(version = 0.3.0-dev)
+    username-key: func() -> string;
+
+    /// The user to authenticate as without one.
+    ///
+    /// @value "default"
+    @since(version = 0.3.0-dev)
+    username-default: func() -> string;
+
+    /// The key of the password, authenticating when set.
+    ///
+    /// @value "password"
+    @since(version = 0.3.0-dev)
+    password-key: func() -> string;
+
+    /// The key of the connection's name, see `CLIENT SETNAME`.
+    ///
+    /// @value "client-name"
+    @since(version = 0.3.0-dev)
+    client-name-key: func() -> string;
+
+    /// The key of the milliseconds idle before a `PING`, disabled when unset or `0`.
+    ///
+    /// @value "keep-alive-interval-ms"
+    @since(version = 0.3.0-dev)
+    keep-alive-interval-ms-key: func() -> string;
+}
