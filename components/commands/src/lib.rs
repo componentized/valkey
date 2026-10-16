@@ -73,8 +73,7 @@ fn sort_row_len(opts: &Option<SortOpts>) -> usize {
 }
 
 impl Guest for Commands {
-    #[doc = " admin commands"]
-    #[doc = " Delete all the specified ACL users and terminate all the connections that are authenticated with such users."]
+    #[doc = " Deletes ACL users, and terminates their connections."]
     #[doc = ""]
     #[doc = " ACL DELUSER username [ username ... ]"]
     #[doc = " https://valkey.io/commands/acl-deluser/"]
@@ -90,7 +89,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Generates a random password."]
+    #[doc = " Generates a pseudorandom, secure password that can be used to identify ACL users."]
     #[doc = ""]
     #[doc = " ACL GENPASS [ bits ]"]
     #[doc = " https://valkey.io/commands/acl-genpass/"]
@@ -99,7 +98,7 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "GENPASS", bits)).await
     }
 
-    #[doc = " Create an ACL user with the specified rules or modify the rules of an existing user."]
+    #[doc = " Creates and modifies an ACL user and its rules."]
     #[doc = ""]
     #[doc = " ACL SETUSER username [ rule ] [ [ rule ] ... ]"]
     #[doc = " https://valkey.io/commands/acl-setuser/"]
@@ -121,7 +120,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The ACL categories, or with a category, the commands in it."]
+    #[doc = " Lists the ACL categories, or the commands inside a category."]
     #[doc = ""]
     #[doc = " ACL CAT [ category ]"]
     #[doc = " https://valkey.io/commands/acl-cat/"]
@@ -133,7 +132,7 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "CAT", category)).await
     }
 
-    #[doc = " Whether the user may run the command, without running it."]
+    #[doc = " Simulates the execution of a command by a user, without executing the command."]
     #[doc = ""]
     #[doc = " ACL DRYRUN username command [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/acl-dryrun/"]
@@ -150,7 +149,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The rules of the user, none when the user does not exist."]
+    #[doc = " Lists the ACL rules of a user."]
+    #[doc = ""]
+    #[doc = " None when the user does not exist. The rules are as the server normalized them, e.g."]
+    #[doc = " `allkeys` is `~*`. Applied with `acl-setuser`, after `reset`, they recreate the user."]
     #[doc = ""]
     #[doc = " ACL GETUSER username"]
     #[doc = " https://valkey.io/commands/acl-getuser/"]
@@ -164,7 +166,7 @@ impl Guest for Commands {
         Ok(rules.map(|rules| rules.0))
     }
 
-    #[doc = " The rules of every user, in the format of an ACL file."]
+    #[doc = " Dumps the effective rules in ACL file format."]
     #[doc = ""]
     #[doc = " ACL LIST"]
     #[doc = " https://valkey.io/commands/acl-list/"]
@@ -174,7 +176,7 @@ impl Guest for Commands {
         Ok(users.0)
     }
 
-    #[doc = " Replaces the users with those of the configured ACL file."]
+    #[doc = " Reloads the rules from the configured ACL file."]
     #[doc = ""]
     #[doc = " ACL LOAD"]
     #[doc = " https://valkey.io/commands/acl-load/"]
@@ -183,8 +185,7 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "LOAD")).await
     }
 
-    #[doc = " The recent security events, commands or authentications the rules denied, up to the count,"]
-    #[doc = " 10 without one."]
+    #[doc = " Lists recent security events generated due to ACL rules."]
     #[doc = ""]
     #[doc = " See also `acl-log-reset`."]
     #[doc = ""]
@@ -198,7 +199,9 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "LOG", count)).await
     }
 
-    #[doc = " Clears the security events."]
+    #[doc = " Lists recent security events generated due to ACL rules."]
+    #[doc = ""]
+    #[doc = " The `RESET` form, clearing the security events."]
     #[doc = ""]
     #[doc = " See also `acl-log`."]
     #[doc = ""]
@@ -209,7 +212,7 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "LOG", "RESET")).await
     }
 
-    #[doc = " Saves the users to the configured ACL file."]
+    #[doc = " Saves the effective ACL rules in the configured ACL file."]
     #[doc = ""]
     #[doc = " ACL SAVE"]
     #[doc = " https://valkey.io/commands/acl-save/"]
@@ -218,7 +221,7 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "SAVE")).await
     }
 
-    #[doc = " The names of the users."]
+    #[doc = " Lists all ACL users."]
     #[doc = ""]
     #[doc = " ACL USERS"]
     #[doc = " https://valkey.io/commands/acl-users/"]
@@ -227,7 +230,7 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "USERS")).await
     }
 
-    #[doc = " The name of the user the connection is authenticated as."]
+    #[doc = " Returns the authenticated username of the current connection."]
     #[doc = ""]
     #[doc = " ACL WHOAMI"]
     #[doc = " https://valkey.io/commands/acl-whoami/"]
@@ -236,7 +239,7 @@ impl Guest for Commands {
         exchange(connection, ("ACL", "WHOAMI")).await
     }
 
-    #[doc = " Starts rewriting the append-only file in the background, returning the server's message."]
+    #[doc = " Asynchronously rewrites the append-only file to disk."]
     #[doc = ""]
     #[doc = " BGREWRITEAOF"]
     #[doc = " https://valkey.io/commands/bgrewriteaof/"]
@@ -245,8 +248,7 @@ impl Guest for Commands {
         exchange(connection, "BGREWRITEAOF").await
     }
 
-    #[doc = " Starts saving the databases to disk in the background, or schedules or cancels it, returning"]
-    #[doc = " the server's message."]
+    #[doc = " Asynchronously saves the database(s) to disk."]
     #[doc = ""]
     #[doc = " BGSAVE [ SCHEDULE | CANCEL ]"]
     #[doc = " https://valkey.io/commands/bgsave/"]
@@ -258,7 +260,7 @@ impl Guest for Commands {
         exchange(connection, ("BGSAVE", operation)).await
     }
 
-    #[doc = " Closes the connections that match every one of the filters, returning how many."]
+    #[doc = " Terminates open connections."]
     #[doc = ""]
     #[doc = " CLIENT KILL filter [ filter ... ]"]
     #[doc = " https://valkey.io/commands/client-kill/"]
@@ -274,8 +276,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The connections that match every one of the filters, all of them without filters, each a"]
-    #[doc = " map of its fields, e.g. `id`, `addr` and `name`."]
+    #[doc = " Lists open connections."]
+    #[doc = ""]
+    #[doc = " Each connection is a map of its fields, parsed from the server's text, e.g. `id`, `addr` and"]
+    #[doc = " `name`."]
     #[doc = ""]
     #[doc = " CLIENT LIST [ filter [ filter ... ] ]"]
     #[doc = " https://valkey.io/commands/client-list/"]
@@ -289,7 +293,9 @@ impl Guest for Commands {
         Ok(clients.0)
     }
 
-    #[doc = " Whether the connection may be evicted to free memory, `ON` excludes it."]
+    #[doc = " Sets the client eviction mode of the connection."]
+    #[doc = ""]
+    #[doc = " It applies to the connection, so to every caller sharing it."]
     #[doc = ""]
     #[doc = " CLIENT NO-EVICT 〈 ON | OFF 〉"]
     #[doc = " https://valkey.io/commands/client-no-evict/"]
@@ -302,7 +308,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Suspends running the commands of other connections, writes only with `WRITE`, for the time."]
+    #[doc = " Suspends commands processing."]
     #[doc = ""]
     #[doc = " CLIENT PAUSE timeout [ WRITE | ALL ]"]
     #[doc = " https://valkey.io/commands/client-pause/"]
@@ -315,8 +321,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "PAUSE", timeout, mode)).await
     }
 
-    #[doc = " Unblocks the connection with the ID from a blocking command, as if it timed out, or with an"]
-    #[doc = " error, returning whether it was blocked."]
+    #[doc = " Unblocks a client blocked by a blocking command from a different connection."]
     #[doc = ""]
     #[doc = " CLIENT UNBLOCK client-id [ TIMEOUT | ERROR ]"]
     #[doc = " https://valkey.io/commands/client-unblock/"]
@@ -329,7 +334,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "UNBLOCK", client_id, unblock_type)).await
     }
 
-    #[doc = " Resumes running the commands of connections paused with `client-pause`."]
+    #[doc = " Resumes processing commands from paused clients."]
     #[doc = ""]
     #[doc = " CLIENT UNPAUSE"]
     #[doc = " https://valkey.io/commands/client-unpause/"]
@@ -338,7 +343,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "UNPAUSE")).await
     }
 
-    #[doc = " Assigns the slots to the node."]
+    #[doc = " Assigns new hash slots to a node."]
     #[doc = ""]
     #[doc = " CLUSTER ADDSLOTS slot [ slot ... ]"]
     #[doc = " https://valkey.io/commands/cluster-addslots/"]
@@ -351,7 +356,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Assigns the ranges of slots, start and end both included, to the node."]
+    #[doc = " Assigns new hash slot ranges to a node."]
     #[doc = ""]
     #[doc = " CLUSTER ADDSLOTSRANGE start-slot end-slot [ start-slot end-slot ... ]"]
     #[doc = " https://valkey.io/commands/cluster-addslotsrange/"]
@@ -367,7 +372,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Advances the node's config epoch, unless it is already the greatest in the cluster."]
+    #[doc = " Advances the cluster config epoch."]
     #[doc = ""]
     #[doc = " CLUSTER BUMPEPOCH"]
     #[doc = " https://valkey.io/commands/cluster-bumpepoch/"]
@@ -376,7 +381,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "BUMPEPOCH")).await
     }
 
-    #[doc = " Cancels the slot migrations in progress."]
+    #[doc = " Cancel all current ongoing slot migration operations."]
     #[doc = ""]
     #[doc = " CLUSTER CANCELSLOTMIGRATIONS"]
     #[doc = " https://valkey.io/commands/cluster-cancelslotmigrations/"]
@@ -385,7 +390,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "CANCELSLOTMIGRATIONS")).await
     }
 
-    #[doc = " The number of active failure reports for the node."]
+    #[doc = " Returns the number of active failure reports for a node."]
     #[doc = ""]
     #[doc = " CLUSTER COUNT-FAILURE-REPORTS node-id"]
     #[doc = " https://valkey.io/commands/cluster-count-failure-reports/"]
@@ -397,7 +402,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "COUNT-FAILURE-REPORTS", node_id)).await
     }
 
-    #[doc = " Unassigns the slots from the node."]
+    #[doc = " Sets hash slots as unbound for a node."]
     #[doc = ""]
     #[doc = " CLUSTER DELSLOTS slot [ slot ... ]"]
     #[doc = " https://valkey.io/commands/cluster-delslots/"]
@@ -410,7 +415,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Unassigns the ranges of slots, start and end both included, from the node."]
+    #[doc = " Sets hash slot ranges as unbound for a node."]
     #[doc = ""]
     #[doc = " CLUSTER DELSLOTSRANGE start-slot end-slot [ start-slot end-slot ... ]"]
     #[doc = " https://valkey.io/commands/cluster-delslotsrange/"]
@@ -426,7 +431,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Fails over the primary of this replica, coordinated with it unless `FORCE` or `TAKEOVER`."]
+    #[doc = " Forces a replica to perform a manual failover of its primary."]
     #[doc = ""]
     #[doc = " CLUSTER FAILOVER [ FORCE | TAKEOVER ]"]
     #[doc = " https://valkey.io/commands/cluster-failover/"]
@@ -438,7 +443,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "FAILOVER", mode)).await
     }
 
-    #[doc = " Unassigns all the slots of the node."]
+    #[doc = " Deletes all slots information from a node."]
     #[doc = ""]
     #[doc = " CLUSTER FLUSHSLOTS"]
     #[doc = " https://valkey.io/commands/cluster-flushslots/"]
@@ -447,7 +452,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "FLUSHSLOTS")).await
     }
 
-    #[doc = " Removes the node from the nodes this node knows of."]
+    #[doc = " Removes a node from the nodes table."]
     #[doc = ""]
     #[doc = " CLUSTER FORGET node-id"]
     #[doc = " https://valkey.io/commands/cluster-forget/"]
@@ -456,7 +461,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "FORGET", node_id)).await
     }
 
-    #[doc = " The slot migrations in progress, and those recently finished."]
+    #[doc = " Gets the status of ongoing and recently finished slot import and export operations."]
     #[doc = ""]
     #[doc = " CLUSTER GETSLOTMIGRATIONS"]
     #[doc = " https://valkey.io/commands/cluster-getslotmigrations/"]
@@ -467,7 +472,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "GETSLOTMIGRATIONS")).await
     }
 
-    #[doc = " Connects the node to another, adding it to the cluster."]
+    #[doc = " Forces a node to handshake with another node."]
     #[doc = ""]
     #[doc = " CLUSTER MEET ip port [ cluster-bus-port ]"]
     #[doc = " https://valkey.io/commands/cluster-meet/"]
@@ -481,7 +486,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "MEET", ip, port, cluster_bus_port)).await
     }
 
-    #[doc = " Migrates the ranges of slots from this node to other nodes."]
+    #[doc = " Migrate the given slots from this node to the specified nodes."]
     #[doc = ""]
     #[doc = " CLUSTER MIGRATESLOTS SLOTSRANGE start-slot end-slot [ start-slot end-slot ... ] NODE node-id [ AUTH username password ] [ SLOTSRANGE ... ]"]
     #[doc = " https://valkey.io/commands/cluster-migrateslots/"]
@@ -501,7 +506,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The replicas of the primary node, each a line in the format of CLUSTER NODES."]
+    #[doc = " Lists the replica nodes of a primary node."]
     #[doc = ""]
     #[doc = " CLUSTER REPLICAS node-id"]
     #[doc = " https://valkey.io/commands/cluster-replicas/"]
@@ -513,8 +518,9 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "REPLICAS", node_id)).await
     }
 
-    #[doc = " Makes the node a replica of the primary node, or with none, detaches it from its primary,"]
-    #[doc = " `NO ONE`."]
+    #[doc = " Configures a node as replica of a primary node or detaches a replica from its primary."]
+    #[doc = ""]
+    #[doc = " None detaches the node from its primary, `NO ONE`."]
     #[doc = ""]
     #[doc = " CLUSTER REPLICATE 〈 node-id | NO ONE 〉"]
     #[doc = " https://valkey.io/commands/cluster-replicate/"]
@@ -531,7 +537,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "REPLICATE", node)).await
     }
 
-    #[doc = " Resets the node, forgetting the other nodes and its slots, `SOFT` without a mode."]
+    #[doc = " Resets a node."]
     #[doc = ""]
     #[doc = " CLUSTER RESET [ HARD | SOFT ]"]
     #[doc = " https://valkey.io/commands/cluster-reset/"]
@@ -543,7 +549,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "RESET", mode)).await
     }
 
-    #[doc = " Saves the node's cluster configuration to disk."]
+    #[doc = " Forces a node to save the cluster configuration to disk."]
     #[doc = ""]
     #[doc = " CLUSTER SAVECONFIG"]
     #[doc = " https://valkey.io/commands/cluster-saveconfig/"]
@@ -552,7 +558,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "SAVECONFIG")).await
     }
 
-    #[doc = " Sets the config epoch of a new node."]
+    #[doc = " Sets the configuration epoch for a new node."]
     #[doc = ""]
     #[doc = " CLUSTER SET-CONFIG-EPOCH config-epoch"]
     #[doc = " https://valkey.io/commands/cluster-set-config-epoch/"]
@@ -564,7 +570,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "SET-CONFIG-EPOCH", config_epoch)).await
     }
 
-    #[doc = " Changes the state of the slot on the node."]
+    #[doc = " Binds a hash slot to a node."]
     #[doc = ""]
     #[doc = " CLUSTER SETSLOT slot 〈 IMPORTING node-id | MIGRATING node-id | NODE node-id | STABLE 〉 [ TIMEOUT timeout ]"]
     #[doc = " https://valkey.io/commands/cluster-setslot/"]
@@ -588,7 +594,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The entries of the command log of the type, up to the count, all of them for -1."]
+    #[doc = " Returns the specified command log's entries."]
     #[doc = ""]
     #[doc = " COMMANDLOG GET count 〈 slow | large-request | large-reply 〉"]
     #[doc = " https://valkey.io/commands/commandlog-get/"]
@@ -601,7 +607,7 @@ impl Guest for Commands {
         exchange(connection, ("COMMANDLOG", "GET", count, type_)).await
     }
 
-    #[doc = " The number of entries in the command log of the type."]
+    #[doc = " Returns the number of entries in the specified type of command log."]
     #[doc = ""]
     #[doc = " COMMANDLOG LEN 〈 slow | large-request | large-reply 〉"]
     #[doc = " https://valkey.io/commands/commandlog-len/"]
@@ -613,7 +619,7 @@ impl Guest for Commands {
         exchange(connection, ("COMMANDLOG", "LEN", type_)).await
     }
 
-    #[doc = " Clears the command log of the type."]
+    #[doc = " Clears all entries from the specified type of command log."]
     #[doc = ""]
     #[doc = " COMMANDLOG RESET 〈 slow | large-request | large-reply 〉"]
     #[doc = " https://valkey.io/commands/commandlog-reset/"]
@@ -622,7 +628,7 @@ impl Guest for Commands {
         exchange(connection, ("COMMANDLOG", "RESET", type_)).await
     }
 
-    #[doc = " The values of the configuration parameters matching the glob-style patterns, by name."]
+    #[doc = " Returns the effective values of configuration parameters."]
     #[doc = ""]
     #[doc = " CONFIG GET parameter [ parameter ... ]"]
     #[doc = " https://valkey.io/commands/config-get/"]
@@ -638,7 +644,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Resets the server's statistics, e.g. those of INFO."]
+    #[doc = " Resets the server's statistics."]
     #[doc = ""]
     #[doc = " CONFIG RESETSTAT"]
     #[doc = " https://valkey.io/commands/config-resetstat/"]
@@ -647,7 +653,7 @@ impl Guest for Commands {
         exchange(connection, ("CONFIG", "RESETSTAT")).await
     }
 
-    #[doc = " Rewrites the configuration file with the current configuration."]
+    #[doc = " Persists the effective configuration to file."]
     #[doc = ""]
     #[doc = " CONFIG REWRITE"]
     #[doc = " https://valkey.io/commands/config-rewrite/"]
@@ -656,7 +662,7 @@ impl Guest for Commands {
         exchange(connection, ("CONFIG", "REWRITE")).await
     }
 
-    #[doc = " Sets the configuration parameters to the values, all or none of them."]
+    #[doc = " Sets configuration parameters in-flight."]
     #[doc = ""]
     #[doc = " CONFIG SET parameter value [ parameter value ... ]"]
     #[doc = " https://valkey.io/commands/config-set/"]
@@ -669,8 +675,7 @@ impl Guest for Commands {
         exchange(connection, ("CONFIG", "SET", parameters_and_values)).await
     }
 
-    #[doc = " Fails over from this primary to a replica, the one at the target, or aborts a failover in"]
-    #[doc = " progress."]
+    #[doc = " Starts a coordinated failover from a server to one of its replicas."]
     #[doc = ""]
     #[doc = " FAILOVER [ TO host port [ FORCE ] ] [ ABORT ] [ TIMEOUT milliseconds ]"]
     #[doc = " https://valkey.io/commands/failover/"]
@@ -690,7 +695,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " When the databases were last saved to disk."]
+    #[doc = " Returns the Unix timestamp of the last successful save to disk."]
     #[doc = ""]
     #[doc = " LASTSAVE"]
     #[doc = " https://valkey.io/commands/lastsave/"]
@@ -699,7 +704,7 @@ impl Guest for Commands {
         exchange(connection, "LASTSAVE").await
     }
 
-    #[doc = " A report of the latency events, for people to read."]
+    #[doc = " Returns a human-readable latency analysis report."]
     #[doc = ""]
     #[doc = " LATENCY DOCTOR"]
     #[doc = " https://valkey.io/commands/latency-doctor/"]
@@ -708,7 +713,7 @@ impl Guest for Commands {
         exchange(connection, ("LATENCY", "DOCTOR")).await
     }
 
-    #[doc = " A graph of the latency of the event, as text."]
+    #[doc = " Returns a latency graph for an event."]
     #[doc = ""]
     #[doc = " LATENCY GRAPH event"]
     #[doc = " https://valkey.io/commands/latency-graph/"]
@@ -717,7 +722,7 @@ impl Guest for Commands {
         exchange(connection, ("LATENCY", "GRAPH", event)).await
     }
 
-    #[doc = " The latency histogram of the commands, all of them without commands, by command name."]
+    #[doc = " Returns the cumulative distribution of latencies of a subset or all commands."]
     #[doc = ""]
     #[doc = " LATENCY HISTOGRAM [ command [ command ... ] ]"]
     #[doc = " https://valkey.io/commands/latency-histogram/"]
@@ -737,7 +742,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The samples of the latency of the event, when each was taken and the latency."]
+    #[doc = " Returns timestamp-latency samples for an event."]
     #[doc = ""]
     #[doc = " LATENCY HISTORY event"]
     #[doc = " https://valkey.io/commands/latency-history/"]
@@ -749,7 +754,7 @@ impl Guest for Commands {
         exchange(connection, ("LATENCY", "HISTORY", event)).await
     }
 
-    #[doc = " The latest sample of the latency of each event."]
+    #[doc = " Returns the latest latency samples for all events."]
     #[doc = ""]
     #[doc = " LATENCY LATEST"]
     #[doc = " https://valkey.io/commands/latency-latest/"]
@@ -758,7 +763,7 @@ impl Guest for Commands {
         exchange(connection, ("LATENCY", "LATEST")).await
     }
 
-    #[doc = " Clears the samples of the events, all of them without events, returning how many events."]
+    #[doc = " Resets the latency data for one or more events."]
     #[doc = ""]
     #[doc = " LATENCY RESET [ event [ event ... ] ]"]
     #[doc = " https://valkey.io/commands/latency-reset/"]
@@ -774,7 +779,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The loaded modules."]
+    #[doc = " Returns all loaded modules."]
     #[doc = ""]
     #[doc = " MODULE LIST"]
     #[doc = " https://valkey.io/commands/module-list/"]
@@ -783,7 +788,7 @@ impl Guest for Commands {
         exchange(connection, ("MODULE", "LIST")).await
     }
 
-    #[doc = " Loads the module at the path, with the arguments."]
+    #[doc = " Loads a module."]
     #[doc = ""]
     #[doc = " MODULE LOAD path [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/module-load/"]
@@ -800,7 +805,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Loads the module at the path, with the configuration parameters and arguments."]
+    #[doc = " Loads a module using extended parameters."]
     #[doc = ""]
     #[doc = " MODULE LOADEX path [ CONFIG name value [ CONFIG name value ... ] ] [ ARGS args [ args ... ] ]"]
     #[doc = " https://valkey.io/commands/module-loadex/"]
@@ -823,7 +828,7 @@ impl Guest for Commands {
         exchange(connection, ("MODULE", "LOADEX", path, configs, args)).await
     }
 
-    #[doc = " Unloads the module, by name."]
+    #[doc = " Unloads a module."]
     #[doc = ""]
     #[doc = " MODULE UNLOAD name"]
     #[doc = " https://valkey.io/commands/module-unload/"]
@@ -832,8 +837,9 @@ impl Guest for Commands {
         exchange(connection, ("MODULE", "UNLOAD", name)).await
     }
 
-    #[doc = " Makes the server a replica of the primary at the host and port, or with none, a primary,"]
-    #[doc = " `NO ONE`, returning the server's message."]
+    #[doc = " Configures a server as replica of another, or promotes it to a primary."]
+    #[doc = ""]
+    #[doc = " None makes the server a primary, `NO ONE`."]
     #[doc = ""]
     #[doc = " REPLICAOF 〈 host port | NO ONE 〉"]
     #[doc = " https://valkey.io/commands/replicaof/"]
@@ -850,7 +856,7 @@ impl Guest for Commands {
         exchange(connection, ("REPLICAOF", primary)).await
     }
 
-    #[doc = " The server's role in replication, and its state."]
+    #[doc = " Returns the replication role."]
     #[doc = ""]
     #[doc = " ROLE"]
     #[doc = " https://valkey.io/commands/role/"]
@@ -859,7 +865,7 @@ impl Guest for Commands {
         exchange(connection, "ROLE").await
     }
 
-    #[doc = " Saves the databases to disk, blocking the server until done."]
+    #[doc = " Synchronously saves the database(s) to disk."]
     #[doc = ""]
     #[doc = " SAVE"]
     #[doc = " https://valkey.io/commands/save/"]
@@ -868,7 +874,7 @@ impl Guest for Commands {
         exchange(connection, "SAVE").await
     }
 
-    #[doc = " Stops the server, saving to disk as configured, or as the save mode says."]
+    #[doc = " Synchronously saves the database(s) to disk and shuts down the server."]
     #[doc = ""]
     #[doc = " The server closes the connection once it stops, so a shutdown that succeeds fails the call"]
     #[doc = " with a closed error."]
@@ -894,7 +900,9 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Aborts a shutdown in progress."]
+    #[doc = " Synchronously saves the database(s) to disk and shuts down the server."]
+    #[doc = ""]
+    #[doc = " The `ABORT` form, aborting a shutdown in progress."]
     #[doc = ""]
     #[doc = " See also `shutdown`."]
     #[doc = ""]
@@ -905,7 +913,7 @@ impl Guest for Commands {
         exchange(connection, ("SHUTDOWN", "ABORT")).await
     }
 
-    #[doc = " The entries of the slow log, up to the count, 10 without one, all of them for -1."]
+    #[doc = " Returns the slow log's entries."]
     #[doc = ""]
     #[doc = " SLOWLOG GET [ count ]"]
     #[doc = " https://valkey.io/commands/slowlog-get/"]
@@ -917,7 +925,7 @@ impl Guest for Commands {
         exchange(connection, ("SLOWLOG", "GET", count)).await
     }
 
-    #[doc = " The number of entries in the slow log."]
+    #[doc = " Returns the number of entries in the slow log."]
     #[doc = ""]
     #[doc = " SLOWLOG LEN"]
     #[doc = " https://valkey.io/commands/slowlog-len/"]
@@ -926,7 +934,7 @@ impl Guest for Commands {
         exchange(connection, ("SLOWLOG", "LEN")).await
     }
 
-    #[doc = " Clears the slow log."]
+    #[doc = " Clears all entries from the slow log."]
     #[doc = ""]
     #[doc = " SLOWLOG RESET"]
     #[doc = " https://valkey.io/commands/slowlog-reset/"]
@@ -935,8 +943,7 @@ impl Guest for Commands {
         exchange(connection, ("SLOWLOG", "RESET")).await
     }
 
-    #[doc = " The number of bits set to 1 in the string stored at key, in the range, 0 when the key does"]
-    #[doc = " not exist."]
+    #[doc = " Counts the number of set bits (population counting) in a string."]
     #[doc = ""]
     #[doc = " BITCOUNT key [ start [ end [ BYTE | BIT ] ] ]"]
     #[doc = " https://valkey.io/commands/bitcount/"]
@@ -949,10 +956,9 @@ impl Guest for Commands {
         exchange(connection, ("BITCOUNT", key, range)).await
     }
 
-    #[doc = " Reads and writes integer fields of the string stored at key, returning the result of each"]
-    #[doc = " operation in order, none for a write that failed with `OVERFLOW FAIL`."]
+    #[doc = " Performs arbitrary bitfield integer operations on strings."]
     #[doc = ""]
-    #[doc = " See also `bitfield-ro`."]
+    #[doc = " None for a write that failed with `OVERFLOW FAIL`."]
     #[doc = ""]
     #[doc = " BITFIELD key [ GET encoding offset | [ OVERFLOW WRAP | SAT | FAIL ] 〈 SET encoding offset value | INCRBY encoding offset increment 〉 [ GET encoding offset | [ OVERFLOW WRAP | SAT | FAIL ] 〈 SET encoding offset value | INCRBY encoding offset increment 〉 ... ] ]"]
     #[doc = " https://valkey.io/commands/bitfield/"]
@@ -973,7 +979,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Reads integer fields of the string stored at key, the read-only variant of `bitfield`."]
+    #[doc = " Performs arbitrary read-only bitfield integer operations on strings."]
     #[doc = ""]
     #[doc = " BITFIELD_RO key [ GET encoding offset [ GET encoding offset ... ] ]"]
     #[doc = " https://valkey.io/commands/bitfield_ro/"]
@@ -990,8 +996,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Stores the bitwise operation of the strings stored at the source keys in the destination,"]
-    #[doc = " returning its length, the length of the longest source."]
+    #[doc = " Performs bitwise operations on multiple strings, and stores the result."]
     #[doc = ""]
     #[doc = " BITOP 〈 AND | OR | XOR | NOT 〉 destkey key [ key ... ]"]
     #[doc = " https://valkey.io/commands/bitop/"]
@@ -1015,8 +1020,9 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The position of the first bit set to the bit in the string stored at key, in the range,"]
-    #[doc = " none when there is none."]
+    #[doc = " Finds the first set (1) or clear (0) bit in a string."]
+    #[doc = ""]
+    #[doc = " None when no bit matches, the server's `-1`."]
     #[doc = ""]
     #[doc = " BITPOS key bit [ start [ end [ BYTE | BIT ] ] ]"]
     #[doc = " https://valkey.io/commands/bitpos/"]
@@ -1033,8 +1039,7 @@ impl Guest for Commands {
         Ok(position.0)
     }
 
-    #[doc = " The bit at the offset of the string stored at key, false beyond its end, or when the key"]
-    #[doc = " does not exist."]
+    #[doc = " Returns a bit value by offset."]
     #[doc = ""]
     #[doc = " GETBIT key offset"]
     #[doc = " https://valkey.io/commands/getbit/"]
@@ -1043,8 +1048,7 @@ impl Guest for Commands {
         exchange(connection, ("GETBIT", key, offset)).await
     }
 
-    #[doc = " Sets the bit at the offset of the string stored at key, growing it as needed, returning the"]
-    #[doc = " previous bit."]
+    #[doc = " Sets or clears the bit at offset of the string value."]
     #[doc = ""]
     #[doc = " SETBIT key offset value"]
     #[doc = " https://valkey.io/commands/setbit/"]
@@ -1058,7 +1062,7 @@ impl Guest for Commands {
         exchange(connection, ("SETBIT", key, offset, Bit(value))).await
     }
 
-    #[doc = " Authenticates the current connection."]
+    #[doc = " Authenticates the connection."]
     #[doc = ""]
     #[doc = " AUTH [ username ] password"]
     #[doc = " https://valkey.io/commands/auth/"]
@@ -1071,7 +1075,7 @@ impl Guest for Commands {
         exchange(connection, ("AUTH", username, password)).await
     }
 
-    #[doc = " Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk."]
+    #[doc = " Returns the server's liveliness response."]
     #[doc = ""]
     #[doc = " PING [ message ]"]
     #[doc = " https://valkey.io/commands/ping/"]
@@ -1085,7 +1089,7 @@ impl Guest for Commands {
         }
     }
 
-    #[doc = " Signals that the next command follows an ASK redirect, for a slot being imported."]
+    #[doc = " Signals that a cluster client is following an -ASK redirect."]
     #[doc = ""]
     #[doc = " It applies to the next command on the connection, which may be another caller's when the"]
     #[doc = " connection is shared. Use a connection of your own."]
@@ -1097,8 +1101,7 @@ impl Guest for Commands {
         exchange(connection, "ASKING").await
     }
 
-    #[doc = " Whether the keys the next command reads are tracked, with tracking in `optin` or `optout`"]
-    #[doc = " mode."]
+    #[doc = " Instructs the server whether to track the keys in the next request."]
     #[doc = ""]
     #[doc = " It applies to the next command on the connection, which may be another caller's when the"]
     #[doc = " connection is shared. Use a connection of your own."]
@@ -1114,7 +1117,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Declares the capabilities the client supports, e.g. `redirect`."]
+    #[doc = " A client claims its capability."]
     #[doc = ""]
     #[doc = " CLIENT CAPA capability [ capability ... ]"]
     #[doc = " https://valkey.io/commands/client-capa/"]
@@ -1131,7 +1134,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The name of the connection, none when it has none."]
+    #[doc = " Returns the name of the connection."]
     #[doc = ""]
     #[doc = " CLIENT GETNAME"]
     #[doc = " https://valkey.io/commands/client-getname/"]
@@ -1140,7 +1143,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "GETNAME")).await
     }
 
-    #[doc = " The ID of the connection, unique until the server restarts."]
+    #[doc = " Returns the unique client ID of the connection."]
     #[doc = ""]
     #[doc = " CLIENT ID"]
     #[doc = " https://valkey.io/commands/client-id/"]
@@ -1149,8 +1152,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "ID")).await
     }
 
-    #[doc = " Whether the connection is an import source, which may write while the server is in import"]
-    #[doc = " mode."]
+    #[doc = " Marks this client as an import source when the server is in import mode."]
     #[doc = ""]
     #[doc = " CLIENT IMPORT-SOURCE 〈 ON | OFF 〉"]
     #[doc = " https://valkey.io/commands/client-import-source/"]
@@ -1159,7 +1161,9 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "IMPORT-SOURCE", OnOff(enabled))).await
     }
 
-    #[doc = " The fields of the connection, as CLIENT LIST has them, e.g. `id`, `addr` and `name`."]
+    #[doc = " Returns information about the connection."]
+    #[doc = ""]
+    #[doc = " A map of the fields, parsed from the server's text, e.g. `id`, `addr` and `name`."]
     #[doc = ""]
     #[doc = " CLIENT INFO"]
     #[doc = " https://valkey.io/commands/client-info/"]
@@ -1174,7 +1178,7 @@ impl Guest for Commands {
             .ok_or_else(|| Error::Client("unexpected empty reply".to_string()))
     }
 
-    #[doc = " Whether the connection's commands leave the access time of the keys they read unchanged."]
+    #[doc = " Controls whether commands sent by the client affect the LRU/LFU of accessed keys."]
     #[doc = ""]
     #[doc = " It applies to the connection, so to every caller sharing it."]
     #[doc = ""]
@@ -1185,7 +1189,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "NO-TOUCH", OnOff(enabled))).await
     }
 
-    #[doc = " Sets the name or version of the library of the connection, see CLIENT LIST."]
+    #[doc = " Sets information specific to the client or connection."]
     #[doc = ""]
     #[doc = " CLIENT SETINFO 〈 LIB-NAME libname | LIB-VER libver 〉"]
     #[doc = " https://valkey.io/commands/client-setinfo/"]
@@ -1194,7 +1198,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "SETINFO", attr)).await
     }
 
-    #[doc = " Sets the name of the connection."]
+    #[doc = " Sets the connection name."]
     #[doc = ""]
     #[doc = " CLIENT SETNAME connection-name"]
     #[doc = " https://valkey.io/commands/client-setname/"]
@@ -1203,10 +1207,10 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "SETNAME", connection_name)).await
     }
 
-    #[doc = " Turns tracking on with the options, or off with none, for server assisted client side"]
-    #[doc = " caching. Invalidations arrive as push messages, see `connection.dead-letters`."]
+    #[doc = " Controls server-assisted client-side caching for the connection."]
     #[doc = ""]
-    #[doc = " It applies to the connection, so to every caller sharing it."]
+    #[doc = " Invalidations arrive as push messages, see `connection.dead-letters`. It applies to the"]
+    #[doc = " connection, so to every caller sharing it."]
     #[doc = ""]
     #[doc = " CLIENT TRACKING 〈 ON | OFF 〉 [ PREFIX prefix [ PREFIX prefix ... ] ] [ BCAST ] [ OPTIN ] [ OPTOUT ] [ NOLOOP ]"]
     #[doc = " https://valkey.io/commands/client-tracking/"]
@@ -1220,7 +1224,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "TRACKING", status, options)).await
     }
 
-    #[doc = " The connection's tracking state."]
+    #[doc = " Returns information about server-assisted client-side caching for the connection."]
     #[doc = ""]
     #[doc = " CLIENT TRACKINGINFO"]
     #[doc = " https://valkey.io/commands/client-trackinginfo/"]
@@ -1231,7 +1235,7 @@ impl Guest for Commands {
         exchange(connection, ("CLIENT", "TRACKINGINFO")).await
     }
 
-    #[doc = " The number of commands of the server."]
+    #[doc = " Returns a count of commands."]
     #[doc = ""]
     #[doc = " COMMAND COUNT"]
     #[doc = " https://valkey.io/commands/command-count/"]
@@ -1240,7 +1244,7 @@ impl Guest for Commands {
         exchange(connection, ("COMMAND", "COUNT")).await
     }
 
-    #[doc = " Every command of the server, a container followed by its subcommands."]
+    #[doc = " Returns detailed information about all commands."]
     #[doc = ""]
     #[doc = " COMMAND"]
     #[doc = " https://valkey.io/commands/command/"]
@@ -1250,8 +1254,9 @@ impl Guest for Commands {
         Ok(commands.0)
     }
 
-    #[doc = " The documentation of the commands, all of them without names, a container followed by its"]
-    #[doc = " subcommands, commands that do not exist left out."]
+    #[doc = " Returns documentary information about one, multiple or all commands."]
+    #[doc = ""]
+    #[doc = " A container is followed by its subcommands. Commands that do not exist are left out."]
     #[doc = ""]
     #[doc = " COMMAND DOCS [ command-name [ command-name ... ] ]"]
     #[doc = " https://valkey.io/commands/command-docs/"]
@@ -1266,8 +1271,9 @@ impl Guest for Commands {
         Ok(commands.0)
     }
 
-    #[doc = " The commands, all of them without names, a container followed by its subcommands, commands"]
-    #[doc = " that do not exist left out."]
+    #[doc = " Returns information about one, multiple or all commands."]
+    #[doc = ""]
+    #[doc = " A container is followed by its subcommands. Commands that do not exist are left out."]
     #[doc = ""]
     #[doc = " COMMAND INFO [ command-name [ command-name ... ] ]"]
     #[doc = " https://valkey.io/commands/command-info/"]
@@ -1282,7 +1288,7 @@ impl Guest for Commands {
         Ok(commands.0)
     }
 
-    #[doc = " The keys of the command, its name and arguments."]
+    #[doc = " Extracts the key names from an arbitrary command."]
     #[doc = ""]
     #[doc = " COMMAND GETKEYS command [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/command-getkeys/"]
@@ -1298,8 +1304,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The keys of the command, its name and arguments, and how the command uses each, e.g. `RW`"]
-    #[doc = " and `access`."]
+    #[doc = " Extracts the key names and access flags for an arbitrary command."]
     #[doc = ""]
     #[doc = " COMMAND GETKEYSANDFLAGS command [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/command-getkeysandflags/"]
@@ -1319,7 +1324,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The names of the commands of the server, those that match the filter with one."]
+    #[doc = " Returns a list of command names."]
     #[doc = ""]
     #[doc = " COMMAND LIST [ FILTERBY 〈 MODULE module-name | ACLCAT category | PATTERN pattern 〉 ]"]
     #[doc = " https://valkey.io/commands/command-list/"]
@@ -1331,7 +1336,7 @@ impl Guest for Commands {
         exchange(connection, ("COMMAND", "LIST", filter)).await
     }
 
-    #[doc = " Returns the message."]
+    #[doc = " Returns the given string."]
     #[doc = ""]
     #[doc = " ECHO message"]
     #[doc = " https://valkey.io/commands/echo/"]
@@ -1340,7 +1345,7 @@ impl Guest for Commands {
         exchange(connection, ("ECHO", message)).await
     }
 
-    #[doc = " Allows the connection to read from a replica of a cluster, for the slots of its primary."]
+    #[doc = " Enables read-only queries for a connection to a Valkey replica node."]
     #[doc = ""]
     #[doc = " It applies to the connection, so to every caller sharing it."]
     #[doc = ""]
@@ -1351,7 +1356,7 @@ impl Guest for Commands {
         exchange(connection, "READONLY").await
     }
 
-    #[doc = " Disallows the connection to read from a replica of a cluster, the default."]
+    #[doc = " Enables read-write queries for a connection to a Valkey replica node."]
     #[doc = ""]
     #[doc = " It applies to the connection, so to every caller sharing it."]
     #[doc = ""]
@@ -1362,7 +1367,7 @@ impl Guest for Commands {
         exchange(connection, "READWRITE").await
     }
 
-    #[doc = " Changes the database of the connection."]
+    #[doc = " Changes the selected database."]
     #[doc = ""]
     #[doc = " It applies to the connection, so to every caller sharing it."]
     #[doc = ""]
@@ -1373,8 +1378,7 @@ impl Guest for Commands {
         exchange(connection, ("SELECT", index)).await
     }
 
-    #[doc = " Waits until the connection's writes reached the number of replicas, or the timeout passed,"]
-    #[doc = " returning how many replicas they reached. A timeout of zero waits indefinitely."]
+    #[doc = " Blocks until the asynchronous replication of all preceding write commands sent by the connection is completed."]
     #[doc = ""]
     #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
     #[doc = " it. Use a connection of your own."]
@@ -1390,9 +1394,7 @@ impl Guest for Commands {
         exchange(connection, ("WAIT", numreplicas, timeout)).await
     }
 
-    #[doc = " Waits until the connection's writes are in the append-only file of the primary, and of the"]
-    #[doc = " number of replicas, or the timeout passed, returning how many of each they reached. A timeout"]
-    #[doc = " of zero waits indefinitely."]
+    #[doc = " Blocks until all of the preceding write commands sent by the connection are written to the append-only file of the primary and/or replicas."]
     #[doc = ""]
     #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
     #[doc = " it. Use a connection of your own."]
@@ -1409,8 +1411,7 @@ impl Guest for Commands {
         exchange(connection, ("WAITAOF", numlocal, numreplicas, timeout)).await
     }
 
-    #[doc = " Adds the members at their positions to the geospatial index stored at key, or updates their"]
-    #[doc = " positions, returning how many were added, or with `changed`, added or updated."]
+    #[doc = " Adds one or more members to a geospatial index."]
     #[doc = ""]
     #[doc = " GEOADD key [ NX | XX ] [ CH ] longitude latitude member [ longitude latitude member ... ]"]
     #[doc = " https://valkey.io/commands/geoadd/"]
@@ -1435,7 +1436,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The distance between the members, in meters or the unit, none when either is not a member."]
+    #[doc = " Returns the distance between two members of a geospatial index."]
     #[doc = ""]
     #[doc = " GEODIST key member1 member2 [ m | km | ft | mi ]"]
     #[doc = " https://valkey.io/commands/geodist/"]
@@ -1450,7 +1451,7 @@ impl Guest for Commands {
         exchange(connection, ("GEODIST", key, member1, member2, unit)).await
     }
 
-    #[doc = " The geohash of each of the members, none for a member that is not in the index."]
+    #[doc = " Returns members from a geospatial index as geohash strings."]
     #[doc = ""]
     #[doc = " GEOHASH key [ member [ member ... ] ]"]
     #[doc = " https://valkey.io/commands/geohash/"]
@@ -1467,7 +1468,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The position of each of the members, none for a member that is not in the index."]
+    #[doc = " Returns the longitude and latitude of members from a geospatial index."]
     #[doc = ""]
     #[doc = " GEOPOS key [ member [ member ... ] ]"]
     #[doc = " https://valkey.io/commands/geopos/"]
@@ -1484,7 +1485,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The members of the geospatial index stored at key in the shape."]
+    #[doc = " Queries a geospatial index for members inside an area of a box, circle, or a polygon."]
     #[doc = ""]
     #[doc = " See also `geosearch-with`."]
     #[doc = ""]
@@ -1501,7 +1502,9 @@ impl Guest for Commands {
         exchange(connection, ("GEOSEARCH", key, shape, order, count)).await
     }
 
-    #[doc = " The members of the geospatial index stored at key in the shape, with the details asked for."]
+    #[doc = " Queries a geospatial index for members inside an area of a box, circle, or a polygon."]
+    #[doc = ""]
+    #[doc = " Returns each member with the details asked for, `WITHCOORD`, `WITHDIST` and `WITHHASH`."]
     #[doc = ""]
     #[doc = " See also `geosearch`."]
     #[doc = ""]
@@ -1529,9 +1532,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Stores the members of the geospatial index stored at source in the shape, returning how"]
-    #[doc = " many, with their positions, or with `storedist`, their distance from the center as the"]
-    #[doc = " score."]
+    #[doc = " Queries a geospatial index for members inside an area of a box, a circle, or a polygon, optionally stores the result."]
     #[doc = ""]
     #[doc = " GEOSEARCHSTORE destination source [ FROMMEMBER member | FROMLONLAT longitude latitude ] 〈 BYRADIUS radius 〈 m | km | ft | mi 〉 | BYBOX width height 〈 m | km | ft | mi 〉 | BYPOLYGON num-vertices longitude latitude [ longitude latitude ... ] 〉 [ ASC | DESC ] [ COUNT count [ ANY ] ] [ STOREDIST ]"]
     #[doc = " https://valkey.io/commands/geosearchstore/"]
@@ -1560,7 +1561,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the specified fields from the hash stored at key."]
+    #[doc = " Deletes one or more fields and their values from a hash."]
     #[doc = ""]
     #[doc = " HDEL key field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hdel/"]
@@ -1573,7 +1574,7 @@ impl Guest for Commands {
         exchange(connection, ("HDEL", key, NonEmpty::new("fields", fields))).await
     }
 
-    #[doc = " Returns if field is an existing field in the hash stored at key."]
+    #[doc = " Determines whether a field exists in a hash."]
     #[doc = ""]
     #[doc = " HEXISTS key field"]
     #[doc = " https://valkey.io/commands/hexists/"]
@@ -1582,9 +1583,7 @@ impl Guest for Commands {
         exchange(connection, ("HEXISTS", key, field)).await
     }
 
-    #[doc = " When each of the hash fields expires, to the second."]
-    #[doc = ""]
-    #[doc = " See also `hpexpiretime`."]
+    #[doc = " Returns Unix timestamps in seconds since the epoch at which the given key's field(s) will expire."]
     #[doc = ""]
     #[doc = " HEXPIRETIME key FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hexpiretime/"]
@@ -1601,7 +1600,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The values of the hash fields, none for a field that does not exist, deleting the fields."]
+    #[doc = " Returns the values of one or more fields and deletes them from a hash."]
     #[doc = ""]
     #[doc = " HGETDEL key FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hgetdel/"]
@@ -1618,8 +1617,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The values of the hash fields, none for a field that does not exist, optionally setting or"]
-    #[doc = " removing their expiration."]
+    #[doc = " Gets the value of one or more fields of a given hash key, and optionally sets their expiration time or time-to-live (TTL)."]
     #[doc = ""]
     #[doc = " HGETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ] FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hgetex/"]
@@ -1637,7 +1635,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the expiration of the hash fields."]
+    #[doc = " Remove the existing expiration on a hash key's field(s)."]
     #[doc = ""]
     #[doc = " HPERSIST key FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hpersist/"]
@@ -1654,7 +1652,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Manipulate the expiration time for existing hash fields, in milliseconds."]
+    #[doc = " Sets the expiration time of one or more hash fields in milliseconds."]
     #[doc = ""]
     #[doc = " HPEXPIRE key milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hpexpire/"]
@@ -1676,7 +1674,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Manipulate the expiration time for existing hash fields, as a Unix time in milliseconds."]
+    #[doc = " Sets the expiration time of one or more hash fields to a Unix timestamp in milliseconds."]
     #[doc = ""]
     #[doc = " HPEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hpexpireat/"]
@@ -1698,9 +1696,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " When each of the hash fields expires, to the millisecond."]
-    #[doc = ""]
-    #[doc = " See also `hexpiretime`."]
+    #[doc = " Returns the Unix timestamp in milliseconds since Unix epoch at which the given key's field(s) will expire."]
     #[doc = ""]
     #[doc = " HPEXPIRETIME key FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hpexpiretime/"]
@@ -1717,9 +1713,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The remaining time to live of each of the hash fields, to the millisecond."]
-    #[doc = ""]
-    #[doc = " See also `httl`."]
+    #[doc = " Returns the remaining time to live in milliseconds of a hash key's field(s) that have an associated expiration."]
     #[doc = ""]
     #[doc = " HPTTL key FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hpttl/"]
@@ -1736,8 +1730,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Sets the fields to their values in the hash stored at key, optionally setting their"]
-    #[doc = " expiration, returning whether they were set, false when a condition prevented it."]
+    #[doc = " Sets the value of one or more fields of a given hash key, and optionally sets their expiration time."]
     #[doc = ""]
     #[doc = " HSETEX key [ NX | XX ] [ FNX | FXX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ] FIELDS numfields field value [ field value ... ]"]
     #[doc = " https://valkey.io/commands/hsetex/"]
@@ -1761,9 +1754,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " The remaining time to live of each of the hash fields, to the second."]
-    #[doc = ""]
-    #[doc = " See also `hpttl`."]
+    #[doc = " Returns the remaining time to live (in seconds) of a hash key's field(s) that have an associated expiration."]
     #[doc = ""]
     #[doc = " HTTL key FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/httl/"]
@@ -1780,7 +1771,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Manipulate the expiration time for existing hash fields."]
+    #[doc = " Sets the expiration time of one or more hash fields in seconds."]
     #[doc = ""]
     #[doc = " HEXPIRE key seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hexpire/"]
@@ -1805,7 +1796,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Manipulate the expiration time for existing hash fields."]
+    #[doc = " Sets the expiration time of one or more hash fields to a Unix timestamp."]
     #[doc = ""]
     #[doc = " HEXPIREAT key unix-time-seconds [ NX | XX | GT | LT ] FIELDS numfields field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hexpireat/"]
@@ -1830,7 +1821,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Returns the value associated with field in the hash stored at key."]
+    #[doc = " Returns the value of a field in a hash."]
     #[doc = ""]
     #[doc = " HGET key field"]
     #[doc = " https://valkey.io/commands/hget/"]
@@ -1843,7 +1834,7 @@ impl Guest for Commands {
         exchange(connection, ("HGET", key, field)).await
     }
 
-    #[doc = " Returns all fields and values of the hash stored at key."]
+    #[doc = " Returns all fields and values in a hash."]
     #[doc = ""]
     #[doc = " HGETALL key"]
     #[doc = " https://valkey.io/commands/hgetall/"]
@@ -1855,7 +1846,7 @@ impl Guest for Commands {
         exchange(connection, ("HGETALL", key)).await
     }
 
-    #[doc = " Increments the number stored at field in the hash stored at key by increment."]
+    #[doc = " Increments the integer value of a field in a hash by a number."]
     #[doc = ""]
     #[doc = " HINCRBY key field increment"]
     #[doc = " https://valkey.io/commands/hincrby/"]
@@ -1869,7 +1860,7 @@ impl Guest for Commands {
         exchange(connection, ("HINCRBY", key, field, increment)).await
     }
 
-    #[doc = " Increment the specified field of a hash stored at key, and representing a floating point number, by the specified increment."]
+    #[doc = " Increments the floating point value of a field by a number."]
     #[doc = ""]
     #[doc = " HINCRBYFLOAT key field increment"]
     #[doc = " https://valkey.io/commands/hincrbyfloat/"]
@@ -1883,7 +1874,7 @@ impl Guest for Commands {
         exchange(connection, ("HINCRBYFLOAT", key, field, increment)).await
     }
 
-    #[doc = " Returns all field names in the hash stored at key."]
+    #[doc = " Returns all fields in a hash."]
     #[doc = ""]
     #[doc = " HKEYS key"]
     #[doc = " https://valkey.io/commands/hkeys/"]
@@ -1892,7 +1883,7 @@ impl Guest for Commands {
         exchange(connection, ("HKEYS", key)).await
     }
 
-    #[doc = " Returns the number of fields contained in the hash stored at key."]
+    #[doc = " Returns the number of fields in a hash."]
     #[doc = ""]
     #[doc = " HLEN key"]
     #[doc = " https://valkey.io/commands/hlen/"]
@@ -1901,7 +1892,7 @@ impl Guest for Commands {
         exchange(connection, ("HLEN", key)).await
     }
 
-    #[doc = " Returns the values associated with the specified fields in the hash stored at key."]
+    #[doc = " Returns the values of all fields in a hash."]
     #[doc = ""]
     #[doc = " HMGET key field [ field ... ]"]
     #[doc = " https://valkey.io/commands/hmget/"]
@@ -1914,7 +1905,7 @@ impl Guest for Commands {
         exchange(connection, ("HMGET", key, NonEmpty::new("fields", fields))).await
     }
 
-    #[doc = " Sets the specified fields to their respective values in the hash stored at key."]
+    #[doc = " Sets the values of multiple fields."]
     #[doc = ""]
     #[doc = " HMSET key field value [ field value ... ]"]
     #[doc = " https://valkey.io/commands/hmset/"]
@@ -1935,12 +1926,11 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Random fields from the hash value stored at key, up to the count."]
+    #[doc = " Returns one or more random fields from a hash."]
     #[doc = ""]
-    #[doc = " Without a count, one field, or none when the key does not exist. A negative count may return"]
-    #[doc = " the same field more than once, its absolute value is the number of fields returned."]
+    #[doc = " Without a count, at most one field."]
     #[doc = ""]
-    #[doc = " Also see `hrandfield-withvalues`."]
+    #[doc = " See also `hrandfield-withvalues`."]
     #[doc = ""]
     #[doc = " HRANDFIELD key [ count ]"]
     #[doc = " https://valkey.io/commands/hrandfield/"]
@@ -1958,12 +1948,11 @@ impl Guest for Commands {
         Ok(field.into_iter().collect())
     }
 
-    #[doc = " Random fields and their values from the hash value stored at key, up to the count."]
+    #[doc = " Returns one or more random fields from a hash."]
     #[doc = ""]
-    #[doc = " A negative count may return the same field more than once, its absolute value is the number of"]
-    #[doc = " fields returned."]
+    #[doc = " The `WITHVALUES` form, the fields and their values."]
     #[doc = ""]
-    #[doc = " Also see `hrandfield`."]
+    #[doc = " See also `hrandfield`."]
     #[doc = ""]
     #[doc = " HRANDFIELD key count WITHVALUES"]
     #[doc = " https://valkey.io/commands/hrandfield/"]
@@ -1976,7 +1965,7 @@ impl Guest for Commands {
         exchange(connection, ("HRANDFIELD", key, count, "WITHVALUES")).await
     }
 
-    #[doc = " Incrementally iterate over a collection of elements."]
+    #[doc = " Iterates over fields and values of a hash."]
     #[doc = ""]
     #[doc = " See also `hscan-novalues`."]
     #[doc = ""]
@@ -2004,7 +1993,9 @@ impl Guest for Commands {
         Ok((cursor.0, items))
     }
 
-    #[doc = " Incrementally iterate over a collection of keys."]
+    #[doc = " Iterates over fields and values of a hash."]
+    #[doc = ""]
+    #[doc = " The `NOVALUES` form, the fields only."]
     #[doc = ""]
     #[doc = " See also `hscan`."]
     #[doc = ""]
@@ -2033,7 +2024,7 @@ impl Guest for Commands {
         Ok((cursor.0, items))
     }
 
-    #[doc = " Sets the specified fields to their respective values in the hash stored at key."]
+    #[doc = " Creates or modifies the value of a field in a hash."]
     #[doc = ""]
     #[doc = " HSET key field value [ field value ... ]"]
     #[doc = " https://valkey.io/commands/hset/"]
@@ -2054,7 +2045,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Sets field in the hash stored at key to value, only if field does not yet exist."]
+    #[doc = " Sets the value of a field in a hash only when the field doesn't exist."]
     #[doc = ""]
     #[doc = " HSETNX key field value"]
     #[doc = " https://valkey.io/commands/hsetnx/"]
@@ -2068,7 +2059,7 @@ impl Guest for Commands {
         exchange(connection, ("HSETNX", key, field, value)).await
     }
 
-    #[doc = " Returns the string length of the value associated with field in the hash stored at key."]
+    #[doc = " Returns the length of the value of a field."]
     #[doc = ""]
     #[doc = " HSTRLEN key field"]
     #[doc = " https://valkey.io/commands/hstrlen/"]
@@ -2081,7 +2072,7 @@ impl Guest for Commands {
         exchange(connection, ("HSTRLEN", key, field)).await
     }
 
-    #[doc = " All values in the hash stored at key."]
+    #[doc = " Returns all values in a hash."]
     #[doc = ""]
     #[doc = " HVALS key"]
     #[doc = " https://valkey.io/commands/hvals/"]
@@ -2090,10 +2081,7 @@ impl Guest for Commands {
         exchange(connection, ("HVALS", key)).await
     }
 
-    #[doc = " Adds the elements to the HyperLogLog stored at key, creating it when it does not exist,"]
-    #[doc = " returning whether its estimate may have changed."]
-    #[doc = ""]
-    #[doc = " Without elements, creates an empty HyperLogLog, true only when the key did not exist."]
+    #[doc = " Adds elements to a HyperLogLog key."]
     #[doc = ""]
     #[doc = " PFADD key [ element [ element ... ] ]"]
     #[doc = " https://valkey.io/commands/pfadd/"]
@@ -2110,8 +2098,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The approximate number of unique elements added to the HyperLogLogs, of their union for"]
-    #[doc = " more than one, 0 for a key that does not exist."]
+    #[doc = " Returns the approximated cardinality of the set(s) observed by the HyperLogLog key(s)."]
     #[doc = ""]
     #[doc = " PFCOUNT key [ key ... ]"]
     #[doc = " https://valkey.io/commands/pfcount/"]
@@ -2120,10 +2107,7 @@ impl Guest for Commands {
         exchange(connection, ("PFCOUNT", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " Merges the HyperLogLogs stored at the source keys into the one stored at destination,"]
-    #[doc = " creating it when it does not exist."]
-    #[doc = ""]
-    #[doc = " Without source keys, creates an empty HyperLogLog when destination does not exist."]
+    #[doc = " Merges one or more HyperLogLog values into a single key."]
     #[doc = ""]
     #[doc = " PFMERGE destkey [ sourcekey [ sourcekey ... ] ]"]
     #[doc = " https://valkey.io/commands/pfmerge/"]
@@ -2144,13 +2128,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Moves an element from one end of the source list to an end of the destination list, waiting"]
-    #[doc = " up to the timeout for the source to have one, returning it."]
+    #[doc = " Pops an element from a list, pushes it to another list and returns it."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BLMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉 timeout"]
     #[doc = " https://valkey.io/commands/blmove/"]
@@ -2177,13 +2158,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes elements from an end of the first non-empty list, waiting up to the timeout for one,"]
-    #[doc = " returning its key and the elements, one without a count."]
+    #[doc = " Pops the first element from one of multiple lists."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BLMPOP timeout numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/blmpop/"]
@@ -2208,13 +2186,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the first element of the first non-empty list, waiting up to the timeout for one,"]
-    #[doc = " returning its key and the element."]
+    #[doc = " Removes and returns the first element in a list."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BLPOP key [ key ... ] timeout"]
     #[doc = " https://valkey.io/commands/blpop/"]
@@ -2235,13 +2210,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the last element of the first non-empty list, waiting up to the timeout for one,"]
-    #[doc = " returning its key and the element."]
+    #[doc = " Removes and returns the last element in a list."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BRPOP key [ key ... ] timeout"]
     #[doc = " https://valkey.io/commands/brpop/"]
@@ -2262,15 +2234,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Moves the last element of the source list to the head of the destination list, waiting up"]
-    #[doc = " to the timeout for the source to have one, returning it."]
+    #[doc = " Pops an element from a list, pushes it to another list and returns it."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
-    #[doc = ""]
-    #[doc = " See also `blmove`."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BRPOPLPUSH source destination timeout"]
     #[doc = " https://valkey.io/commands/brpoplpush/"]
@@ -2288,8 +2255,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The element at the index of the list stored at key, negative from the end, none when the"]
-    #[doc = " index is out of range."]
+    #[doc = " Returns an element from a list by its index."]
     #[doc = ""]
     #[doc = " LINDEX key index"]
     #[doc = " https://valkey.io/commands/lindex/"]
@@ -2302,8 +2268,7 @@ impl Guest for Commands {
         exchange(connection, ("LINDEX", key, index)).await
     }
 
-    #[doc = " Inserts the element before or after the first occurrence of the pivot in the list stored at"]
-    #[doc = " key."]
+    #[doc = " Inserts an element before or after another element in a list."]
     #[doc = ""]
     #[doc = " LINSERT key 〈 BEFORE | AFTER 〉 pivot element"]
     #[doc = " https://valkey.io/commands/linsert/"]
@@ -2318,7 +2283,7 @@ impl Guest for Commands {
         exchange(connection, ("LINSERT", key, position, pivot, element)).await
     }
 
-    #[doc = " The length of the list stored at key, 0 when the key does not exist."]
+    #[doc = " Returns the length of a list."]
     #[doc = ""]
     #[doc = " LLEN key"]
     #[doc = " https://valkey.io/commands/llen/"]
@@ -2327,8 +2292,7 @@ impl Guest for Commands {
         exchange(connection, ("LLEN", key)).await
     }
 
-    #[doc = " Moves an element from one end of the source list to an end of the destination list,"]
-    #[doc = " returning it, none when the source does not exist."]
+    #[doc = " Returns an element after popping it from one list and pushing it to another."]
     #[doc = ""]
     #[doc = " LMOVE source destination 〈 LEFT | RIGHT 〉 〈 LEFT | RIGHT 〉"]
     #[doc = " https://valkey.io/commands/lmove/"]
@@ -2347,8 +2311,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes elements from an end of the first non-empty list, returning its key and the"]
-    #[doc = " elements, one without a count, none when every list is empty."]
+    #[doc = " Returns multiple elements from a list after removing them."]
     #[doc = ""]
     #[doc = " LMPOP numkeys key [ key ... ] 〈 LEFT | RIGHT 〉 [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/lmpop/"]
@@ -2368,8 +2331,9 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Removes and returns the first elements of the list stored at key, up to the count, one"]
-    #[doc = " without a count, none when the key does not exist."]
+    #[doc = " Returns and removes one or more elements from the beginning of a list."]
+    #[doc = ""]
+    #[doc = " Without a count, at most one element."]
     #[doc = ""]
     #[doc = " LPOP key [ count ]"]
     #[doc = " https://valkey.io/commands/lpop/"]
@@ -2394,11 +2358,9 @@ impl Guest for Commands {
         }
     }
 
-    #[doc = " The positions of the element in the list stored at key, up to the count, 0 for every match,"]
-    #[doc = " the first match without a count."]
+    #[doc = " Returns the index of matching elements in a list."]
     #[doc = ""]
-    #[doc = " The rank skips matches, the second match for 2, counting from the end when negative. The"]
-    #[doc = " max length limits how many elements are compared."]
+    #[doc = " Without a count, at most one position."]
     #[doc = ""]
     #[doc = " LPOS key element [ RANK rank ] [ COUNT num-matches ] [ MAXLEN len ]"]
     #[doc = " https://valkey.io/commands/lpos/"]
@@ -2430,8 +2392,7 @@ impl Guest for Commands {
         }
     }
 
-    #[doc = " Inserts the elements at the head of the list stored at key, creating it when it does not"]
-    #[doc = " exist, returning its length after."]
+    #[doc = " Prepends one or more elements to a list."]
     #[doc = ""]
     #[doc = " LPUSH key element [ element ... ]"]
     #[doc = " https://valkey.io/commands/lpush/"]
@@ -2448,8 +2409,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Inserts the elements at the head of the list stored at key, only when it exists, returning"]
-    #[doc = " its length after, 0 when it does not exist."]
+    #[doc = " Prepends one or more elements to a list only when the list exists."]
     #[doc = ""]
     #[doc = " LPUSHX key element [ element ... ]"]
     #[doc = " https://valkey.io/commands/lpushx/"]
@@ -2466,8 +2426,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The elements of the list stored at key from the start to the stop, both included, negative"]
-    #[doc = " from the end."]
+    #[doc = " Returns a range of elements from a list."]
     #[doc = ""]
     #[doc = " LRANGE key start stop"]
     #[doc = " https://valkey.io/commands/lrange/"]
@@ -2481,10 +2440,7 @@ impl Guest for Commands {
         exchange(connection, ("LRANGE", key, start, stop)).await
     }
 
-    #[doc = " Removes occurrences of the element from the list stored at key, returning how many."]
-    #[doc = ""]
-    #[doc = " A positive count removes up to that many from the head, a negative count from the tail, and"]
-    #[doc = " 0 removes them all."]
+    #[doc = " Removes elements from a list."]
     #[doc = ""]
     #[doc = " LREM key count element"]
     #[doc = " https://valkey.io/commands/lrem/"]
@@ -2498,7 +2454,7 @@ impl Guest for Commands {
         exchange(connection, ("LREM", key, count, element)).await
     }
 
-    #[doc = " Sets the element at the index of the list stored at key, negative from the end."]
+    #[doc = " Sets the value of an element in a list by its index."]
     #[doc = ""]
     #[doc = " LSET key index element"]
     #[doc = " https://valkey.io/commands/lset/"]
@@ -2512,8 +2468,7 @@ impl Guest for Commands {
         exchange(connection, ("LSET", key, index, element)).await
     }
 
-    #[doc = " Trims the list stored at key to the elements from the start to the stop, both included,"]
-    #[doc = " negative from the end."]
+    #[doc = " Removes elements from both ends of a list."]
     #[doc = ""]
     #[doc = " LTRIM key start stop"]
     #[doc = " https://valkey.io/commands/ltrim/"]
@@ -2527,8 +2482,9 @@ impl Guest for Commands {
         exchange(connection, ("LTRIM", key, start, stop)).await
     }
 
-    #[doc = " Removes and returns the last elements of the list stored at key, up to the count, one"]
-    #[doc = " without a count, none when the key does not exist."]
+    #[doc = " Returns and removes one or more elements from the end of a list."]
+    #[doc = ""]
+    #[doc = " Without a count, at most one element."]
     #[doc = ""]
     #[doc = " RPOP key [ count ]"]
     #[doc = " https://valkey.io/commands/rpop/"]
@@ -2553,10 +2509,7 @@ impl Guest for Commands {
         }
     }
 
-    #[doc = " Moves the last element of the source list to the head of the destination list, returning"]
-    #[doc = " it, none when the source does not exist."]
-    #[doc = ""]
-    #[doc = " See also `lmove`."]
+    #[doc = " Returns the last element of a list after removing and pushing it to another list."]
     #[doc = ""]
     #[doc = " RPOPLPUSH source destination"]
     #[doc = " https://valkey.io/commands/rpoplpush/"]
@@ -2569,8 +2522,7 @@ impl Guest for Commands {
         exchange(connection, ("RPOPLPUSH", source, destination)).await
     }
 
-    #[doc = " Inserts the elements at the tail of the list stored at key, creating it when it does not"]
-    #[doc = " exist, returning its length after."]
+    #[doc = " Appends one or more elements to a list."]
     #[doc = ""]
     #[doc = " RPUSH key element [ element ... ]"]
     #[doc = " https://valkey.io/commands/rpush/"]
@@ -2587,8 +2539,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Inserts the elements at the tail of the list stored at key, only when it exists, returning"]
-    #[doc = " its length after, 0 when it does not exist."]
+    #[doc = " Appends one or more elements to a list only when the list exists."]
     #[doc = ""]
     #[doc = " RPUSHX key element [ element ... ]"]
     #[doc = " https://valkey.io/commands/rpushx/"]
@@ -2605,7 +2556,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the specified keys."]
+    #[doc = " Deletes one or more keys."]
     #[doc = ""]
     #[doc = " DEL key [ key ... ]"]
     #[doc = " https://valkey.io/commands/del/"]
@@ -2614,8 +2565,7 @@ impl Guest for Commands {
         exchange(connection, ("DEL", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " The value of the key serialized in Valkey's own format, with its version and a checksum, see"]
-    #[doc = " `restore`, none when the key does not exist."]
+    #[doc = " Returns a serialized representation of the value stored at a key."]
     #[doc = ""]
     #[doc = " DUMP key"]
     #[doc = " https://valkey.io/commands/dump/"]
@@ -2625,7 +2575,7 @@ impl Guest for Commands {
         Ok(serialized.map(|serialized| serialized.0))
     }
 
-    #[doc = " If key exists."]
+    #[doc = " Determines whether one or more keys exist."]
     #[doc = ""]
     #[doc = " EXISTS key [ key ... ]"]
     #[doc = " https://valkey.io/commands/exists/"]
@@ -2634,7 +2584,7 @@ impl Guest for Commands {
         exchange(connection, ("EXISTS", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " Set a timeout on key."]
+    #[doc = " Sets the expiration time of a key in seconds."]
     #[doc = ""]
     #[doc = " EXPIRE key seconds [ NX | XX | GT | LT ]"]
     #[doc = " https://valkey.io/commands/expire/"]
@@ -2648,7 +2598,7 @@ impl Guest for Commands {
         exchange(connection, ("EXPIRE", key, seconds, mode)).await
     }
 
-    #[doc = " Set a timeout on key."]
+    #[doc = " Sets the expiration time of a key to a Unix timestamp."]
     #[doc = ""]
     #[doc = " EXPIREAT key unix-time-seconds [ NX | XX | GT | LT ]"]
     #[doc = " https://valkey.io/commands/expireat/"]
@@ -2662,7 +2612,7 @@ impl Guest for Commands {
         exchange(connection, ("EXPIREAT", key, seconds, mode)).await
     }
 
-    #[doc = " Returns all keys matching pattern."]
+    #[doc = " Returns all key names that match a pattern."]
     #[doc = ""]
     #[doc = " KEYS pattern"]
     #[doc = " https://valkey.io/commands/keys/"]
@@ -2671,8 +2621,7 @@ impl Guest for Commands {
         exchange(connection, ("KEYS", pattern)).await
     }
 
-    #[doc = " Removes all the keys of the slot, in the mode, the server's `lazyfree-lazy-user-flush`"]
-    #[doc = " without one."]
+    #[doc = " Removes all keys from the target slot."]
     #[doc = ""]
     #[doc = " CLUSTER FLUSHSLOT slot [ ASYNC | SYNC ]"]
     #[doc = " https://valkey.io/commands/cluster-flushslot/"]
@@ -2685,7 +2634,7 @@ impl Guest for Commands {
         exchange(connection, ("CLUSTER", "FLUSHSLOT", slot, mode)).await
     }
 
-    #[doc = " Incrementally iterate over the keys of a cluster, slot by slot, or within the slot."]
+    #[doc = " Iterates over the keys in the cluster."]
     #[doc = ""]
     #[doc = " The cursor carries the slot, for clients to route each call to the node that owns it."]
     #[doc = ""]
@@ -2712,8 +2661,7 @@ impl Guest for Commands {
         Ok((cursor.0, keys))
     }
 
-    #[doc = " Copies the value of the source key to the destination key, in the database, or the current"]
-    #[doc = " one, returning whether it was copied, false when the destination exists without `replace`."]
+    #[doc = " Copies the value of a key to a new key."]
     #[doc = ""]
     #[doc = " COPY source destination [ DB destination-db ] [ REPLACE ]"]
     #[doc = " https://valkey.io/commands/copy/"]
@@ -2738,7 +2686,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The number of keys in the current database."]
+    #[doc = " Returns the number of keys in the database."]
     #[doc = ""]
     #[doc = " DBSIZE"]
     #[doc = " https://valkey.io/commands/dbsize/"]
@@ -2747,9 +2695,7 @@ impl Guest for Commands {
         exchange(connection, "DBSIZE").await
     }
 
-    #[doc = " When the key expires, to the second."]
-    #[doc = ""]
-    #[doc = " See also `pexpiretime`."]
+    #[doc = " Returns the expiration time of a key as a Unix timestamp."]
     #[doc = ""]
     #[doc = " EXPIRETIME key"]
     #[doc = " https://valkey.io/commands/expiretime/"]
@@ -2758,8 +2704,7 @@ impl Guest for Commands {
         exchange(connection, ("EXPIRETIME", key)).await
     }
 
-    #[doc = " Removes all the keys of all the databases, in the mode, the server's"]
-    #[doc = " `lazyfree-lazy-user-flush` without one."]
+    #[doc = " Removes all keys from all databases."]
     #[doc = ""]
     #[doc = " FLUSHALL [ ASYNC | SYNC ]"]
     #[doc = " https://valkey.io/commands/flushall/"]
@@ -2768,8 +2713,7 @@ impl Guest for Commands {
         exchange(connection, ("FLUSHALL", mode)).await
     }
 
-    #[doc = " Removes all the keys of the current database, in the mode, the server's"]
-    #[doc = " `lazyfree-lazy-user-flush` without one."]
+    #[doc = " Removes all keys from the current database."]
     #[doc = ""]
     #[doc = " FLUSHDB [ ASYNC | SYNC ]"]
     #[doc = " https://valkey.io/commands/flushdb/"]
@@ -2778,8 +2722,9 @@ impl Guest for Commands {
         exchange(connection, ("FLUSHDB", mode)).await
     }
 
-    #[doc = " Moves the keys to the database of another instance, returning whether any were moved, false"]
-    #[doc = " when none of the keys exist."]
+    #[doc = " Atomically transfers a key from one instance to another."]
+    #[doc = ""]
+    #[doc = " False when none of the keys exist, the server's `NOKEY`."]
     #[doc = ""]
     #[doc = " MIGRATE host port \"\" destination-db timeout [ COPY ] [ REPLACE ] [ AUTH password | AUTH2 username password ] KEYS key [ key ... ]"]
     #[doc = " https://valkey.io/commands/migrate/"]
@@ -2811,8 +2756,7 @@ impl Guest for Commands {
         Ok(migrated.0)
     }
 
-    #[doc = " Moves the key to the database, returning whether it was moved, false when it does not"]
-    #[doc = " exist, or exists in the database without `replace`."]
+    #[doc = " Moves a key to another database."]
     #[doc = ""]
     #[doc = " MOVE key db [ REPLACE ]"]
     #[doc = " https://valkey.io/commands/move/"]
@@ -2826,8 +2770,7 @@ impl Guest for Commands {
         exchange(connection, ("MOVE", key, db, Flag("REPLACE", replace))).await
     }
 
-    #[doc = " The internal encoding of the value stored at key, e.g. `listpack`, none when the key does"]
-    #[doc = " not exist."]
+    #[doc = " Returns the internal encoding of an object."]
     #[doc = ""]
     #[doc = " OBJECT ENCODING key"]
     #[doc = " https://valkey.io/commands/object-encoding/"]
@@ -2839,9 +2782,7 @@ impl Guest for Commands {
         exchange(connection, ("OBJECT", "ENCODING", key)).await
     }
 
-    #[doc = " The logarithmic access frequency counter of the key, none when it does not exist."]
-    #[doc = ""]
-    #[doc = " Only with an LFU `maxmemory-policy`, otherwise it fails."]
+    #[doc = " Returns the logarithmic access frequency counter of an object."]
     #[doc = ""]
     #[doc = " OBJECT FREQ key"]
     #[doc = " https://valkey.io/commands/object-freq/"]
@@ -2850,7 +2791,7 @@ impl Guest for Commands {
         exchange(connection, ("OBJECT", "FREQ", key)).await
     }
 
-    #[doc = " The time since the key was last accessed, none when it does not exist."]
+    #[doc = " Returns the time since the last access to an object."]
     #[doc = ""]
     #[doc = " OBJECT IDLETIME key"]
     #[doc = " https://valkey.io/commands/object-idletime/"]
@@ -2862,7 +2803,7 @@ impl Guest for Commands {
         exchange(connection, ("OBJECT", "IDLETIME", key)).await
     }
 
-    #[doc = " The number of references to the value stored at key, none when the key does not exist."]
+    #[doc = " Returns the reference count of a value of a key."]
     #[doc = ""]
     #[doc = " OBJECT REFCOUNT key"]
     #[doc = " https://valkey.io/commands/object-refcount/"]
@@ -2874,7 +2815,7 @@ impl Guest for Commands {
         exchange(connection, ("OBJECT", "REFCOUNT", key)).await
     }
 
-    #[doc = " Removes the expiration of the key, returning whether it had one."]
+    #[doc = " Removes the expiration time of a key."]
     #[doc = ""]
     #[doc = " PERSIST key"]
     #[doc = " https://valkey.io/commands/persist/"]
@@ -2883,7 +2824,7 @@ impl Guest for Commands {
         exchange(connection, ("PERSIST", key)).await
     }
 
-    #[doc = " Set a timeout on key, in milliseconds."]
+    #[doc = " Sets the expiration time of a key in milliseconds."]
     #[doc = ""]
     #[doc = " PEXPIRE key milliseconds [ NX | XX | GT | LT ]"]
     #[doc = " https://valkey.io/commands/pexpire/"]
@@ -2897,7 +2838,7 @@ impl Guest for Commands {
         exchange(connection, ("PEXPIRE", key, milliseconds, mode)).await
     }
 
-    #[doc = " Set a timeout on key, as a Unix time in milliseconds."]
+    #[doc = " Sets the expiration time of a key to a Unix milliseconds timestamp."]
     #[doc = ""]
     #[doc = " PEXPIREAT key unix-time-milliseconds [ NX | XX | GT | LT ]"]
     #[doc = " https://valkey.io/commands/pexpireat/"]
@@ -2911,9 +2852,7 @@ impl Guest for Commands {
         exchange(connection, ("PEXPIREAT", key, milliseconds, mode)).await
     }
 
-    #[doc = " When the key expires, to the millisecond."]
-    #[doc = ""]
-    #[doc = " See also `expiretime`."]
+    #[doc = " Returns the expiration time of a key as a Unix milliseconds timestamp."]
     #[doc = ""]
     #[doc = " PEXPIRETIME key"]
     #[doc = " https://valkey.io/commands/pexpiretime/"]
@@ -2922,9 +2861,7 @@ impl Guest for Commands {
         exchange(connection, ("PEXPIRETIME", key)).await
     }
 
-    #[doc = " The remaining time to live of the key, to the millisecond."]
-    #[doc = ""]
-    #[doc = " See also `ttl`."]
+    #[doc = " Returns the expiration time in milliseconds of a key."]
     #[doc = ""]
     #[doc = " PTTL key"]
     #[doc = " https://valkey.io/commands/pttl/"]
@@ -2933,7 +2870,7 @@ impl Guest for Commands {
         exchange(connection, ("PTTL", key)).await
     }
 
-    #[doc = " A random key of the current database, none when it is empty."]
+    #[doc = " Returns a random key name from the database."]
     #[doc = ""]
     #[doc = " RANDOMKEY"]
     #[doc = " https://valkey.io/commands/randomkey/"]
@@ -2942,7 +2879,7 @@ impl Guest for Commands {
         exchange(connection, "RANDOMKEY").await
     }
 
-    #[doc = " Renames the key, replacing the new key when it exists."]
+    #[doc = " Renames a key and overwrites the destination."]
     #[doc = ""]
     #[doc = " RENAME key newkey"]
     #[doc = " https://valkey.io/commands/rename/"]
@@ -2951,7 +2888,7 @@ impl Guest for Commands {
         exchange(connection, ("RENAME", key, newkey)).await
     }
 
-    #[doc = " Renames the key, only when the new key does not exist, returning whether it was renamed."]
+    #[doc = " Renames a key only when the target key name doesn't exist."]
     #[doc = ""]
     #[doc = " RENAMENX key newkey"]
     #[doc = " https://valkey.io/commands/renamenx/"]
@@ -2960,9 +2897,9 @@ impl Guest for Commands {
         exchange(connection, ("RENAMENX", key, newkey)).await
     }
 
-    #[doc = " Creates the key from a value serialized with `dump`, without an expiration when `ttl` is"]
-    #[doc = " none. Fails when the key exists, unless `replace`. `idletime` and `freq` set what eviction"]
-    #[doc = " knows of the key, its idle time for an LRU policy, or its access frequency for an LFU policy."]
+    #[doc = " Creates a key from the serialized representation of a value."]
+    #[doc = ""]
+    #[doc = " A `ttl` of none restores the key without an expiration, `0`, `expire-at` adds `ABSTTL`."]
     #[doc = ""]
     #[doc = " RESTORE key ttl serialized-value [ REPLACE ] [ ABSTTL ] [ IDLETIME seconds ] [ FREQ frequency ]"]
     #[doc = " https://valkey.io/commands/restore/"]
@@ -2993,7 +2930,9 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " `restore` on a node a key is migrated to, for a slot being imported, see `cluster-setslot`."]
+    #[doc = " An internal command for migrating keys in a cluster."]
+    #[doc = ""]
+    #[doc = " A `ttl` of none restores the key without an expiration, `0`, `expire-at` adds `ABSTTL`."]
     #[doc = ""]
     #[doc = " RESTORE-ASKING key ttl serialized-value [ REPLACE ] [ ABSTTL ] [ IDLETIME seconds ] [ FREQ frequency ]"]
     #[doc = " https://valkey.io/commands/restore-asking/"]
@@ -3024,7 +2963,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Incrementally iterate over the keys of the current database."]
+    #[doc = " Iterates over the key names in the database."]
     #[doc = ""]
     #[doc = " SCAN cursor [ MATCH pattern ] [ COUNT count ] [ TYPE type ]"]
     #[doc = " https://valkey.io/commands/scan/"]
@@ -3047,7 +2986,7 @@ impl Guest for Commands {
         Ok((cursor.0, keys))
     }
 
-    #[doc = " Swaps the two databases, for connections using either."]
+    #[doc = " Swaps two databases."]
     #[doc = ""]
     #[doc = " SWAPDB index1 index2"]
     #[doc = " https://valkey.io/commands/swapdb/"]
@@ -3060,7 +2999,7 @@ impl Guest for Commands {
         exchange(connection, ("SWAPDB", index1, index2)).await
     }
 
-    #[doc = " Updates the last access time of the keys, returning how many exist."]
+    #[doc = " Returns the number of existing keys out of those specified after updating the time they were last accessed."]
     #[doc = ""]
     #[doc = " TOUCH key [ key ... ]"]
     #[doc = " https://valkey.io/commands/touch/"]
@@ -3069,9 +3008,7 @@ impl Guest for Commands {
         exchange(connection, ("TOUCH", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " The remaining time to live of the key, to the second."]
-    #[doc = ""]
-    #[doc = " See also `pttl`."]
+    #[doc = " Returns the expiration time in seconds of a key."]
     #[doc = ""]
     #[doc = " TTL key"]
     #[doc = " https://valkey.io/commands/ttl/"]
@@ -3080,7 +3017,9 @@ impl Guest for Commands {
         exchange(connection, ("TTL", key)).await
     }
 
-    #[doc = " The type of the value stored at key, none when the key does not exist."]
+    #[doc = " Determines the type of value stored at a key."]
+    #[doc = ""]
+    #[doc = " None when the key does not exist, the server's `none`."]
     #[doc = ""]
     #[doc = " TYPE key"]
     #[doc = " https://valkey.io/commands/type/"]
@@ -3090,7 +3029,7 @@ impl Guest for Commands {
         Ok(key_type.0)
     }
 
-    #[doc = " Removes the keys, freeing their memory in the background, returning how many existed."]
+    #[doc = " Asynchronously deletes one or more keys."]
     #[doc = ""]
     #[doc = " UNLINK key [ key ... ]"]
     #[doc = " https://valkey.io/commands/unlink/"]
@@ -3099,7 +3038,7 @@ impl Guest for Commands {
         exchange(connection, ("UNLINK", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " Posts a message to the given channel."]
+    #[doc = " Posts a message to a channel."]
     #[doc = ""]
     #[doc = " PUBLISH channel message"]
     #[doc = " https://valkey.io/commands/publish/"]
@@ -3112,7 +3051,7 @@ impl Guest for Commands {
         exchange(connection, ("PUBLISH", channel, message)).await
     }
 
-    #[doc = " Lists the currently active channels."]
+    #[doc = " Returns the active channels."]
     #[doc = ""]
     #[doc = " PUBSUB CHANNELS [ pattern ]"]
     #[doc = " https://valkey.io/commands/pubsub-channels/"]
@@ -3124,7 +3063,7 @@ impl Guest for Commands {
         exchange(connection, ("PUBSUB", "CHANNELS", pattern)).await
     }
 
-    #[doc = " Returns the number of unique patterns that are subscribed to by clients."]
+    #[doc = " Returns a count of unique pattern subscriptions."]
     #[doc = ""]
     #[doc = " PUBSUB NUMPAT"]
     #[doc = " https://valkey.io/commands/pubsub-numpat/"]
@@ -3133,7 +3072,7 @@ impl Guest for Commands {
         exchange(connection, ("PUBSUB", "NUMPAT")).await
     }
 
-    #[doc = " Returns the number of subscribers (exclusive of clients subscribed to patterns) for the specified channels."]
+    #[doc = " Returns a count of subscribers to channels."]
     #[doc = ""]
     #[doc = " PUBSUB NUMSUB [ channel ] [ [ channel ] ... ]"]
     #[doc = " https://valkey.io/commands/pubsub-numsub/"]
@@ -3149,7 +3088,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Lists the currently active shard channels."]
+    #[doc = " Returns the active shard channels."]
     #[doc = ""]
     #[doc = " PUBSUB SHARDCHANNELS [ pattern ]"]
     #[doc = " https://valkey.io/commands/pubsub-shardchannels/"]
@@ -3161,7 +3100,7 @@ impl Guest for Commands {
         exchange(connection, ("PUBSUB", "SHARDCHANNELS", pattern)).await
     }
 
-    #[doc = " Returns the number of subscribers for the specified shard channels."]
+    #[doc = " Returns the count of subscribers of shard channels."]
     #[doc = ""]
     #[doc = " PUBSUB SHARDNUMSUB [ shardchannel [ shardchannel ... ] ]"]
     #[doc = " https://valkey.io/commands/pubsub-shardnumsub/"]
@@ -3181,8 +3120,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Runs the Lua script, returning its result, the keys it accesses and its arguments are"]
-    #[doc = " `KEYS` and `ARGV` in the script."]
+    #[doc = " Executes a server-side Lua script."]
     #[doc = ""]
     #[doc = " An error the script returns fails the call."]
     #[doc = ""]
@@ -3198,7 +3136,9 @@ impl Guest for Commands {
         exchange(connection, ("EVAL", script, KeysAndArgs(keys, args))).await
     }
 
-    #[doc = " Runs the Lua script, which may not write, returning its result, see `eval`."]
+    #[doc = " Executes a read-only server-side Lua script."]
+    #[doc = ""]
+    #[doc = " An error the script returns fails the call."]
     #[doc = ""]
     #[doc = " EVAL_RO script numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/eval_ro/"]
@@ -3212,8 +3152,9 @@ impl Guest for Commands {
         exchange(connection, ("EVAL_RO", script, KeysAndArgs(keys, args))).await
     }
 
-    #[doc = " Runs the Lua script cached with the SHA1 digest, see `script-load`, returning its result, see"]
-    #[doc = " `eval`."]
+    #[doc = " Executes a server-side Lua script by SHA1 digest."]
+    #[doc = ""]
+    #[doc = " An error the script returns fails the call."]
     #[doc = ""]
     #[doc = " EVALSHA sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/evalsha/"]
@@ -3227,8 +3168,9 @@ impl Guest for Commands {
         exchange(connection, ("EVALSHA", sha1, KeysAndArgs(keys, args))).await
     }
 
-    #[doc = " Runs the Lua script cached with the SHA1 digest, which may not write, returning its result,"]
-    #[doc = " see `eval`."]
+    #[doc = " Executes a read-only server-side Lua script by SHA1 digest."]
+    #[doc = ""]
+    #[doc = " An error the script returns fails the call."]
     #[doc = ""]
     #[doc = " EVALSHA_RO sha1 numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/evalsha_ro/"]
@@ -3242,8 +3184,7 @@ impl Guest for Commands {
         exchange(connection, ("EVALSHA_RO", sha1, KeysAndArgs(keys, args))).await
     }
 
-    #[doc = " Calls the function, see `function-load`, returning its result, the keys it accesses and its"]
-    #[doc = " arguments are passed to it."]
+    #[doc = " Invokes a function."]
     #[doc = ""]
     #[doc = " An error the function returns fails the call."]
     #[doc = ""]
@@ -3259,7 +3200,9 @@ impl Guest for Commands {
         exchange(connection, ("FCALL", function, KeysAndArgs(keys, args))).await
     }
 
-    #[doc = " Calls the function, which must be flagged `no-writes`, returning its result, see `fcall`."]
+    #[doc = " Invokes a read-only function."]
+    #[doc = ""]
+    #[doc = " An error the function returns fails the call."]
     #[doc = ""]
     #[doc = " FCALL_RO function numkeys [ key [ key ... ] ] [ arg [ arg ... ] ]"]
     #[doc = " https://valkey.io/commands/fcall_ro/"]
@@ -3273,7 +3216,7 @@ impl Guest for Commands {
         exchange(connection, ("FCALL_RO", function, KeysAndArgs(keys, args))).await
     }
 
-    #[doc = " Deletes the library and its functions."]
+    #[doc = " Deletes a library and its functions."]
     #[doc = ""]
     #[doc = " FUNCTION DELETE library-name"]
     #[doc = " https://valkey.io/commands/function-delete/"]
@@ -3282,7 +3225,7 @@ impl Guest for Commands {
         exchange(connection, ("FUNCTION", "DELETE", library_name)).await
     }
 
-    #[doc = " The libraries, serialized in Valkey's own format, see `function-restore`."]
+    #[doc = " Dumps all libraries into a serialized binary payload."]
     #[doc = ""]
     #[doc = " FUNCTION DUMP"]
     #[doc = " https://valkey.io/commands/function-dump/"]
@@ -3292,7 +3235,7 @@ impl Guest for Commands {
         Ok(serialized.0)
     }
 
-    #[doc = " Deletes all the libraries, in the mode, the server's `lazyfree-lazy-user-flush` without one."]
+    #[doc = " Deletes all libraries and functions."]
     #[doc = ""]
     #[doc = " FUNCTION FLUSH [ ASYNC | SYNC ]"]
     #[doc = " https://valkey.io/commands/function-flush/"]
@@ -3301,7 +3244,7 @@ impl Guest for Commands {
         exchange(connection, ("FUNCTION", "FLUSH", mode)).await
     }
 
-    #[doc = " Kills the function that is running, as long as it has not written."]
+    #[doc = " Terminates a function during execution."]
     #[doc = ""]
     #[doc = " FUNCTION KILL"]
     #[doc = " https://valkey.io/commands/function-kill/"]
@@ -3310,7 +3253,7 @@ impl Guest for Commands {
         exchange(connection, ("FUNCTION", "KILL")).await
     }
 
-    #[doc = " The libraries, those with names matching the glob-style pattern with one."]
+    #[doc = " Returns information about all libraries."]
     #[doc = ""]
     #[doc = " FUNCTION LIST [ LIBRARYNAME library-name-pattern ] [ WITHCODE ]"]
     #[doc = " https://valkey.io/commands/function-list/"]
@@ -3332,8 +3275,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Loads the library from its source code, replacing a library of the same name with"]
-    #[doc = " `replace`, returning its name."]
+    #[doc = " Creates a library."]
     #[doc = ""]
     #[doc = " FUNCTION LOAD [ REPLACE ] function-code"]
     #[doc = " https://valkey.io/commands/function-load/"]
@@ -3350,7 +3292,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Loads the libraries serialized with `function-dump`, as `policy` says, by default `append`."]
+    #[doc = " Restores all libraries from a payload."]
     #[doc = ""]
     #[doc = " FUNCTION RESTORE serialized-value [ FLUSH | APPEND | REPLACE ]"]
     #[doc = " https://valkey.io/commands/function-restore/"]
@@ -3372,7 +3314,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The function that is running, and the libraries and functions of each engine."]
+    #[doc = " Returns information about a function during execution."]
     #[doc = ""]
     #[doc = " FUNCTION STATS"]
     #[doc = " https://valkey.io/commands/function-stats/"]
@@ -3381,7 +3323,7 @@ impl Guest for Commands {
         exchange(connection, ("FUNCTION", "STATS")).await
     }
 
-    #[doc = " Whether each of the scripts is cached, by SHA1 digest."]
+    #[doc = " Determines whether server-side Lua scripts exist in the script cache."]
     #[doc = ""]
     #[doc = " SCRIPT EXISTS sha1 [ sha1 ... ]"]
     #[doc = " https://valkey.io/commands/script-exists/"]
@@ -3397,8 +3339,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes all the scripts from the cache, in the mode, the server's `lazyfree-lazy-user-flush`"]
-    #[doc = " without one."]
+    #[doc = " Removes all server-side Lua scripts from the script cache."]
     #[doc = ""]
     #[doc = " SCRIPT FLUSH [ ASYNC | SYNC ]"]
     #[doc = " https://valkey.io/commands/script-flush/"]
@@ -3407,7 +3348,7 @@ impl Guest for Commands {
         exchange(connection, ("SCRIPT", "FLUSH", mode)).await
     }
 
-    #[doc = " Kills the script that is running, as long as it has not written."]
+    #[doc = " Terminates a server-side Lua script during execution."]
     #[doc = ""]
     #[doc = " SCRIPT KILL"]
     #[doc = " https://valkey.io/commands/script-kill/"]
@@ -3416,7 +3357,7 @@ impl Guest for Commands {
         exchange(connection, ("SCRIPT", "KILL")).await
     }
 
-    #[doc = " Caches the script without running it, returning its SHA1 digest, see `evalsha`."]
+    #[doc = " Loads a server-side Lua script to the script cache."]
     #[doc = ""]
     #[doc = " SCRIPT LOAD script"]
     #[doc = " https://valkey.io/commands/script-load/"]
@@ -3425,7 +3366,7 @@ impl Guest for Commands {
         exchange(connection, ("SCRIPT", "LOAD", script)).await
     }
 
-    #[doc = " The source of the cached script with the SHA1 digest."]
+    #[doc = " Show server-side Lua script in the script cache."]
     #[doc = ""]
     #[doc = " SCRIPT SHOW sha1"]
     #[doc = " https://valkey.io/commands/script-show/"]
@@ -3434,7 +3375,7 @@ impl Guest for Commands {
         exchange(connection, ("SCRIPT", "SHOW", sha1)).await
     }
 
-    #[doc = " Posts a message to the given shard channel."]
+    #[doc = " Posts a message to a shard channel."]
     #[doc = ""]
     #[doc = " SPUBLISH shardchannel message"]
     #[doc = " https://valkey.io/commands/spublish/"]
@@ -3447,7 +3388,7 @@ impl Guest for Commands {
         exchange(connection, ("SPUBLISH", shardchannel, message)).await
     }
 
-    #[doc = " Appends the value at the end of the string."]
+    #[doc = " Appends a string to the value of a key."]
     #[doc = ""]
     #[doc = " APPEND key value"]
     #[doc = " https://valkey.io/commands/append/"]
@@ -3460,7 +3401,7 @@ impl Guest for Commands {
         exchange(connection, ("APPEND", key, value)).await
     }
 
-    #[doc = " Decrements the number stored at key by one."]
+    #[doc = " Decrements the integer value of a key by one."]
     #[doc = ""]
     #[doc = " DECR key"]
     #[doc = " https://valkey.io/commands/decr/"]
@@ -3469,7 +3410,7 @@ impl Guest for Commands {
         exchange(connection, ("DECR", key)).await
     }
 
-    #[doc = " Decrements the number stored at key by decrement."]
+    #[doc = " Decrements the integer value of a key by a number."]
     #[doc = ""]
     #[doc = " DECRBY key decrement"]
     #[doc = " https://valkey.io/commands/decrby/"]
@@ -3482,7 +3423,7 @@ impl Guest for Commands {
         exchange(connection, ("DECRBY", key, decrement)).await
     }
 
-    #[doc = " Deletes the key if its value matches the given string."]
+    #[doc = " Delete key if value matches string."]
     #[doc = ""]
     #[doc = " DELIFEQ key value"]
     #[doc = " https://valkey.io/commands/delifeq/"]
@@ -3495,7 +3436,7 @@ impl Guest for Commands {
         exchange(connection, ("DELIFEQ", key, value)).await
     }
 
-    #[doc = " Get the value of key."]
+    #[doc = " Returns the string value of a key."]
     #[doc = ""]
     #[doc = " GET key"]
     #[doc = " https://valkey.io/commands/get/"]
@@ -3504,7 +3445,7 @@ impl Guest for Commands {
         exchange(connection, ("GET", key)).await
     }
 
-    #[doc = " Get the value of key and delete the key."]
+    #[doc = " Returns the string value of a key after deleting the key."]
     #[doc = ""]
     #[doc = " GETDEL key"]
     #[doc = " https://valkey.io/commands/getdel/"]
@@ -3513,7 +3454,7 @@ impl Guest for Commands {
         exchange(connection, ("GETDEL", key)).await
     }
 
-    #[doc = " Get the value of key and optionally set its expiration."]
+    #[doc = " Returns the string value of a key after setting its expiration time."]
     #[doc = ""]
     #[doc = " GETEX key [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | PERSIST ]"]
     #[doc = " https://valkey.io/commands/getex/"]
@@ -3526,7 +3467,7 @@ impl Guest for Commands {
         exchange(connection, ("GETEX", key, ttl)).await
     }
 
-    #[doc = " Returns the substring of the string value stored at key, determined by the offsets start and end."]
+    #[doc = " Returns a substring of the string stored at a key."]
     #[doc = ""]
     #[doc = " GETRANGE key start end"]
     #[doc = " https://valkey.io/commands/getrange/"]
@@ -3540,7 +3481,7 @@ impl Guest for Commands {
         exchange(connection, ("GETRANGE", key, start, end)).await
     }
 
-    #[doc = " Atomically sets key to value and returns the old value stored at key."]
+    #[doc = " Returns the previous string value of a key after setting it to a new value."]
     #[doc = ""]
     #[doc = " GETSET key value"]
     #[doc = " https://valkey.io/commands/getset/"]
@@ -3553,7 +3494,7 @@ impl Guest for Commands {
         exchange(connection, ("GETSET", key, value)).await
     }
 
-    #[doc = " Increments the number stored at key by one."]
+    #[doc = " Increments the integer value of a key by one."]
     #[doc = ""]
     #[doc = " INCR key"]
     #[doc = " https://valkey.io/commands/incr/"]
@@ -3562,7 +3503,7 @@ impl Guest for Commands {
         exchange(connection, ("INCR", key)).await
     }
 
-    #[doc = " Increments the number stored at key by increment."]
+    #[doc = " Increments the integer value of a key by a number."]
     #[doc = ""]
     #[doc = " INCRBY key increment"]
     #[doc = " https://valkey.io/commands/incrby/"]
@@ -3575,7 +3516,7 @@ impl Guest for Commands {
         exchange(connection, ("INCRBY", key, increment)).await
     }
 
-    #[doc = " Increment the string representing a floating point number stored at key by the specified increment."]
+    #[doc = " Increments the floating point value of a key by a number."]
     #[doc = ""]
     #[doc = " INCRBYFLOAT key increment"]
     #[doc = " https://valkey.io/commands/incrbyfloat/"]
@@ -3588,9 +3529,9 @@ impl Guest for Commands {
         exchange(connection, ("INCRBYFLOAT", key, increment)).await
     }
 
-    #[doc = " The LCS command implements the longest common subsequence algorithm."]
+    #[doc = " Finds the longest common substring."]
     #[doc = ""]
-    #[doc = " See also `lcs-len` and `lcs-idx`"]
+    #[doc = " See also `lcs-len` and `lcs-idx`."]
     #[doc = ""]
     #[doc = " LCS key1 key2"]
     #[doc = " https://valkey.io/commands/lcs/"]
@@ -3603,9 +3544,11 @@ impl Guest for Commands {
         exchange(connection, ("LCS", key1, key2)).await
     }
 
-    #[doc = " The LCS command implements the longest common subsequence algorithm."]
+    #[doc = " Finds the longest common substring."]
     #[doc = ""]
-    #[doc = " See also `lcs` and `lcs-idx`"]
+    #[doc = " The `LEN` form, the length only."]
+    #[doc = ""]
+    #[doc = " See also `lcs` and `lcs-idx`."]
     #[doc = ""]
     #[doc = " LCS key1 key2 LEN"]
     #[doc = " https://valkey.io/commands/lcs/"]
@@ -3618,9 +3561,11 @@ impl Guest for Commands {
         exchange(connection, ("LCS", key1, key2, "LEN")).await
     }
 
-    #[doc = " The LCS command implements the longest common subsequence algorithm."]
+    #[doc = " Finds the longest common substring."]
     #[doc = ""]
-    #[doc = " See also `lcs` and `lcs-len`"]
+    #[doc = " The `IDX` form, the ranges of the matches."]
+    #[doc = ""]
+    #[doc = " See also `lcs` and `lcs-len`."]
     #[doc = ""]
     #[doc = " LCS key1 key2 IDX [ MINMATCHLEN min-match-len ] [ WITHMATCHLEN ]"]
     #[doc = " https://valkey.io/commands/lcs/"]
@@ -3646,7 +3591,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Returns the values of all specified keys."]
+    #[doc = " Atomically returns the string values of one or more keys."]
     #[doc = ""]
     #[doc = " MGET key [ key ... ]"]
     #[doc = " https://valkey.io/commands/mget/"]
@@ -3658,7 +3603,7 @@ impl Guest for Commands {
         exchange(connection, ("MGET", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " Sets the given keys to their respective values."]
+    #[doc = " Atomically creates or modifies the string values of one or more keys."]
     #[doc = ""]
     #[doc = " MSET key value [ key value ... ]"]
     #[doc = " https://valkey.io/commands/mset/"]
@@ -3674,7 +3619,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Sets multiple key-value pairs while also assigning a shared expiration time to all the keys atomically."]
+    #[doc = " Atomically creates or modifies the string values of one or more keys, and optionally set their expiration."]
     #[doc = ""]
     #[doc = " MSETEX numkeys key value [ key value ... ] [ NX | XX ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]"]
     #[doc = " https://valkey.io/commands/msetex/"]
@@ -3697,7 +3642,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Sets the given keys to their respective values."]
+    #[doc = " Atomically modifies the string values of one or more keys only when all keys don't exist."]
     #[doc = ""]
     #[doc = " MSETNX key value [ key value ... ]"]
     #[doc = " https://valkey.io/commands/msetnx/"]
@@ -3713,7 +3658,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Set key to hold the string value with expiration in milliseconds."]
+    #[doc = " Sets both string value and expiration time in milliseconds of a key."]
     #[doc = ""]
     #[doc = " PSETEX key milliseconds value"]
     #[doc = " https://valkey.io/commands/psetex/"]
@@ -3727,9 +3672,11 @@ impl Guest for Commands {
         exchange(connection, ("PSETEX", key, milliseconds, value)).await
     }
 
-    #[doc = " Set key to hold the string value."]
+    #[doc = " Sets the string value of a key, ignoring its type."]
     #[doc = ""]
     #[doc = " Returns false when the precondition is not met, the key is unchanged."]
+    #[doc = ""]
+    #[doc = " See also `set-get`."]
     #[doc = ""]
     #[doc = " SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]"]
     #[doc = " https://valkey.io/commands/set/"]
@@ -3747,7 +3694,11 @@ impl Guest for Commands {
         Ok(reply.is_some())
     }
 
-    #[doc = " Set key to hold the string value. Returning the previous value."]
+    #[doc = " Sets the string value of a key, ignoring its type."]
+    #[doc = ""]
+    #[doc = " The `GET` form, returning the previous value, none when the key did not exist."]
+    #[doc = ""]
+    #[doc = " See also `set`."]
     #[doc = ""]
     #[doc = " SET key value [ NX | XX | IFEQ comparison-value | IFNE comparison-not-equal ] GET [ EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL ]"]
     #[doc = " https://valkey.io/commands/set/"]
@@ -3762,7 +3713,7 @@ impl Guest for Commands {
         exchange(connection, ("SET", key, value, precondition, "GET", ttl)).await
     }
 
-    #[doc = " Set key to hold the string value with expiration in seconds."]
+    #[doc = " Sets the string value and expiration time of a key."]
     #[doc = ""]
     #[doc = " SETEX key seconds value"]
     #[doc = " https://valkey.io/commands/setex/"]
@@ -3776,7 +3727,7 @@ impl Guest for Commands {
         exchange(connection, ("SETEX", key, seconds, value)).await
     }
 
-    #[doc = " Set key to hold string value if key does not exist."]
+    #[doc = " Sets the string value of a key only when the key doesn't exist."]
     #[doc = ""]
     #[doc = " SETNX key value"]
     #[doc = " https://valkey.io/commands/setnx/"]
@@ -3789,7 +3740,7 @@ impl Guest for Commands {
         exchange(connection, ("SETNX", key, value)).await
     }
 
-    #[doc = " Overwrites part of the string stored at key, starting at the specified offset, for the entire length of value."]
+    #[doc = " Overwrites a part of a string value with another by an offset."]
     #[doc = ""]
     #[doc = " SETRANGE key offset value"]
     #[doc = " https://valkey.io/commands/setrange/"]
@@ -3803,16 +3754,16 @@ impl Guest for Commands {
         exchange(connection, ("SETRANGE", key, offset, value)).await
     }
 
-    #[doc = " Returns the length of the string value stored at key."]
+    #[doc = " Returns the length of a string value."]
     #[doc = ""]
     #[doc = " STRLEN key"]
-    #[doc = " hthttps://valkey.io/commands/strlen/"]
+    #[doc = " https://valkey.io/commands/strlen/"]
     #[allow(async_fn_in_trait)]
     async fn strlen(connection: &Connection, key: String) -> Result<Integer, Error> {
         exchange(connection, ("STRLEN", key)).await
     }
 
-    #[doc = " Returns the substring of the string value stored at key, determined by the offsets start and end."]
+    #[doc = " Returns a substring from a string value."]
     #[doc = ""]
     #[doc = " SUBSTR key start end"]
     #[doc = " https://valkey.io/commands/substr/"]
@@ -3826,7 +3777,7 @@ impl Guest for Commands {
         exchange(connection, ("SUBSTR", key, start, end)).await
     }
 
-    #[doc = " Removes one or multiple messages from the Pending Entries List (PEL) of a stream consumer group."]
+    #[doc = " Returns the number of messages that were successfully acknowledged by the consumer group member of a stream."]
     #[doc = ""]
     #[doc = " XACK key group ID [ ID ... ]"]
     #[doc = " https://valkey.io/commands/xack/"]
@@ -3840,7 +3791,7 @@ impl Guest for Commands {
         exchange(connection, ("XACK", key, group, NonEmpty::new("ids", ids))).await
     }
 
-    #[doc = " Appends the specified stream entry to the stream at the specified key."]
+    #[doc = " Appends a new message to a stream."]
     #[doc = ""]
     #[doc = " XADD key [ NOMKSTREAM ] [ 〈 MAXLEN | MINID 〉 [ = | ~ ] threshold [ LIMIT count ] ] 〈 * | id 〉 field value [ field value ... ]"]
     #[doc = " https://valkey.io/commands/xadd/"]
@@ -3867,9 +3818,12 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Transfers ownership of pending stream entries that match the specified criteria."]
+    #[doc = " Changes, or acquires, ownership of messages in a consumer group, as if the messages were delivered to a consumer group member."]
     #[doc = ""]
-    #[doc = " See also `xautoclaim-justid`"]
+    #[doc = " A start of none scans from the beginning, `0-0`. The next start is returned, none once the"]
+    #[doc = " scan is complete."]
+    #[doc = ""]
+    #[doc = " See also `xautoclaim-justid`."]
     #[doc = ""]
     #[doc = " XAUTOCLAIM key group consumer min-idle-time start [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/xautoclaim/"]
@@ -3906,9 +3860,12 @@ impl Guest for Commands {
         Ok((next.0, claimed, deleted))
     }
 
-    #[doc = " Transfers ownership of pending stream entries that match the specified criteria."]
+    #[doc = " Changes, or acquires, ownership of messages in a consumer group, as if the messages were delivered to a consumer group member."]
     #[doc = ""]
-    #[doc = " See also `xautoclaim`"]
+    #[doc = " The `JUSTID` form, the IDs only. A start of none scans from the beginning, `0-0`. The next"]
+    #[doc = " start is returned, none once the scan is complete."]
+    #[doc = ""]
+    #[doc = " See also `xautoclaim`."]
     #[doc = ""]
     #[doc = " XAUTOCLAIM key group consumer min-idle-time start [ COUNT count ] JUSTID"]
     #[doc = " https://valkey.io/commands/xautoclaim/"]
@@ -3939,9 +3896,9 @@ impl Guest for Commands {
         Ok((next.0, claimed, deleted))
     }
 
-    #[doc = " Changes the ownership of a pending message, so that the new owner is the consumer specified as the command argument."]
+    #[doc = " Changes, or acquires, ownership of a message in a consumer group, as if the message was delivered to a consumer group member."]
     #[doc = ""]
-    #[doc = " Also see `xclaim-justid`"]
+    #[doc = " See also `xclaim-justid`."]
     #[doc = ""]
     #[doc = " XCLAIM key group consumer min-idle-time ID [ ID ... ] [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] [ LASTID lastid ]"]
     #[doc = " https://valkey.io/commands/xclaim/"]
@@ -3970,9 +3927,11 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Changes the ownership of a pending message, so that the new owner is the consumer specified as the command argument."]
+    #[doc = " Changes, or acquires, ownership of a message in a consumer group, as if the message was delivered to a consumer group member."]
     #[doc = ""]
-    #[doc = " Also see `xclaim`"]
+    #[doc = " The `JUSTID` form, the IDs only."]
+    #[doc = ""]
+    #[doc = " See also `xclaim`."]
     #[doc = ""]
     #[doc = " XCLAIM key group consumer min-idle-time ID [ ID ... ] [ IDLE ms ] [ TIME unix-time-milliseconds ] [ RETRYCOUNT count ] [ FORCE ] JUSTID [ LASTID lastid ]"]
     #[doc = " https://valkey.io/commands/xclaim/"]
@@ -4001,7 +3960,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the specified entries from a stream, and returns the number of entries deleted."]
+    #[doc = " Returns the number of messages after removing them from a stream."]
     #[doc = ""]
     #[doc = " XDEL key ID [ ID ... ]"]
     #[doc = " https://valkey.io/commands/xdel/"]
@@ -4014,7 +3973,7 @@ impl Guest for Commands {
         exchange(connection, ("XDEL", key, NonEmpty::new("ids", ids))).await
     }
 
-    #[doc = " Create a new consumer group uniquely identified by <groupname> for the stream stored at <key>."]
+    #[doc = " Creates a consumer group."]
     #[doc = ""]
     #[doc = " XGROUP CREATE key group 〈 id | $ 〉 [ MKSTREAM ] [ ENTRIESREAD entriesread ]"]
     #[doc = " https://valkey.io/commands/xgroup-create/"]
@@ -4042,7 +4001,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Create a consumer named <consumername> in the consumer group <groupname> of the stream that\'s stored at <key>."]
+    #[doc = " Creates a consumer in a consumer group."]
     #[doc = ""]
     #[doc = " XGROUP CREATECONSUMER key group consumer"]
     #[doc = " https://valkey.io/commands/xgroup-createconsumer/"]
@@ -4060,7 +4019,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The XGROUP DELCONSUMER command deletes a consumer from the consumer group."]
+    #[doc = " Deletes a consumer from a consumer group."]
     #[doc = ""]
     #[doc = " XGROUP DELCONSUMER key group consumer"]
     #[doc = " https://valkey.io/commands/xgroup-delconsumer/"]
@@ -4074,7 +4033,7 @@ impl Guest for Commands {
         exchange(connection, ("XGROUP", "DELCONSUMER", key, group, consumer)).await
     }
 
-    #[doc = " Completely destroys the consumer group."]
+    #[doc = " Destroys a consumer group."]
     #[doc = ""]
     #[doc = " XGROUP DESTROY key group"]
     #[doc = " https://valkey.io/commands/xgroup-destroy/"]
@@ -4087,7 +4046,7 @@ impl Guest for Commands {
         exchange(connection, ("XGROUP", "DESTROY", key, group)).await
     }
 
-    #[doc = " Set the last delivered ID for a consumer group."]
+    #[doc = " Sets the last-delivered ID of a consumer group."]
     #[doc = ""]
     #[doc = " XGROUP SETID key group 〈 id | $ 〉 [ ENTRIESREAD entriesread ]"]
     #[doc = " https://valkey.io/commands/xgroup-setid/"]
@@ -4113,7 +4072,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Consumers that belong to the <groupname> consumer group of the stream stored at <key>."]
+    #[doc = " Returns a list of the consumers in a consumer group."]
     #[doc = ""]
     #[doc = " XINFO CONSUMERS key group"]
     #[doc = " https://valkey.io/commands/xinfo-consumers/"]
@@ -4126,7 +4085,7 @@ impl Guest for Commands {
         exchange(connection, ("XINFO", "CONSUMERS", key, group)).await
     }
 
-    #[doc = " Consumer groups of the stream stored at <key>."]
+    #[doc = " Returns a list of the consumer groups of a stream."]
     #[doc = ""]
     #[doc = " XINFO GROUPS key"]
     #[doc = " https://valkey.io/commands/xinfo-groups/"]
@@ -4138,9 +4097,9 @@ impl Guest for Commands {
         exchange(connection, ("XINFO", "GROUPS", key)).await
     }
 
-    #[doc = " Information about the stream stored at <key>."]
+    #[doc = " Returns information about a stream."]
     #[doc = ""]
-    #[doc = " See also `xinfo-stream-full`"]
+    #[doc = " See also `xinfo-stream-full`."]
     #[doc = ""]
     #[doc = " XINFO STREAM key"]
     #[doc = " https://valkey.io/commands/xinfo-stream/"]
@@ -4149,9 +4108,11 @@ impl Guest for Commands {
         exchange(connection, ("XINFO", "STREAM", key)).await
     }
 
-    #[doc = " Information about the stream stored at <key>."]
+    #[doc = " Returns information about a stream."]
     #[doc = ""]
-    #[doc = " See also `xinfo-stream`"]
+    #[doc = " The `FULL` form, with the entries, groups and consumers."]
+    #[doc = ""]
+    #[doc = " See also `xinfo-stream`."]
     #[doc = ""]
     #[doc = " XINFO STREAM key FULL [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/xinfo-stream/"]
@@ -4168,7 +4129,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Number of entries inside a stream."]
+    #[doc = " Returns the number of messages in a stream."]
     #[doc = ""]
     #[doc = " XLEN key"]
     #[doc = " https://valkey.io/commands/xlen/"]
@@ -4177,7 +4138,9 @@ impl Guest for Commands {
         exchange(connection, ("XLEN", key)).await
     }
 
-    #[doc = " List of pending messages."]
+    #[doc = " Returns the information and entries from a stream consumer group's pending entries list."]
+    #[doc = ""]
+    #[doc = " The summary form."]
     #[doc = ""]
     #[doc = " See also `xpending-extended`."]
     #[doc = ""]
@@ -4192,7 +4155,9 @@ impl Guest for Commands {
         exchange(connection, ("XPENDING", key, group)).await
     }
 
-    #[doc = " List of pending messages."]
+    #[doc = " Returns the information and entries from a stream consumer group's pending entries list."]
+    #[doc = ""]
+    #[doc = " The extended form, the pending entries in the range."]
     #[doc = ""]
     #[doc = " See also `xpending`."]
     #[doc = ""]
@@ -4225,7 +4190,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Stream entries matching a given range of IDs."]
+    #[doc = " Returns the messages from a stream within a range of IDs."]
     #[doc = ""]
     #[doc = " XRANGE key start end [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/xrange/"]
@@ -4244,7 +4209,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Read data from one or multiple streams, only returning entries with an ID greater than the last received ID reported by the caller."]
+    #[doc = " Returns messages from multiple streams with IDs greater than the ones requested."]
+    #[doc = ""]
+    #[doc = " With `block`, returns none when the timeout passed. The connection waits too, replies to"]
+    #[doc = " commands sent after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " XREAD [ COUNT count ] [ BLOCK milliseconds ] STREAMS key [ key ... ] ID [ ID ... ]"]
     #[doc = " https://valkey.io/commands/xread/"]
@@ -4270,10 +4238,13 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Special version of the XREAD command with support for consumer groups."]
+    #[doc = " Returns new or historical messages from a stream for a consumer in a group."]
     #[doc = ""]
-    #[doc = " The fields of an entry are none when it was deleted after it was delivered, e.g. when reading"]
-    #[doc = " the pending entries with the ID `0`."]
+    #[doc = " The fields of an entry are none when it was deleted after it was delivered, e.g. when"]
+    #[doc = " reading the pending entries with the ID `0`."]
+    #[doc = ""]
+    #[doc = " With `block`, returns none when the timeout passed. The connection waits too, replies to"]
+    #[doc = " commands sent after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " XREADGROUP GROUP group consumer [ COUNT count ] [ BLOCK milliseconds ] [ NOACK ] STREAMS key [ key ... ] ID [ ID ... ]"]
     #[doc = " https://valkey.io/commands/xreadgroup/"]
@@ -4307,7 +4278,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " XRANGE, but returning the entries in reverse order."]
+    #[doc = " Returns the messages from a stream within a range of IDs in reverse order."]
     #[doc = ""]
     #[doc = " XREVRANGE key end start [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/xrevrange/"]
@@ -4326,7 +4297,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Internal command. It is used by a Valkey primary to replicate the last delivered ID of streams."]
+    #[doc = " An internal command for replicating stream values."]
     #[doc = ""]
     #[doc = " XSETID key last-id [ ENTRIESADDED entries-added ] [ MAXDELETEDID max-deleted-id ]"]
     #[doc = " https://valkey.io/commands/xsetid/"]
@@ -4351,7 +4322,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Trims the stream by evicting older entries."]
+    #[doc = " Deletes messages from the beginning of a stream."]
     #[doc = ""]
     #[doc = " XTRIM key 〈 MAXLEN | MINID 〉 [ = | ~ ] threshold [ LIMIT count ]"]
     #[doc = " https://valkey.io/commands/xtrim/"]
@@ -4364,7 +4335,7 @@ impl Guest for Commands {
         exchange(connection, ("XTRIM", key, trim)).await
     }
 
-    #[doc = " Adds the members to the set stored at key, returning how many were not already members."]
+    #[doc = " Adds one or more members to a set."]
     #[doc = ""]
     #[doc = " SADD key member [ member ... ]"]
     #[doc = " https://valkey.io/commands/sadd/"]
@@ -4377,7 +4348,7 @@ impl Guest for Commands {
         exchange(connection, ("SADD", key, NonEmpty::new("members", members))).await
     }
 
-    #[doc = " The number of members in the set stored at key."]
+    #[doc = " Returns the number of members in a set."]
     #[doc = ""]
     #[doc = " SCARD key"]
     #[doc = " https://valkey.io/commands/scard/"]
@@ -4386,7 +4357,7 @@ impl Guest for Commands {
         exchange(connection, ("SCARD", key)).await
     }
 
-    #[doc = " The members of the first set that are not in any of the others."]
+    #[doc = " Returns the difference of multiple sets."]
     #[doc = ""]
     #[doc = " SDIFF key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sdiff/"]
@@ -4398,7 +4369,7 @@ impl Guest for Commands {
         exchange(connection, ("SDIFF", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " Stores the members of the first set that are not in any of the others, returning how many."]
+    #[doc = " Stores the difference of multiple sets in a key."]
     #[doc = ""]
     #[doc = " SDIFFSTORE destination key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sdiffstore/"]
@@ -4415,7 +4386,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The members in all of the sets."]
+    #[doc = " Returns the intersect of multiple sets."]
     #[doc = ""]
     #[doc = " SINTER key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sinter/"]
@@ -4427,7 +4398,7 @@ impl Guest for Commands {
         exchange(connection, ("SINTER", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " The number of members in all of the sets, counting stops at the limit."]
+    #[doc = " Returns the number of members of the intersect of multiple sets."]
     #[doc = ""]
     #[doc = " SINTERCARD numkeys key [ key ... ] [ LIMIT limit ]"]
     #[doc = " https://valkey.io/commands/sintercard/"]
@@ -4448,7 +4419,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Stores the members in all of the sets, returning how many."]
+    #[doc = " Stores the intersect of multiple sets in a key."]
     #[doc = ""]
     #[doc = " SINTERSTORE destination key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sinterstore/"]
@@ -4465,7 +4436,9 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Whether the member is in the set stored at key, false when the key does not exist."]
+    #[doc = " Determines whether a member belongs to a set."]
+    #[doc = ""]
+    #[doc = " False when the key does not exist."]
     #[doc = ""]
     #[doc = " See also `sismember-xx`."]
     #[doc = ""]
@@ -4480,7 +4453,9 @@ impl Guest for Commands {
         exchange(connection, ("SISMEMBER", key, member)).await
     }
 
-    #[doc = " Whether the member is in the set stored at key, none when the key does not exist."]
+    #[doc = " Determines whether a member belongs to a set."]
+    #[doc = ""]
+    #[doc = " The `XX` form, none when the key does not exist, rather than false."]
     #[doc = ""]
     #[doc = " See also `sismember`."]
     #[doc = ""]
@@ -4497,7 +4472,7 @@ impl Guest for Commands {
         Ok(member.0)
     }
 
-    #[doc = " The members of the set stored at key."]
+    #[doc = " Returns all members of a set."]
     #[doc = ""]
     #[doc = " SMEMBERS key"]
     #[doc = " https://valkey.io/commands/smembers/"]
@@ -4506,7 +4481,7 @@ impl Guest for Commands {
         exchange(connection, ("SMEMBERS", key)).await
     }
 
-    #[doc = " Whether each of the members is in the set stored at key."]
+    #[doc = " Determines whether multiple members belong to a set."]
     #[doc = ""]
     #[doc = " SMISMEMBER key member [ member ... ]"]
     #[doc = " https://valkey.io/commands/smismember/"]
@@ -4523,7 +4498,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Moves the member from one set to another, false when it was not in the source set."]
+    #[doc = " Moves a member from one set to another."]
     #[doc = ""]
     #[doc = " SMOVE source destination member"]
     #[doc = " https://valkey.io/commands/smove/"]
@@ -4537,9 +4512,9 @@ impl Guest for Commands {
         exchange(connection, ("SMOVE", source, destination, member)).await
     }
 
-    #[doc = " Removes and returns random members of the set stored at key, up to the count."]
+    #[doc = " Returns one or more random members from a set after removing them."]
     #[doc = ""]
-    #[doc = " Without a count, one member, or none when the key does not exist."]
+    #[doc = " Without a count, at most one member."]
     #[doc = ""]
     #[doc = " SPOP key [ count ]"]
     #[doc = " https://valkey.io/commands/spop/"]
@@ -4557,10 +4532,9 @@ impl Guest for Commands {
         Ok(member.into_iter().collect())
     }
 
-    #[doc = " Random members of the set stored at key, up to the count."]
+    #[doc = " Gets one or multiple random members from a set."]
     #[doc = ""]
-    #[doc = " Without a count, one member, or none when the key does not exist. A negative count may return"]
-    #[doc = " the same member more than once, its absolute value is the number of members returned."]
+    #[doc = " Without a count, at most one member."]
     #[doc = ""]
     #[doc = " SRANDMEMBER key [ count ]"]
     #[doc = " https://valkey.io/commands/srandmember/"]
@@ -4578,7 +4552,7 @@ impl Guest for Commands {
         Ok(member.into_iter().collect())
     }
 
-    #[doc = " Removes the members from the set stored at key, returning how many were members."]
+    #[doc = " Removes one or more members from a set."]
     #[doc = ""]
     #[doc = " SREM key member [ member ... ]"]
     #[doc = " https://valkey.io/commands/srem/"]
@@ -4591,7 +4565,7 @@ impl Guest for Commands {
         exchange(connection, ("SREM", key, NonEmpty::new("members", members))).await
     }
 
-    #[doc = " Incrementally iterate over the members of the set stored at key."]
+    #[doc = " Iterates over members of a set."]
     #[doc = ""]
     #[doc = " SSCAN key cursor [ MATCH pattern ] [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/sscan/"]
@@ -4617,7 +4591,7 @@ impl Guest for Commands {
         Ok((cursor.0, items))
     }
 
-    #[doc = " The members in any of the sets."]
+    #[doc = " Returns the union of multiple sets."]
     #[doc = ""]
     #[doc = " SUNION key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sunion/"]
@@ -4629,7 +4603,7 @@ impl Guest for Commands {
         exchange(connection, ("SUNION", NonEmpty::new("keys", keys))).await
     }
 
-    #[doc = " Stores the members in any of the sets, returning how many."]
+    #[doc = " Stores the union of multiple sets in a key."]
     #[doc = ""]
     #[doc = " SUNIONSTORE destination key [ key ... ]"]
     #[doc = " https://valkey.io/commands/sunionstore/"]
@@ -4646,10 +4620,12 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Sorts the elements of the list, set or sorted set stored at key."]
+    #[doc = " Sorts the elements in a list, a set, or a sorted set, optionally storing the result."]
     #[doc = ""]
-    #[doc = " Each row is the element, or with `get`, the value of each pattern, none when its key does not"]
-    #[doc = " exist."]
+    #[doc = " Each row is the element, or with `get`, the value of each pattern, none when its key does"]
+    #[doc = " not exist."]
+    #[doc = ""]
+    #[doc = " See also `sort-store`."]
     #[doc = ""]
     #[doc = " SORT key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]"]
     #[doc = " https://valkey.io/commands/sort/"]
@@ -4664,8 +4640,11 @@ impl Guest for Commands {
         Ok(rows(values, row))
     }
 
-    #[doc = " Sorts the elements of the list, set or sorted set stored at key, storing them as a list,"]
-    #[doc = " returning how many."]
+    #[doc = " Sorts the elements in a list, a set, or a sorted set, optionally storing the result."]
+    #[doc = ""]
+    #[doc = " The `STORE` form, storing the elements as a list, returning how many."]
+    #[doc = ""]
+    #[doc = " See also `sort`."]
     #[doc = ""]
     #[doc = " SORT key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ] STORE destination"]
     #[doc = " https://valkey.io/commands/sort/"]
@@ -4679,7 +4658,10 @@ impl Guest for Commands {
         exchange(connection, ("SORT", key, opts, "STORE", destination)).await
     }
 
-    #[doc = " The read-only variant of `sort`, e.g. for replicas."]
+    #[doc = " Returns the sorted elements of a list, a set, or a sorted set."]
+    #[doc = ""]
+    #[doc = " Each row is the element, or with `get`, the value of each pattern, none when its key does"]
+    #[doc = " not exist."]
     #[doc = ""]
     #[doc = " SORT_RO key [ BY pattern ] [ LIMIT offset count ] [ GET pattern ... ] [ ASC | DESC ] [ ALPHA ]"]
     #[doc = " https://valkey.io/commands/sort_ro/"]
@@ -4695,13 +4677,10 @@ impl Guest for Commands {
         Ok(rows(values, row))
     }
 
-    #[doc = " Removes the members with the lowest or highest scores from the first non-empty sorted set,"]
-    #[doc = " waiting up to the timeout for one, returning its key and the members and their scores."]
+    #[doc = " Removes and returns a member by score from one or more sorted sets."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BZMPOP timeout numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/bzmpop/"]
@@ -4723,13 +4702,10 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Removes the member with the highest score from the first non-empty sorted set, waiting up to"]
-    #[doc = " the timeout for one, returning its key, the member and its score."]
+    #[doc = " Removes and returns the member with the highest score from one or more sorted sets."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BZPOPMAX key [ key ... ] timeout"]
     #[doc = " https://valkey.io/commands/bzpopmax/"]
@@ -4750,13 +4726,10 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the member with the lowest score from the first non-empty sorted set, waiting up to"]
-    #[doc = " the timeout for one, returning its key, the member and its score."]
+    #[doc = " Removes and returns the member with the lowest score from one or more sorted sets."]
     #[doc = ""]
-    #[doc = " Returns none when the timeout passed. A timeout of zero waits indefinitely."]
-    #[doc = ""]
-    #[doc = " The connection waits too, replies to commands sent after it on the connection wait behind"]
-    #[doc = " it. Use a connection of your own."]
+    #[doc = " Returns none when the timeout passed. The connection waits too, replies to commands sent"]
+    #[doc = " after it on the connection wait behind it. Use a connection of your own."]
     #[doc = ""]
     #[doc = " BZPOPMIN key [ key ... ] timeout"]
     #[doc = " https://valkey.io/commands/bzpopmin/"]
@@ -4777,8 +4750,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Adds the members with their scores to the sorted set stored at key, or updates their scores,"]
-    #[doc = " returning how many were added, or with `changed`, added or updated."]
+    #[doc = " Adds one or more members to a sorted set, or updates their scores."]
     #[doc = ""]
     #[doc = " See also `zadd-incr`."]
     #[doc = ""]
@@ -4804,10 +4776,12 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Increments the score of the member in the sorted set stored at key, returning the new score,"]
-    #[doc = " none when the condition or comparison prevented it."]
+    #[doc = " Adds one or more members to a sorted set, or updates their scores."]
     #[doc = ""]
-    #[doc = " See also `zadd` and `zincrby`."]
+    #[doc = " The `INCR` form, returning the new score, none when the condition or comparison prevented"]
+    #[doc = " it."]
+    #[doc = ""]
+    #[doc = " See also `zadd`."]
     #[doc = ""]
     #[doc = " ZADD key [ NX | XX ] [ GT | LT ] INCR score member"]
     #[doc = " https://valkey.io/commands/zadd/"]
@@ -4826,7 +4800,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " The number of members in the sorted set stored at key."]
+    #[doc = " Returns the number of members in a sorted set."]
     #[doc = ""]
     #[doc = " ZCARD key"]
     #[doc = " https://valkey.io/commands/zcard/"]
@@ -4835,7 +4809,7 @@ impl Guest for Commands {
         exchange(connection, ("ZCARD", key)).await
     }
 
-    #[doc = " The number of members of the sorted set stored at key with scores in the range."]
+    #[doc = " Returns the count of members in a sorted set that have scores within a range."]
     #[doc = ""]
     #[doc = " ZCOUNT key min max"]
     #[doc = " https://valkey.io/commands/zcount/"]
@@ -4861,7 +4835,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The members of the first sorted set that are not in any of the others."]
+    #[doc = " Returns the difference between multiple sorted sets."]
     #[doc = ""]
     #[doc = " See also `zdiff-withscores`."]
     #[doc = ""]
@@ -4875,7 +4849,9 @@ impl Guest for Commands {
         exchange(connection, ("ZDIFF", NumKeys(NonEmpty::new("keys", keys)))).await
     }
 
-    #[doc = " The members, and their scores, of the first sorted set that are not in any of the others."]
+    #[doc = " Returns the difference between multiple sorted sets."]
+    #[doc = ""]
+    #[doc = " The `WITHSCORES` form, the members and their scores."]
     #[doc = ""]
     #[doc = " See also `zdiff`."]
     #[doc = ""]
@@ -4893,8 +4869,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Stores the members of the first sorted set that are not in any of the others, returning how"]
-    #[doc = " many."]
+    #[doc = " Stores the difference of multiple sorted sets in a key."]
     #[doc = ""]
     #[doc = " ZDIFFSTORE destination numkeys key [ key ... ]"]
     #[doc = " https://valkey.io/commands/zdiffstore/"]
@@ -4915,7 +4890,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Increments the score of the member in the sorted set stored at key, returning the new score."]
+    #[doc = " Increments the score of a member in a sorted set."]
     #[doc = ""]
     #[doc = " ZINCRBY key increment member"]
     #[doc = " https://valkey.io/commands/zincrby/"]
@@ -4929,9 +4904,7 @@ impl Guest for Commands {
         exchange(connection, ("ZINCRBY", key, increment, member)).await
     }
 
-    #[doc = " The members in all of the sorted sets."]
-    #[doc = ""]
-    #[doc = " The weights, when given, multiply the scores of each sorted set, one for each key."]
+    #[doc = " Returns the intersect of multiple sorted sets."]
     #[doc = ""]
     #[doc = " See also `zinter-withscores`."]
     #[doc = ""]
@@ -4956,7 +4929,9 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The members, and their combined scores, in all of the sorted sets."]
+    #[doc = " Returns the intersect of multiple sorted sets."]
+    #[doc = ""]
+    #[doc = " The `WITHSCORES` form, the members and their combined scores."]
     #[doc = ""]
     #[doc = " See also `zinter`."]
     #[doc = ""]
@@ -4979,7 +4954,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " The number of members in all of the sorted sets, counting stops at the limit."]
+    #[doc = " Returns the number of members of the intersect of multiple sorted sets."]
     #[doc = ""]
     #[doc = " ZINTERCARD numkeys key [ key ... ] [ LIMIT limit ]"]
     #[doc = " https://valkey.io/commands/zintercard/"]
@@ -5000,7 +4975,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Stores the members in all of the sorted sets, with their combined scores, returning how many."]
+    #[doc = " Stores the intersect of multiple sorted sets in a key."]
     #[doc = ""]
     #[doc = " ZINTERSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]"]
     #[doc = " https://valkey.io/commands/zinterstore/"]
@@ -5022,8 +4997,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " The number of members of the sorted set stored at key in the range, for members of equal"]
-    #[doc = " score."]
+    #[doc = " Returns the number of members in a sorted set within a lexicographical range."]
     #[doc = ""]
     #[doc = " ZLEXCOUNT key min max"]
     #[doc = " https://valkey.io/commands/zlexcount/"]
@@ -5049,8 +5023,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the members with the lowest or highest scores from the first non-empty sorted set,"]
-    #[doc = " returning its key and the members and their scores, none when every sorted set is empty."]
+    #[doc = " Returns the highest- or lowest-scoring members from one or more sorted sets after removing them."]
     #[doc = ""]
     #[doc = " ZMPOP numkeys key [ key ... ] 〈 MIN | MAX 〉 [ COUNT count ]"]
     #[doc = " https://valkey.io/commands/zmpop/"]
@@ -5073,8 +5046,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The score of each of the members of the sorted set stored at key, none for a member that is"]
-    #[doc = " not in it."]
+    #[doc = " Returns the score of one or more members in a sorted set."]
     #[doc = ""]
     #[doc = " ZMSCORE key member [ member ... ]"]
     #[doc = " https://valkey.io/commands/zmscore/"]
@@ -5091,8 +5063,9 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes and returns the members with the highest scores, and their scores, up to the count,"]
-    #[doc = " one without a count."]
+    #[doc = " Returns the highest-scoring members from a sorted set after removing them."]
+    #[doc = ""]
+    #[doc = " Without a count, at most one member."]
     #[doc = ""]
     #[doc = " ZPOPMAX key [ count ]"]
     #[doc = " https://valkey.io/commands/zpopmax/"]
@@ -5106,8 +5079,9 @@ impl Guest for Commands {
         Ok(members.0)
     }
 
-    #[doc = " Removes and returns the members with the lowest scores, and their scores, up to the count,"]
-    #[doc = " one without a count."]
+    #[doc = " Returns the lowest-scoring members from a sorted set after removing them."]
+    #[doc = ""]
+    #[doc = " Without a count, at most one member."]
     #[doc = ""]
     #[doc = " ZPOPMIN key [ count ]"]
     #[doc = " https://valkey.io/commands/zpopmin/"]
@@ -5121,10 +5095,9 @@ impl Guest for Commands {
         Ok(members.0)
     }
 
-    #[doc = " Random members of the sorted set stored at key, up to the count."]
+    #[doc = " Returns one or more random members from a sorted set."]
     #[doc = ""]
-    #[doc = " Without a count, one member, or none when the key does not exist. A negative count may return"]
-    #[doc = " the same member more than once, its absolute value is the number of members returned."]
+    #[doc = " Without a count, at most one member."]
     #[doc = ""]
     #[doc = " See also `zrandmember-withscores`."]
     #[doc = ""]
@@ -5144,10 +5117,9 @@ impl Guest for Commands {
         Ok(member.into_iter().collect())
     }
 
-    #[doc = " Random members of the sorted set stored at key, and their scores, up to the count."]
+    #[doc = " Returns one or more random members from a sorted set."]
     #[doc = ""]
-    #[doc = " A negative count may return the same member more than once, its absolute value is the number"]
-    #[doc = " of members returned."]
+    #[doc = " The `WITHSCORES` form, the members and their scores."]
     #[doc = ""]
     #[doc = " See also `zrandmember`."]
     #[doc = ""]
@@ -5162,14 +5134,13 @@ impl Guest for Commands {
         exchange(connection, ("ZRANDMEMBER", key, count, "WITHSCORES")).await
     }
 
-    #[doc = " The members of the sorted set stored at key in the range, from the lowest score, or the"]
-    #[doc = " highest with `rev`."]
+    #[doc = " Returns members in a sorted set within a range of indexes."]
     #[doc = ""]
-    #[doc = " The limit is a range of the members in the range, only with BYSCORE or BYLEX. With `xx`,"]
-    #[doc = " returns none when the key does not exist."]
+    #[doc = " Also covers ZRANGEBYLEX, ZRANGEBYSCORE, ZREVRANGE, ZREVRANGEBYLEX and ZREVRANGEBYSCORE. A"]
+    #[doc = " limit fails the command unless the range is by score or by lex. With `xx`, returns none when"]
+    #[doc = " the key does not exist."]
     #[doc = ""]
-    #[doc = " Also covers the deprecated ZRANGEBYLEX, ZRANGEBYSCORE, ZREVRANGE, ZREVRANGEBYLEX and"]
-    #[doc = " ZREVRANGEBYSCORE. See also `zrange-withscores`."]
+    #[doc = " See also `zrange-withscores`."]
     #[doc = ""]
     #[doc = " ZRANGE key start stop [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ] [ XX ]"]
     #[doc = " https://valkey.io/commands/zrange/"]
@@ -5186,11 +5157,10 @@ impl Guest for Commands {
         exchange(connection, ("ZRANGE", key, range, Flag("XX", xx))).await
     }
 
-    #[doc = " The members of the sorted set stored at key in the range, and their scores, from the lowest"]
-    #[doc = " score, or the highest with `rev`."]
+    #[doc = " Returns members in a sorted set within a range of indexes."]
     #[doc = ""]
-    #[doc = " The limit is a range of the members in the range, only with BYSCORE. With `xx`, returns none"]
-    #[doc = " when the key does not exist."]
+    #[doc = " The `WITHSCORES` form, the members and their scores. A limit fails the command unless the"]
+    #[doc = " range is by score. With `xx`, returns none when the key does not exist."]
     #[doc = ""]
     #[doc = " See also `zrange`."]
     #[doc = ""]
@@ -5214,9 +5184,9 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Stores the members of the sorted set stored at source in the range, returning how many."]
+    #[doc = " Stores a range of members from sorted set in a key."]
     #[doc = ""]
-    #[doc = " The limit is a range of the members in the range, only with BYSCORE or BYLEX."]
+    #[doc = " A limit fails the command unless the range is by score or by lex."]
     #[doc = ""]
     #[doc = " ZRANGESTORE dst src min max [ BYSCORE | BYLEX ] [ REV ] [ LIMIT offset count ]"]
     #[doc = " https://valkey.io/commands/zrangestore/"]
@@ -5233,10 +5203,9 @@ impl Guest for Commands {
         exchange(connection, ("ZRANGESTORE", destination, source, range)).await
     }
 
-    #[doc = " The position of the member in the sorted set stored at key, from the lowest score, none when"]
-    #[doc = " it is not a member."]
+    #[doc = " Returns the index of a member in a sorted set ordered by ascending scores."]
     #[doc = ""]
-    #[doc = " See also `zrank-withscore` and `zrevrank`."]
+    #[doc = " See also `zrank-withscore`."]
     #[doc = ""]
     #[doc = " ZRANK key member"]
     #[doc = " https://valkey.io/commands/zrank/"]
@@ -5249,8 +5218,9 @@ impl Guest for Commands {
         exchange(connection, ("ZRANK", key, member)).await
     }
 
-    #[doc = " The position, and the score, of the member in the sorted set stored at key, from the lowest"]
-    #[doc = " score, none when it is not a member."]
+    #[doc = " Returns the index of a member in a sorted set ordered by ascending scores."]
+    #[doc = ""]
+    #[doc = " The `WITHSCORE` form, the position and the score."]
     #[doc = ""]
     #[doc = " See also `zrank`."]
     #[doc = ""]
@@ -5265,7 +5235,7 @@ impl Guest for Commands {
         exchange(connection, ("ZRANK", key, member, "WITHSCORE")).await
     }
 
-    #[doc = " Removes the members from the sorted set stored at key, returning how many were members."]
+    #[doc = " Removes one or more members from a sorted set."]
     #[doc = ""]
     #[doc = " ZREM key member [ member ... ]"]
     #[doc = " https://valkey.io/commands/zrem/"]
@@ -5278,8 +5248,7 @@ impl Guest for Commands {
         exchange(connection, ("ZREM", key, NonEmpty::new("members", members))).await
     }
 
-    #[doc = " Removes the members of the sorted set stored at key in the range, for members of equal score,"]
-    #[doc = " returning how many."]
+    #[doc = " Removes members in a sorted set within a lexicographical range."]
     #[doc = ""]
     #[doc = " ZREMRANGEBYLEX key min max"]
     #[doc = " https://valkey.io/commands/zremrangebylex/"]
@@ -5305,8 +5274,7 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " Removes the members of the sorted set stored at key at the positions, both included,"]
-    #[doc = " negative from the end, returning how many."]
+    #[doc = " Removes members in a sorted set within a range of indexes."]
     #[doc = ""]
     #[doc = " ZREMRANGEBYRANK key start stop"]
     #[doc = " https://valkey.io/commands/zremrangebyrank/"]
@@ -5320,8 +5288,7 @@ impl Guest for Commands {
         exchange(connection, ("ZREMRANGEBYRANK", key, start, stop)).await
     }
 
-    #[doc = " Removes the members of the sorted set stored at key with scores in the range, returning how"]
-    #[doc = " many."]
+    #[doc = " Removes members in a sorted set within a range of scores."]
     #[doc = ""]
     #[doc = " ZREMRANGEBYSCORE key min max"]
     #[doc = " https://valkey.io/commands/zremrangebyscore/"]
@@ -5347,10 +5314,9 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The position of the member in the sorted set stored at key, from the highest score, none"]
-    #[doc = " when it is not a member."]
+    #[doc = " Returns the index of a member in a sorted set ordered by descending scores."]
     #[doc = ""]
-    #[doc = " See also `zrevrank-withscore` and `zrank`."]
+    #[doc = " See also `zrevrank-withscore`."]
     #[doc = ""]
     #[doc = " ZREVRANK key member"]
     #[doc = " https://valkey.io/commands/zrevrank/"]
@@ -5363,8 +5329,9 @@ impl Guest for Commands {
         exchange(connection, ("ZREVRANK", key, member)).await
     }
 
-    #[doc = " The position, and the score, of the member in the sorted set stored at key, from the highest"]
-    #[doc = " score, none when it is not a member."]
+    #[doc = " Returns the index of a member in a sorted set ordered by descending scores."]
+    #[doc = ""]
+    #[doc = " The `WITHSCORE` form, the position and the score."]
     #[doc = ""]
     #[doc = " See also `zrevrank`."]
     #[doc = ""]
@@ -5379,7 +5346,7 @@ impl Guest for Commands {
         exchange(connection, ("ZREVRANK", key, member, "WITHSCORE")).await
     }
 
-    #[doc = " Incrementally iterate over the members of the sorted set stored at key, and their scores."]
+    #[doc = " Iterates over members and scores of a sorted set."]
     #[doc = ""]
     #[doc = " See also `zscan-noscores`."]
     #[doc = ""]
@@ -5408,7 +5375,9 @@ impl Guest for Commands {
         Ok((cursor.0, members.0))
     }
 
-    #[doc = " Incrementally iterate over the members of the sorted set stored at key."]
+    #[doc = " Iterates over members and scores of a sorted set."]
+    #[doc = ""]
+    #[doc = " The `NOSCORES` form, the members only."]
     #[doc = ""]
     #[doc = " See also `zscan`."]
     #[doc = ""]
@@ -5437,7 +5406,7 @@ impl Guest for Commands {
         Ok((cursor.0, items))
     }
 
-    #[doc = " The score of the member in the sorted set stored at key, none when it is not a member."]
+    #[doc = " Returns the score of a member in a sorted set."]
     #[doc = ""]
     #[doc = " ZSCORE key member"]
     #[doc = " https://valkey.io/commands/zscore/"]
@@ -5450,9 +5419,7 @@ impl Guest for Commands {
         exchange(connection, ("ZSCORE", key, member)).await
     }
 
-    #[doc = " The members in any of the sorted sets."]
-    #[doc = ""]
-    #[doc = " The weights, when given, multiply the scores of each sorted set, one for each key."]
+    #[doc = " Returns the union of multiple sorted sets."]
     #[doc = ""]
     #[doc = " See also `zunion-withscores`."]
     #[doc = ""]
@@ -5477,7 +5444,9 @@ impl Guest for Commands {
         .await
     }
 
-    #[doc = " The members, and their combined scores, in any of the sorted sets."]
+    #[doc = " Returns the union of multiple sorted sets."]
+    #[doc = ""]
+    #[doc = " The `WITHSCORES` form, the members and their combined scores."]
     #[doc = ""]
     #[doc = " See also `zunion`."]
     #[doc = ""]
@@ -5500,7 +5469,7 @@ impl Guest for Commands {
         exchange(connection, command).await
     }
 
-    #[doc = " Stores the members in any of the sorted sets, with their combined scores, returning how many."]
+    #[doc = " Stores the union of multiple sorted sets in a key."]
     #[doc = ""]
     #[doc = " ZUNIONSTORE destination numkeys key [ key ... ] [ WEIGHTS weight [ weight ... ] ] [ AGGREGATE SUM | MIN | MAX ]"]
     #[doc = " https://valkey.io/commands/zunionstore/"]
