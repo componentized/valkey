@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 
 PACKAGE="${PACKAGE:-componentized:$(basename $(git rev-parse --show-toplevel))}"
 # the library crate, the workspace's requirement on it moves to the new version
-LIBRARY="${LIBRARY:-componentized-constants}"
+LIBRARY="${LIBRARY:-componentized-valkey}"
 SEMVER='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
 
 new="${1:-}"
@@ -70,7 +70,7 @@ fi
 
 old_re="${old//./\\.}"
 # references to the package or one of its interfaces, an interface named for a keyword is escaped
-# with `%`, e.g. `componentized:constants/%u8@0.1.0`
+# with `%`, e.g. `componentized:valkey/commands@0.3.0-dev`
 ref_re="${PACKAGE}(/%?[a-z0-9-]+)?"
 # the fetched wit dependencies and the wkg.lock files are left to `make wit`, wkg replaces the
 # dependencies and updates the locks for the new version
