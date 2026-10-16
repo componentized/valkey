@@ -2,10 +2,10 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/rust
 {
 	"name": "componentized-valkey",
-    "dockerComposeFile": "docker-compose.yml",
-    "service": "devcontainer",
-    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
-
+	// the dev container runs alongside a Valkey server, see docker-compose.yml
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "devcontainer",
+	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 	// Use 'mounts' to make the cargo cache persistent in a Docker Volume.
 	"mounts": [
 		{
@@ -19,15 +19,12 @@
 			"type": "volume"
 		}
 	],
-
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	"features": {
 		"ghcr.io/devcontainers/features/github-cli:1": {}
 	},
-
 	// Use 'postCreateCommand' to run commands after the container is created.
 	"postCreateCommand": "./scripts/init-devcontainer.sh",
-
 	// Configure tool-specific properties.
 	"customizations": {
 		// Configure properties specific to VS Code.
@@ -47,7 +44,6 @@
 			]
 		}
 	}
-
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
 }
