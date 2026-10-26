@@ -28,7 +28,7 @@ futures-core = "0.3"
 componentized-valkey = { path = "./crates/componentized-valkey" }
 test-harness = { path = "./crates/test-harness" }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
-wasmtime = { version = "49", features = ["component-model-async"] }
+wasmtime = { version = "50", features = ["component-model-async"] }
 wasmtime-wasi = { version = "49", features = ["p3"] }
 wit-bindgen = "0.61.0"
 
