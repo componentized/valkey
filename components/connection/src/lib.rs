@@ -664,7 +664,7 @@ async fn supervise(mut tasks: mpsc::UnboundedReceiver<Task>, inner: Weak<Inner>)
                 generation,
                 interval,
             } => spawn_local(keep_alive(inner.clone(), generation, interval)),
-        }
+        };
     }
 }
 
