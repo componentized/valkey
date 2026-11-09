@@ -1,9 +1,11 @@
-version: '3.8'
+name: componentized-valkey
 services:
   devcontainer:
     image: mcr.microsoft.com/devcontainers/rust
     volumes:
-    - ../..:/workspaces:cached
+    - ..:/workspaces/valkey
+    - devcontainer-cargo-cache:/usr/local/cargo:volume
+    - devcontainer-rustup-cache:/usr/local/rustup:volume
     command: sleep infinity
     network_mode: service:valkey
     depends_on:
@@ -12,3 +14,11 @@ services:
   valkey:
     image: valkey/valkey:9
     restart: unless-stopped
+
+volumes:
+  devcontainer-cargo-cache:
+    external: true
+    name: devcontainer-cargo-cache
+  devcontainer-rustup-cache:
+    external: true
+    name: devcontainer-rustup-cache
