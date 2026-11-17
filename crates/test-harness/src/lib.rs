@@ -39,7 +39,7 @@ pub mod bindings {
 
             world harness {
                 import componentized:valkey/types@0.3.0-dev;
-                import wasi:config/store@0.2.0-rc.1;
+                import componentized:secrets/store@0.1.0;
                 export componentized:valkey/connection@0.3.0-dev;
                 export componentized:valkey/tcp@0.3.0-dev;
                 export componentized:valkey/connector@0.3.0-dev;
@@ -410,22 +410,50 @@ fn ensure_built(name: &str) -> Result<()> {
 pub struct Ctx {
     wasi: WasiCtx,
     table: ResourceTable,
-    /// The values of `wasi:config/store`.
-    config: Vec<(String, String)>,
+    /// The secrets of `componentized:secrets/store`.
+    secrets: Vec<(String, String)>,
+    /// The calls of `componentized:secrets/store.init`, its secrets are only available after one.
+    secrets_inits: usize,
 }
 
-impl bindings::wasi::config::store::Host for Ctx {
-    fn get(&mut self, key: String) -> Result<Option<String>, bindings::wasi::config::store::Error> {
-        Ok(self
-            .config
+impl Ctx {
+    /// The last value of the key, a later value overrides an earlier one.
+    fn value(&self, key: &str) -> Option<String> {
+        self.secrets
             .iter()
             .rev()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v.clone()))
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
     }
+}
 
-    fn get_all(&mut self) -> Result<Vec<(String, String)>, bindings::wasi::config::store::Error> {
-        Ok(self.config.clone())
+impl bindings::componentized::secrets::store::Host for Ctx {
+    fn get(
+        &mut self,
+        key: String,
+    ) -> Result<
+        bindings::componentized::secrets::store::Secret,
+        bindings::componentized::secrets::store::ErrorCode,
+    > {
+        use bindings::componentized::secrets::store::{ErrorCode, Secret};
+        if self.secrets_inits == 0 {
+            return Err(ErrorCode::NotInitialized);
+        }
+        self.value(&key)
+            .map(Secret::String)
+            .ok_or(ErrorCode::NotFound)
+    }
+}
+
+impl<T> bindings::componentized::secrets::store::HostWithStore<T> for HasSelf<Ctx> {
+    async fn init(
+        accessor: &Accessor<T, Self>,
+    ) -> Result<(), bindings::componentized::secrets::store::ErrorCode> {
+        // a store that is not ready at once, like one fetching its secrets, so a component that
+        // gets a secret without waiting for init sees it uninitialized
+        tokio::task::yield_now().await;
+        accessor.with(|mut access| access.get().secrets_inits += 1);
+        Ok(())
     }
 }
 
@@ -517,11 +545,12 @@ pub struct Harness {
 impl Harness {
     /// Build and instantiate the named component, e.g. `connection`.
     pub async fn new(name: &str) -> Result<Self> {
-        Self::with_config(name, &[]).await
+        Self::with_secrets(name, &[]).await
     }
 
-    /// Build and instantiate the named component, with the values of `wasi:config/store`.
-    pub async fn with_config(name: &str, config_values: &[(&str, &str)]) -> Result<Self> {
+    /// Build and instantiate the named component, with the secrets of
+    /// `componentized:secrets/store`, e.g. the `tcp-connector`'s.
+    pub async fn with_secrets(name: &str, secrets: &[(&str, &str)]) -> Result<Self> {
         ensure_built(name)?;
 
         let mut config = Config::new();
@@ -535,7 +564,10 @@ impl Harness {
 
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::p3::add_to_linker(&mut linker)?;
-        bindings::wasi::config::store::add_to_linker::<_, HasSelf<Ctx>>(&mut linker, |ctx| ctx)?;
+        bindings::componentized::secrets::store::add_to_linker::<_, HasSelf<Ctx>>(
+            &mut linker,
+            |ctx| ctx,
+        )?;
 
         let mut store = Store::new(
             &engine,
@@ -548,10 +580,11 @@ impl Harness {
                     .allow_ip_name_lookup(true)
                     .build(),
                 table: ResourceTable::new(),
-                config: config_values
+                secrets: secrets
                     .iter()
                     .map(|(key, value)| (key.to_string(), value.to_string()))
                     .collect(),
+                secrets_inits: 0,
             },
         );
         let instance_pre = linker.instantiate_pre(&component)?;
@@ -596,13 +629,25 @@ impl Harness {
     }
 
     /// Build and instantiate the named component, its connector configured for the Valkey server
-    /// of the `with_valkey` tests, see [`valkey_server`], with the values of `wasi:config`.
-    pub async fn with_valkey(name: &str, config_values: &[(&str, &str)]) -> Result<Self> {
+    /// of the `with_valkey` tests, see [`valkey_server`], with the secrets of
+    /// `componentized:secrets`.
+    pub async fn with_valkey(name: &str, secrets: &[(&str, &str)]) -> Result<Self> {
         let (host, port) = valkey_server();
         let port = port.to_string();
         let mut values = vec![("hostname", host.as_str()), ("port", port.as_str())];
-        values.extend_from_slice(config_values);
-        Self::with_config(name, &values).await
+        values.extend_from_slice(secrets);
+        Self::with_secrets(name, &values).await
+    }
+
+    /// Initialize `componentized:secrets/store`, for a component that gets secrets without
+    /// initializing the store, e.g. a latch, which relies on the connector to.
+    pub fn init_secrets(&mut self) {
+        self.store.data_mut().secrets_inits += 1;
+    }
+
+    /// The calls of `componentized:secrets/store.init`.
+    pub fn secrets_inits(&self) -> usize {
+        self.store.data().secrets_inits
     }
 
     /// Drop a resource the component exports, running its destructor.

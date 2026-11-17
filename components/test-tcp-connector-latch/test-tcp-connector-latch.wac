@@ -9,7 +9,7 @@ let logging = new local:dep-componentized-logging-to-stderr {
     ...
 };
 
-// the latch under test, reading the connector config from the host
+// the latch under test, reading the connector secrets from the host
 let latch = new local:tcp-connector-latch {
     "wasi:sockets/types@0.3.0": sockets["wasi:sockets/types@0.3.0"],
     "wasi:logging/logging@0.1.0-draft": logging["wasi:logging/logging@0.1.0-draft"],

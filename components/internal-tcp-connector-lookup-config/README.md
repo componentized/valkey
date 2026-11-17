@@ -1,8 +1,8 @@
 # internal-tcp-connector-lookup-config
 
-The config of a [`latch-ip-name-lookup-glob`](https://github.com/componentized/sockets/tree/main/components/latch-ip-name-lookup-glob), from the config of a [`tcp-connector`](../tcp-connector/): name lookups are denied, except for the server's `hostname`.
+The config of a [`latch-ip-name-lookup-glob`](https://github.com/componentized/sockets/tree/main/components/latch-ip-name-lookup-glob), from the secrets of a [`tcp-connector`](../tcp-connector/): name lookups are denied, except for the server's `hostname`.
 
-| Connector config | Latch config |
+| Connector secret | Latch config |
 | --- | --- |
 | `hostname=valkey.example.com` | `default=deny`, `defer=valkey.example.com` |
 | `hostname=127.0.0.1`, an IP address | `default=deny`, `defer=127.0.0.1` |

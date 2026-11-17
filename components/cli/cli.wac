@@ -13,7 +13,7 @@ import stdout: wasi:cli/stdout@0.3.0;
 import stderr: wasi:cli/stderr@0.3.0;
 import valkey-types: componentized:valkey/types@0.3.0-dev;
 
-// The gate, the latch and the logger see the host, wasi:sockets included, the interfaces they
+// The gate, the latch, the logger and the secrets see the host, wasi:sockets included, the interfaces they
 // share with the components behind the gate are wired to the same imports.
 
 // wasmtime does not provide wasi:logging, so the composition does, for the latch and the gate
@@ -23,9 +23,15 @@ let logging = new local:dep-componentized-logging-to-stderr {
     ...
 };
 
-// the latch, limiting sockets to the server in the tcp-connector's config
-let latch = new local:tcp-connector-latch {
+// wasmtime does not provide componentized:secrets, so the composition does, from wasi:config, for the
+// latch and the connector
+let secrets = new local:dep-componentized-secrets-from-config {
     "wasi:config/store@0.2.0-rc.1": config,
+};
+
+// the latch, limiting sockets to the server in the tcp-connector's secrets
+let latch = new local:tcp-connector-latch {
+    "componentized:secrets/store@0.1.0": secrets["componentized:secrets/store@0.1.0"],
     "wasi:logging/logging@0.1.0-draft": logging["wasi:logging/logging@0.1.0-draft"],
     ...
 };
@@ -52,10 +58,10 @@ let tcp = new local:tcp {
     "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
 };
-// the keys of the tcp-connector's config, and their defaults
+// the keys of the tcp-connector's secrets, and their defaults
 let tcp-connector-constants = new local:tcp-connector-constants {};
 let connector = new local:tcp-connector {
-    "wasi:config/store@0.2.0-rc.1": config,
+    "componentized:secrets/store@0.1.0": secrets["componentized:secrets/store@0.1.0"],
     "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
     "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,

@@ -1,19 +1,21 @@
-//! A connector for connections over TCP, to the server configured with wasi:config.
+//! A connector for connections over TCP, to the server configured with componentized:secrets.
 
 // the test harness provides a main
 #![cfg_attr(not(test), no_main)]
 
 use componentized::valkey::connection::{ConnectOpts, Connection, DurationMilliseconds, ErrorCode};
 use componentized::valkey::tcp;
-// the keys of the config and their defaults
+// the keys of the secrets and their defaults
+use componentized::secrets::store as secrets;
 use componentized::valkey::tcp_connector_constants as keys;
 use exports::componentized::valkey::connector::Guest;
-use wasi::config::store as config;
 
 struct Component;
 
 impl Guest for Component {
     async fn connect() -> Result<Connection, ErrorCode> {
+        secrets::init().await.map_err(secrets_error)?;
+
         let hostname = get(&keys::hostname_key())?.unwrap_or_else(keys::hostname_default);
         let port = match get(&keys::port_key())? {
             Some(port) => port.parse().map_err(|_| {
@@ -52,13 +54,29 @@ impl Guest for Component {
     }
 }
 
+/// The value of the secret, none when it is not found.
 fn get(key: &str) -> Result<Option<String>, ErrorCode> {
-    config::get(key).map_err(|error| match error {
-        config::Error::Upstream(message) => {
-            ErrorCode::Client(format!("config upstream: {message}"))
+    match secrets::get(key) {
+        Ok(secrets::Secret::String(secret)) => Ok(Some(secret)),
+        Ok(secrets::Secret::Bytes(_)) => {
+            Err(ErrorCode::Client(format!("secrets: value for {key} must be a string ")))
         }
-        config::Error::Io(message) => ErrorCode::Client(format!("config io: {message}")),
-    })
+        Err(secrets::ErrorCode::NotFound) => Ok(None),
+        Err(error) => Err(secrets_error(error)),
+    }
+}
+
+fn secrets_error(error: secrets::ErrorCode) -> ErrorCode {
+    match error {
+        secrets::ErrorCode::NotFound => ErrorCode::Client("secrets: not found".to_string()),
+        secrets::ErrorCode::NotInitialized => {
+            ErrorCode::Client("secrets: not initialized".to_string())
+        }
+        secrets::ErrorCode::Other(None) => ErrorCode::Client("secrets: other".to_string()),
+        secrets::ErrorCode::Other(Some(message)) => {
+            ErrorCode::Client(format!("secrets: {message}"))
+        }
+    }
 }
 
 wit_bindgen::generate!({

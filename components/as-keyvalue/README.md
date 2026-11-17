@@ -5,11 +5,13 @@ Adapter to back `wasmcloud:keyvalue` with the `componentized:valkey` client.
 > [!NOTE]
 > `wasi:keyvalue` is currently unsupportable with an async based client. It will be restored when either it updates it's own API to be async, or the component model is fully able to make async calls from sync functions.
 
-Each bucket is a Valkey hash, its keys are the hash's fields. The hash is named for the bucket's identifier, after an optional prefix:
+Each bucket is a Valkey hash, its keys are the hash's fields. The hash is named for the bucket's identifier, after an optional prefix, read with `componentized:secrets`:
 
 | Key | Default | |
 | --- | --- | --- |
 | `key-prefix` | | prefix of the hash for each bucket, e.g. `app:` stores the bucket `users` in the hash `app:users` |
+
+The key and its default are constants, from [`as-keyvalue-constants`](../as-keyvalue-constants/).
 
 Opening a bucket establishes a new connection with the imported `connector`, which decides the transport and the server, e.g. [`tcp-connector`](../tcp-connector/) with its own configuration. A connector that fails to connect makes the store unavailable. [`client`](../client/) composes it with `tcp-connector`.
 

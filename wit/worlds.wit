@@ -1,6 +1,7 @@
 package componentized:valkey@0.3.0-dev;
 
 world imports {
+    import as-keyvalue-constants;
     import commands;
     import connection;
     import connector;

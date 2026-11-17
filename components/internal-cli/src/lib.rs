@@ -29,7 +29,7 @@ Without a command, each line of stdin is sent as a command, until stdin closes. 
 whitespace, quote a word to include whitespace, e.g. \"hello world\", in double quotes escapes like
 \\n and \\x41 are expanded.
 
-The server is configured with wasi:config, see the tcp-connector component.";
+The server is configured with wasi:config, as the tcp-connector's secrets, see the tcp-connector component.";
 
 /// Commands without a reply, the server confirms each channel with a push message.
 const SUBSCRIBE: [&str; 3] = ["SUBSCRIBE", "PSUBSCRIBE", "SSUBSCRIBE"];

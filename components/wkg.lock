@@ -3,6 +3,15 @@
 version = 1
 
 [[packages]]
+name = "componentized:secrets"
+registry = "componentized.dev"
+
+[[packages.versions]]
+requirement = "=0.1.0"
+version = "0.1.0"
+digest = "sha256:cc4b273de8c9ad35c4400536d2a233d0829c0f706a79036cf00889886dbb1285"
+
+[[packages]]
 name = "wasi:cli"
 registry = "wasi.dev"
 

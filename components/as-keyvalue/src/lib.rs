@@ -1,3 +1,6 @@
+use componentized::secrets::store as secrets;
+// the keys of the secrets and their defaults
+use componentized::valkey::as_keyvalue_constants as keys;
 use componentized::valkey::commands::{self, Cursor, DurationMilliseconds, StringOrBytes};
 use componentized::valkey::connection::{Connection, ErrorCode as ValkeyError};
 use componentized::valkey::connector;
@@ -7,10 +10,6 @@ use exports::wasmcloud::keyvalue::store::Guest as StoreGuest;
 use exports::wasmcloud::keyvalue::types::{
     Bucket, BucketBorrow, Error, Guest as TypesGuest, GuestBucket, KeyResponse, SetOptions,
 };
-use wasi::config::store::{self as config};
-
-const KEY_PREFIX_KEY: &str = "key-prefix";
-const KEY_PREFIX_DEFAULT: &str = "";
 
 #[derive(Debug, Clone)]
 struct AsKeyvalue;
@@ -26,7 +25,8 @@ impl StoreGuest for AsKeyvalue {
             .await
             .map_err(|_| Error::StoreUnavailable)?;
 
-        let key_prefix = config::get(KEY_PREFIX_KEY)?.unwrap_or(KEY_PREFIX_DEFAULT.to_string());
+        secrets::init().await?;
+        let key_prefix = get(&keys::key_prefix_key())?.unwrap_or_else(keys::key_prefix_default);
         let hash_key = format!("{key_prefix}{identifier}");
 
         Ok(Bucket::new(KeyvalueToValkeyBucket {
@@ -192,11 +192,28 @@ fn escape_glob(value: &str) -> String {
     escaped
 }
 
-impl From<config::Error> for Error {
-    fn from(e: config::Error) -> Self {
+/// The value of the secret, none when it is not found.
+fn get(key: &str) -> Result<Option<String>, Error> {
+    match secrets::get(key) {
+        Ok(secrets::Secret::String(secret)) => Ok(Some(secret)),
+        // a value that is not known to be text is not decoded as one
+        Ok(secrets::Secret::Bytes(_)) => {
+            Err(Error::Other(format!("secrets: value for {key} must be a string ")))
+        }
+        Err(secrets::ErrorCode::NotFound) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+impl From<secrets::ErrorCode> for Error {
+    fn from(e: secrets::ErrorCode) -> Self {
         match e {
-            config::Error::Upstream(msg) => Self::Other(format!("Config store Upstream: {msg}")),
-            config::Error::Io(msg) => Self::Other(format!("Config store IO: {msg}")),
+            secrets::ErrorCode::NotFound => Self::Other("secrets: not found".to_string()),
+            secrets::ErrorCode::NotInitialized => {
+                Self::Other("secrets: not initialized".to_string())
+            }
+            secrets::ErrorCode::Other(None) => Self::Other("secrets: other".to_string()),
+            secrets::ErrorCode::Other(Some(msg)) => Self::Other(format!("secrets: {msg}")),
         }
     }
 }

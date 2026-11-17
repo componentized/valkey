@@ -23,11 +23,12 @@ The `componentized:valkey` WIT package, in [`wit`](./wit), separates the connect
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`connection`](./components/connection/)                           | the mechanics of a connection: pairs commands with replies, keeps push messages apart, establishes it with `HELLO 3`, optionally keeps it alive                                          |
 | [`tcp`](./components/tcp/)                                         | connections over wasi:sockets TCP                                                                                                                                                        |
-| [`tcp-connector`](./components/tcp-connector/)                     | connections over TCP to the server configured with wasi:config, for components that need a connection without a say in how it is made                                                    |
+| [`tcp-connector`](./components/tcp-connector/)                     | connections over TCP to the server configured with componentized:secrets, for components that need a connection without a say in how it is made                                              |
 | [`tcp-connector-constants`](./components/tcp-connector-constants/) | the keys of the `tcp-connector` config and their defaults, for components that derive their config from it                                                                               |
 | [`tcp-connector-latch`](./components/tcp-connector-latch/)         | a componentized:sockets latch, for a gate, limiting sockets to the server in the `tcp-connector` config                                                                                  |
 | [`commands`](./components/commands/)                               | the commands, an interface for each of Valkey's ACL categories, e.g. `hash-commands`, each also available as a component of its own, e.g. [`hash-commands`](./components/hash-commands/) |
 | [`as-keyvalue`](./components/as-keyvalue/)                         | wasmcloud:keyvalue, backed by Valkey hashes                                                                                                                                              |
+| [`as-keyvalue-constants`](./components/as-keyvalue-constants/)     | the keys of the `as-keyvalue` secrets and their defaults                                                                                                                                  |
 | [`client`](./components/client/)                                   | everything above, composed into one component                                                                                                                                            |
 | [`cli`](./components/cli/)                                         | a command line client, behind a gate limiting it to the server it is configured for                                                                                                      |
 
@@ -96,7 +97,7 @@ wasmtime run -Sinherit-network -Sallow-ip-name-lookup -Sconfig -Wcomponent-model
 
 The arguments are sent as a command and the reply is printed. A command without a reply, like `SUBSCRIBE`, prints the push messages that arrive until interrupted or the connection closes.
 
-- the server is configured with wasi:config variables, e.g. `-Sconfig-var=hostname=valkey.example.com -Sconfig-var=port=6380`, see [`tcp-connector`](./components/tcp-connector/) for the keys and their defaults
+- the server is configured with wasi:config variables, e.g. `-Sconfig-var=hostname=valkey.example.com -Sconfig-var=port=6380`, which the cli provides to the connector as componentized:secrets, see [`tcp-connector`](./components/tcp-connector/) for the keys and their defaults
 - `-Sallow-ip-name-lookup` is required, the `tcp` component looks up the `hostname`, an IP address too, which wasi:sockets returns as is
 
 To aid incremental development a make target is available to rebuild and run the CLI:

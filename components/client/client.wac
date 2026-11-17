@@ -11,17 +11,18 @@ let commands = new local:commands {
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     ...
 };
-// the keys of the tcp-connector's config, and their defaults
-let tcp-connector-constants = new local:tcp-connector-constants {
-    ...
-};
+// the keys of the tcp-connector's secrets, and their defaults
+let tcp-connector-constants = new local:tcp-connector-constants {};
 let connector = new local:tcp-connector {
     "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     "componentized:valkey/tcp@0.3.0-dev": tcp.tcp,
     ...
 };
+// the keys of the as-keyvalue's secrets, and their defaults
+let as-keyvalue-constants = new local:as-keyvalue-constants {};
 let keyvalue = new local:as-keyvalue {
+    "componentized:valkey/as-keyvalue-constants@0.3.0-dev": as-keyvalue-constants["componentized:valkey/as-keyvalue-constants@0.3.0-dev"],
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     "componentized:valkey/connector@0.3.0-dev": connector.connector,
     "componentized:valkey/commands@0.3.0-dev": commands.commands,

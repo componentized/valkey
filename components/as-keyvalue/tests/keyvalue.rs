@@ -14,7 +14,7 @@ const KEY_PREFIX: &str = "as-keyvalue-test:";
 async fn unreachable_servers_are_unavailable() -> wasmtime::Result<()> {
     // a port nothing listens on
     let port = test_harness::Server::bind().await?.port().to_string();
-    let mut harness = Harness::with_config("client", &[("port", &port)]).await?;
+    let mut harness = Harness::with_secrets("client", &[("port", &port)]).await?;
     harness
         .run(async |accessor, exports| {
             let bucket = exports
@@ -66,8 +66,8 @@ async fn served<T>(
 async fn buckets_are_hashes() -> wasmtime::Result<()> {
     let server = Server::bind().await?;
     let port = server.port().to_string();
-    let config = [("port", port.as_str()), ("key-prefix", "app:")];
-    let mut harness = Harness::with_config("client", &config).await?;
+    let secrets = [("port", port.as_str()), ("key-prefix", "app:")];
+    let mut harness = Harness::with_secrets("client", &secrets).await?;
     harness
         .run(async |accessor, exports| {
             let s = |value: &str| value.to_string();
