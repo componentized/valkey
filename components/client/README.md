@@ -5,4 +5,4 @@ Client for interacting with a Valkey server, as `componentized:valkey` and `wasm
 > [!NOTE]
 > `wasi:keyvalue` is currently unsupportable with an async based client. It will be restored when either it updates it's own API to be async, or the component model is fully able to make async calls from sync functions.
 
-Composes [`resp`](../resp/), [`connection`](../connection/), [`tcp`](../tcp/), [`tcp-connector`](../tcp-connector/), [`commands`](../commands/) and [`as-keyvalue`](../as-keyvalue/), exporting each of their interfaces.
+Composes [`resp`](../resp/), [`connection`](../connection/), [`tcp`](../tcp/), [`tcp-connector`](../tcp-connector/), [`commands`](../commands/) and [`as-keyvalue`](../as-keyvalue/), exporting each of their interfaces. The connector and `as-keyvalue` read their settings with `componentized:secrets`, which the client imports.

@@ -1,31 +1,67 @@
-package componentized:valkey;
+package componentized:valkey-client;
+
+// The host interfaces the components may use. Every import is wired explicitly, without `...`, so
+// the secret store only reaches the components given it: the tcp-connector, and the gate in front of
+// the as-keyvalue. An import of anything else fails to compose instead of reaching the host.
+import clocks-types: wasi:clocks/types@0.3.0;
+import monotonic-clock: wasi:clocks/monotonic-clock@0.3.0;
+import sockets-types: wasi:sockets/types@0.3.0;
+import ip-name-lookup: wasi:sockets/ip-name-lookup@0.3.0;
+import logging: wasi:logging/logging@0.1.0-draft;
+import valkey-types: componentized:valkey/types@0.3.0-dev;
+import secrets-types: componentized:secrets/types@0.1.1-dev;
+import secrets: componentized:secrets/store@0.1.1-dev;
 
 let connection = new local:connection {
-    ...
+    "wasi:clocks/types@0.3.0": clocks-types,
+    "wasi:clocks/monotonic-clock@0.3.0": monotonic-clock,
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
 };
 let tcp = new local:tcp {
+    "wasi:sockets/types@0.3.0": sockets-types,
+    "wasi:sockets/ip-name-lookup@0.3.0": ip-name-lookup,
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
-    ...
 };
 let commands = new local:commands {
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
-    ...
 };
-// the keys of the tcp-connector's config, and their defaults
-let tcp-connector-constants = new local:tcp-connector-constants {
-    ...
-};
+
+// the keys of the tcp-connector's secrets, and their defaults
+let tcp-connector-constants = new local:tcp-connector-constants {};
+// the connector reads the server's secrets from the host's store
 let connector = new local:tcp-connector {
+    "componentized:secrets/types@0.1.1-dev": secrets-types,
+    "componentized:secrets/store@0.1.1-dev": secrets,
     "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     "componentized:valkey/tcp@0.3.0-dev": tcp.tcp,
-    ...
+};
+
+// the keys of the as-keyvalue's secrets, and their defaults
+let as-keyvalue-constants = new local:as-keyvalue-constants {};
+// the as-keyvalue reads its secrets through a gate, which only lets it get `key-prefix`
+let as-keyvalue-latch-key-config = new local:as-keyvalue-latch-key-config {};
+let as-keyvalue-latch = new local:dep-componentized-secrets-latch-key {
+    "componentized:secrets/types@0.1.1-dev": secrets-types,
+    "wasi:config/store@0.2.0-rc.1": as-keyvalue-latch-key-config["wasi:config/store@0.2.0-rc.1"],
+    "wasi:logging/logging@0.1.0-draft": logging,
+};
+let as-keyvalue-gate = new local:dep-componentized-secrets-gate {
+    "componentized:secrets/store@0.1.1-dev": secrets,
+    "componentized:secrets/latch@0.1.1-dev": as-keyvalue-latch["componentized:secrets/latch@0.1.1-dev"],
+    "wasi:logging/logging@0.1.0-draft": logging,
 };
 let keyvalue = new local:as-keyvalue {
+    "componentized:secrets/types@0.1.1-dev": secrets-types,
+    "componentized:secrets/store@0.1.1-dev": as-keyvalue-gate["componentized:secrets/store@0.1.1-dev"],
+    "componentized:valkey/as-keyvalue-constants@0.3.0-dev": as-keyvalue-constants["componentized:valkey/as-keyvalue-constants@0.3.0-dev"],
+    "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     "componentized:valkey/connector@0.3.0-dev": connector.connector,
     "componentized:valkey/commands@0.3.0-dev": commands.commands,
-    ...
 };
 
 export connection.connection;

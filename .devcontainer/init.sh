@@ -10,5 +10,6 @@ echo "PATH=\"\$(make -s tools-path):\${PATH}\"" >> ~/.zshrc
 echo "PATH=\"\$(make -s tools-path):\${PATH}\"" >> ~/.bashrc
 
 make tools wit
+sudo apt install valkey-tools
 
 cargo check

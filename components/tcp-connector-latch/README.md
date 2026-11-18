@@ -1,8 +1,8 @@
 # tcp-connector-latch
 
-A `componentized:sockets` latch limiting network access to the Valkey server in the `tcp-connector` config, denying every other socket.
+A `componentized:sockets` latch limiting network access to the Valkey server in the `tcp-connector` secrets, denying every other socket.
 
-A [componentized:sockets](https://github.com/componentized/sockets) [`gate`](../dep-componentized-sockets-gate/) asks the latch before each socket operation, and denies the operation if the latch does. The connector's config is read with wasi:config, see [`tcp-connector`](../tcp-connector/).
+A [componentized:sockets](https://github.com/componentized/sockets) [`gate`](../dep-componentized-sockets-gate/) asks the latch before each socket operation, and denies the operation if the latch does. The connector's secrets are read with componentized:secrets, see [`tcp-connector`](../tcp-connector/).
 
 Put the components that connect with the `tcp-connector` behind a gate with this latch, e.g. the [`tcp`](../tcp/) component. They can connect to the configured `hostname`, on the configured `port`, over TCP, and nothing else.
 
@@ -16,12 +16,15 @@ The latch is a [`latch-n5`](../dep-componentized-sockets-latch-n5/), which denie
 | [`latch-ip-name-lookup-glob`](../dep-componentized-sockets-latch-ip-name-lookup-glob/)                               | name lookups, except for the server's runtime configured `hostname`                                                |
 | [`latch-cidr-egress`](../dep-componentized-sockets-latch-cidr-egress/)                                               | connections, except to the server's runtime configured `port`                                                      |
 
-The lookup and egress latches are configured from the connector's own config, with the connector's keys and defaults from [`tcp-connector-constants`](../tcp-connector-constants/):
+The lookup and egress latches are configured from the connector's own secrets, with the connector's keys and defaults from [`tcp-connector-constants`](../tcp-connector-constants/):
 
 - [`internal-tcp-connector-lookup-config`](../internal-tcp-connector-lookup-config/): `hostname=valkey.example.com` becomes `default=deny` and `defer=valkey.example.com`
 - [`internal-tcp-connector-egress-config`](../internal-tcp-connector-egress-config/): `port=6380` becomes `default=deny` and `defer=:6380`, any address on that port
 
 The server is configured in one place, and the latch follows it.
+
+> [!NOTE]
+> The latches read their config with `wasi:config`, which is sync, while `componentized:secrets@0.1.0` init() is async. The async init() method must be called from an async caller before getting secret values.
 
 A `hostname` that is an IP address, like the connector's default of `127.0.0.1`, is allowed too, to that address only. The `tcp` component looks up an IP address as well, wasi:sockets returns it as is, so the lookup of `127.0.0.1` is allowed and vouches for the address `127.0.0.1`. Another address, or a name that resolves to the same address, is still denied.
 
@@ -31,7 +34,7 @@ The [`cli`](../cli/) is behind a gate with this latch, see also its test, [`test
 
 Imports:
 
-- `wasi:config/store@0.2.0-rc.1`: the connector's config, `hostname` and `port`
+- `componentized:secrets/store@0.1.1-dev`: the connector's secrets, `hostname` and `port`
 - `wasi:logging/logging@0.1.0-draft`: logs an invalid config
 - `wasi:sockets/types@0.3.0`: the socket types of the operations being authorized
 

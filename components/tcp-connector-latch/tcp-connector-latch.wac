@@ -1,7 +1,7 @@
 package componentized:valkey;
 
-// the latch, denying an operation when any of these latches does, wasi:logging and wasi:config
-// are imported
+// the latch, denying an operation when any of these latches does, wasi:logging and
+// componentized:secrets are imported
 
 // the keys of the tcp-connector's config, and their defaults
 let tcp-connector-constants = new local:tcp-connector-constants {

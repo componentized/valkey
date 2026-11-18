@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 componentized-valkey = { workspace = true }
-wit-bindgen = { workspace = true }
+wit-bindgen = { workspace = true, features = ["inter-task-wakeup"] }
 
 [dev-dependencies]
 test-harness = { workspace = true }

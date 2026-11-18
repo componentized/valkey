@@ -1,9 +1,9 @@
-//! The config of a `latch-ip-name-lookup-glob`, from the config of a `tcp-connector`: name lookups
+//! The config of a `latch-ip-name-lookup-glob`, from the secrets of a `tcp-connector`: name lookups
 //! are denied, except for the server's hostname.
 
+use componentized::secrets::store as secrets;
 use componentized::valkey::tcp_connector_constants as keys;
 use exports::wasi::config::store::{Error, Guest};
-use wasi::config::store;
 
 struct Component;
 
@@ -20,13 +20,29 @@ impl Guest for Component {
 }
 
 fn config() -> Result<Vec<(String, String)>, Error> {
-    let hostname = store::get(&keys::hostname_key()).map_err(|error| match error {
-        store::Error::Upstream(message) => Error::Upstream(message),
-        store::Error::Io(message) => Error::Io(message),
-    })?;
+    let hostname = secret(&keys::hostname_key())?;
     Ok(lookup_glob_config(
         hostname.unwrap_or_else(keys::hostname_default),
     ))
+}
+
+/// The value of the connector's secret, none when it is not found.
+///
+/// The store is initialized by the `tcp-connector` before it opens a socket, before the latch
+/// asks for this config, an uninitialized store is an error, the latch denies.
+fn secret(key: &str) -> Result<Option<String>, Error> {
+    match secrets::get(key) {
+        Ok(secrets::Secret::String(secret)) => Ok(Some(secret)),
+        Ok(secrets::Secret::Bytes(_)) => {
+            Err(Error::Upstream(format!("secrets: value for {key} must be a string ")))
+        }
+        Err(secrets::ErrorCode::NotFound) => Ok(None),
+        Err(secrets::ErrorCode::NotInitialized) => {
+            Err(Error::Upstream("secrets: not initialized".to_string()))
+        }
+        Err(secrets::ErrorCode::Other(None)) => Err(Error::Upstream("secrets: other".to_string())),
+        Err(secrets::ErrorCode::Other(Some(message))) => Err(Error::Upstream(message)),
+    }
 }
 
 /// Deny every name, but the hostname, an IP address too, which the `tcp` component looks up as

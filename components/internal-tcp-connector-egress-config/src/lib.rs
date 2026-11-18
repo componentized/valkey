@@ -1,9 +1,9 @@
-//! The config of a `latch-cidr-egress`, from the config of a `tcp-connector`: outbound traffic is
+//! The config of a `latch-cidr-egress`, from the secrets of a `tcp-connector`: outbound traffic is
 //! denied, except to the server's port.
 
+use componentized::secrets::store as secrets;
 use componentized::valkey::tcp_connector_constants as keys;
 use exports::wasi::config::store::{Error, Guest};
-use wasi::config::store;
 
 struct Component;
 
@@ -20,15 +20,31 @@ impl Guest for Component {
 }
 
 fn config() -> Result<Vec<(String, String)>, Error> {
-    let port = store::get(&keys::port_key()).map_err(|error| match error {
-        store::Error::Upstream(message) => Error::Upstream(message),
-        store::Error::Io(message) => Error::Io(message),
-    })?;
+    let port = secret(&keys::port_key())?;
     let port = match port {
         Some(port) => port.parse::<u16>().ok(),
         None => Some(keys::port_default()),
     };
     Ok(cidr_egress_config(port))
+}
+
+/// The value of the connector's secret, none when it is not found.
+///
+/// The store is initialized by the `tcp-connector` before it opens a socket, before the latch
+/// asks for this config, an uninitialized store is an error, the latch denies.
+fn secret(key: &str) -> Result<Option<String>, Error> {
+    match secrets::get(key) {
+        Ok(secrets::Secret::String(secret)) => Ok(Some(secret)),
+        Ok(secrets::Secret::Bytes(_)) => {
+            Err(Error::Upstream(format!("secrets: value for {key} must be a string ")))
+        }
+        Err(secrets::ErrorCode::NotFound) => Ok(None),
+        Err(secrets::ErrorCode::NotInitialized) => {
+            Err(Error::Upstream("secrets: not initialized".to_string()))
+        }
+        Err(secrets::ErrorCode::Other(None)) => Err(Error::Upstream("secrets: other".to_string())),
+        Err(secrets::ErrorCode::Other(Some(message))) => Err(Error::Upstream(message)),
+    }
 }
 
 /// Deny every port, but the server's, on any address. Without a port, one that is not a port

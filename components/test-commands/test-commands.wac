@@ -11,7 +11,7 @@ let tcp = new local:tcp {
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
     ...
 };
-// the keys of the tcp-connector's config, and their defaults
+// the keys of the tcp-connector's secrets, and their defaults
 let tcp-connector-constants = new local:tcp-connector-constants {
     ...
 };
