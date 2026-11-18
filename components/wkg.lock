@@ -11,6 +11,11 @@ requirement = "=0.1.0"
 version = "0.1.0"
 digest = "sha256:cc4b273de8c9ad35c4400536d2a233d0829c0f706a79036cf00889886dbb1285"
 
+[[packages.versions]]
+requirement = "=0.1.1-dev"
+version = "0.1.1-dev"
+digest = "sha256:4fecb198d95e575d7ed81a3d4832c78b3c9756d9f25727726dba007675ec297d"
+
 [[packages]]
 name = "wasi:cli"
 registry = "wasi.dev"
@@ -46,6 +51,15 @@ registry = "wasi.dev"
 requirement = "=0.3.0"
 version = "0.3.0"
 digest = "sha256:92cd8f3730c00226dc15626a2e7b21834dd187fc221f09818720d228585bbbf7"
+
+[[packages]]
+name = "wasi:logging"
+registry = "wasi.dev"
+
+[[packages.versions]]
+requirement = "=0.1.0-draft"
+version = "0.1.0-draft"
+digest = "sha256:09621a45b12b0a9cddc798517f778aac0e5ae4bd234077b3d70758d6cf625580"
 
 [[packages]]
 name = "wasi:sockets"

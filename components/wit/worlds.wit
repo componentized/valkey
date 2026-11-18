@@ -21,7 +21,7 @@ world tcp {
 
 /// A connector for connections over TCP, to the server configured with componentized:secrets.
 world tcp-connector {
-    import componentized:secrets/store@0.1.0;
+    import componentized:secrets/store@0.1.1-dev;
     import componentized:valkey/tcp-connector-constants@0.3.0-dev;
     import componentized:valkey/tcp@0.3.0-dev;
     export componentized:valkey/connector@0.3.0-dev;
@@ -29,13 +29,13 @@ world tcp-connector {
 
 /// The config of a latch, derived from the `tcp-connector`'s secrets.
 world tcp-connector-config {
-    import componentized:secrets/store@0.1.0;
+    import componentized:secrets/store@0.1.1-dev;
     import componentized:valkey/tcp-connector-constants@0.3.0-dev;
     export wasi:config/store@0.2.0-rc.1;
 }
 
 world as-keyvalue {
-    import componentized:secrets/store@0.1.0;
+    import componentized:secrets/store@0.1.1-dev;
     import componentized:valkey/as-keyvalue-constants@0.3.0-dev;
     import componentized:valkey/connector@0.3.0-dev;
     import componentized:valkey/commands@0.3.0-dev;
@@ -55,7 +55,7 @@ world sample-http-incrementor {
 world cli {
     include wasi:cli/imports@0.3.0;
     import componentized:valkey/connector@0.3.0-dev;
-    import componentized:secrets/store@0.1.0;
+    import componentized:secrets/store@0.1.1-dev;
     export wasi:cli/run@0.3.0;
 }
 
@@ -81,6 +81,22 @@ world test-tcp-connector-latch-suite {
     import wasi:sockets/types@0.3.0;
     import wasi:sockets/ip-name-lookup@0.3.0;
     export test-suite;
+}
+
+/// The host of the test harness, `crates/test-harness`, the interfaces it provides to the
+/// components under test, and those it calls.
+world test-harness {
+    import componentized:valkey/types@0.3.0-dev;
+    import componentized:secrets/store@0.1.1-dev;
+    import wasi:logging/logging@0.1.0-draft;
+    export componentized:valkey/connection@0.3.0-dev;
+    export componentized:valkey/tcp@0.3.0-dev;
+    export componentized:valkey/connector@0.3.0-dev;
+    export test-suite;
+    export wasmcloud:keyvalue/types@0.2.0;
+    export wasmcloud:keyvalue/store@0.2.0;
+    export wasmcloud:keyvalue/atomics@0.2.0;
+    export wasmcloud:keyvalue/batch@0.2.0;
 }
 
 /// A suite of tests run inside a component, by the test harness, `crates/test-harness`.

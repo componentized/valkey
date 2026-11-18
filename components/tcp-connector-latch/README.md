@@ -34,7 +34,7 @@ The [`cli`](../cli/) is behind a gate with this latch, see also its test, [`test
 
 Imports:
 
-- `componentized:secrets/store@0.1.0`: the connector's secrets, `hostname` and `port`
+- `componentized:secrets/store@0.1.1-dev`: the connector's secrets, `hostname` and `port`
 - `wasi:logging/logging@0.1.0-draft`: logs an invalid config
 - `wasi:sockets/types@0.3.0`: the socket types of the operations being authorized
 

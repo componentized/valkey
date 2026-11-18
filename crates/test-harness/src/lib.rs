@@ -34,23 +34,9 @@ pub use server::{Client, Server};
 pub mod bindings {
     wasmtime::component::bindgen!({
         path: "../../components/wit",
-        inline: "
-            package componentized:test-harness;
-
-            world harness {
-                import componentized:valkey/types@0.3.0-dev;
-                import componentized:secrets/store@0.1.0;
-                export componentized:valkey/connection@0.3.0-dev;
-                export componentized:valkey/tcp@0.3.0-dev;
-                export componentized:valkey/connector@0.3.0-dev;
-                export componentized:valkey-components/test-suite;
-                export wasmcloud:keyvalue/types@0.2.0;
-                export wasmcloud:keyvalue/store@0.2.0;
-                export wasmcloud:keyvalue/atomics@0.2.0;
-                export wasmcloud:keyvalue/batch@0.2.0;
-            }
-        ",
-        world: "componentized:test-harness/harness",
+        // the harness's world, `test-harness`, is in the components' WIT, which fetches its
+        // dependencies
+        world: "componentized:valkey-components/test-harness",
         exports: { default: async | store },
         additional_derives: [PartialEq],
     });
@@ -414,6 +400,29 @@ pub struct Ctx {
     secrets: Vec<(String, String)>,
     /// The calls of `componentized:secrets/store.init`, its secrets are only available after one.
     secrets_inits: usize,
+    /// The messages logged with `wasi:logging`, also written to stderr.
+    logs: Vec<Log>,
+}
+
+pub use bindings::wasi::logging::logging::Level;
+
+/// A message logged with `wasi:logging`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Log {
+    pub level: Level,
+    pub context: String,
+    pub message: String,
+}
+
+impl bindings::wasi::logging::logging::Host for Ctx {
+    fn log(&mut self, level: Level, context: String, message: String) {
+        eprintln!("{level:?} {context}: {message}");
+        self.logs.push(Log {
+            level,
+            context,
+            message,
+        });
+    }
 }
 
 impl Ctx {
@@ -564,6 +573,7 @@ impl Harness {
 
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::p3::add_to_linker(&mut linker)?;
+        bindings::wasi::logging::logging::add_to_linker::<_, HasSelf<Ctx>>(&mut linker, |ctx| ctx)?;
         bindings::componentized::secrets::store::add_to_linker::<_, HasSelf<Ctx>>(
             &mut linker,
             |ctx| ctx,
@@ -585,6 +595,7 @@ impl Harness {
                     .map(|(key, value)| (key.to_string(), value.to_string()))
                     .collect(),
                 secrets_inits: 0,
+                logs: Vec::new(),
             },
         );
         let instance_pre = linker.instantiate_pre(&component)?;
@@ -643,6 +654,11 @@ impl Harness {
     /// initializing the store, e.g. a latch, which relies on the connector to.
     pub fn init_secrets(&mut self) {
         self.store.data_mut().secrets_inits += 1;
+    }
+
+    /// The messages the component logged with `wasi:logging`, in order.
+    pub fn logs(&self) -> &[Log] {
+        &self.store.data().logs
     }
 
     /// The calls of `componentized:secrets/store.init`.

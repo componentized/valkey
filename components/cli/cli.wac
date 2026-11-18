@@ -31,7 +31,7 @@ let secrets = new local:dep-componentized-secrets-from-config {
 
 // the latch, limiting sockets to the server in the tcp-connector's secrets
 let latch = new local:tcp-connector-latch {
-    "componentized:secrets/store@0.1.0": secrets["componentized:secrets/store@0.1.0"],
+    "componentized:secrets/store@0.1.1-dev": secrets["componentized:secrets/store@0.1.1-dev"],
     "wasi:logging/logging@0.1.0-draft": logging["wasi:logging/logging@0.1.0-draft"],
     ...
 };
@@ -61,7 +61,8 @@ let tcp = new local:tcp {
 // the keys of the tcp-connector's secrets, and their defaults
 let tcp-connector-constants = new local:tcp-connector-constants {};
 let connector = new local:tcp-connector {
-    "componentized:secrets/store@0.1.0": secrets["componentized:secrets/store@0.1.0"],
+    "componentized:secrets/types@0.1.1-dev": secrets["componentized:secrets/types@0.1.1-dev"],
+    "componentized:secrets/store@0.1.1-dev": secrets["componentized:secrets/store@0.1.1-dev"],
     "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
     "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
