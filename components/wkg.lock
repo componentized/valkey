@@ -7,9 +7,9 @@ name = "componentized:secrets"
 registry = "componentized.dev"
 
 [[packages.versions]]
-requirement = "=0.1.1-dev"
-version = "0.1.1-dev"
-digest = "sha256:f24d72b72ad0ff323a064119eb2fcedf8f7a87b2d0bb2ee3c38059b1c632354c"
+requirement = "=0.1.1"
+version = "0.1.1"
+digest = "sha256:2de7f08de0382768ea3aa7dc13eaafb6727f43043d5b50248f2ee47391985f03"
 
 [[packages]]
 name = "wasi:cli"

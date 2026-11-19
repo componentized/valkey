@@ -1,6 +1,6 @@
 # tcp-connector
 
-A connector for connections over TCP, to the server configured with `componentized:secrets@0.1.0`, every key is a secret, a secret that is not found is unset.
+A connector for connections over TCP, to the server configured with `componentized:secrets@0.1.1`, every key is a secret, a secret that is not found is unset.
 
 | Key | Default | |
 | --- | --- | --- |
