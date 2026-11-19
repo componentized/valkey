@@ -9,8 +9,8 @@ import sockets-types: wasi:sockets/types@0.3.0;
 import ip-name-lookup: wasi:sockets/ip-name-lookup@0.3.0;
 import logging: wasi:logging/logging@0.1.0-draft;
 import valkey-types: componentized:valkey/types@0.3.0-dev;
-import secrets-types: componentized:secrets/types@0.1.1-dev;
-import secrets: componentized:secrets/store@0.1.1-dev;
+import secrets-types: componentized:secrets/types@0.1.1;
+import secrets: componentized:secrets/store@0.1.1;
 
 let connection = new local:connection {
     "wasi:clocks/types@0.3.0": clocks-types,
@@ -32,8 +32,8 @@ let commands = new local:commands {
 let tcp-connector-constants = new local:tcp-connector-constants {};
 // the connector reads the server's secrets from the host's store
 let connector = new local:tcp-connector {
-    "componentized:secrets/types@0.1.1-dev": secrets-types,
-    "componentized:secrets/store@0.1.1-dev": secrets,
+    "componentized:secrets/types@0.1.1": secrets-types,
+    "componentized:secrets/store@0.1.1": secrets,
     "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
     "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,
@@ -45,18 +45,19 @@ let as-keyvalue-constants = new local:as-keyvalue-constants {};
 // the as-keyvalue reads its secrets through a gate, which only lets it get `key-prefix`
 let as-keyvalue-latch-key-config = new local:as-keyvalue-latch-key-config {};
 let as-keyvalue-latch = new local:dep-componentized-secrets-latch-key {
-    "componentized:secrets/types@0.1.1-dev": secrets-types,
+    "componentized:secrets/types@0.1.1": secrets-types,
     "wasi:config/store@0.2.0-rc.1": as-keyvalue-latch-key-config["wasi:config/store@0.2.0-rc.1"],
     "wasi:logging/logging@0.1.0-draft": logging,
 };
 let as-keyvalue-gate = new local:dep-componentized-secrets-gate {
-    "componentized:secrets/store@0.1.1-dev": secrets,
-    "componentized:secrets/latch@0.1.1-dev": as-keyvalue-latch["componentized:secrets/latch@0.1.1-dev"],
+    "componentized:secrets/store@0.1.1": secrets,
+    "componentized:secrets/types@0.1.1": secrets-types,
+    "componentized:secrets/latch@0.1.1": as-keyvalue-latch["componentized:secrets/latch@0.1.1"],
     "wasi:logging/logging@0.1.0-draft": logging,
 };
 let keyvalue = new local:as-keyvalue {
-    "componentized:secrets/types@0.1.1-dev": secrets-types,
-    "componentized:secrets/store@0.1.1-dev": as-keyvalue-gate["componentized:secrets/store@0.1.1-dev"],
+    "componentized:secrets/types@0.1.1": secrets-types,
+    "componentized:secrets/store@0.1.1": as-keyvalue-gate["componentized:secrets/store@0.1.1"],
     "componentized:valkey/as-keyvalue-constants@0.3.0-dev": as-keyvalue-constants["componentized:valkey/as-keyvalue-constants@0.3.0-dev"],
     "componentized:valkey/types@0.3.0-dev": valkey-types,
     "componentized:valkey/connection@0.3.0-dev": connection.connection,

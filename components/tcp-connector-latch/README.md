@@ -24,7 +24,7 @@ The lookup and egress latches are configured from the connector's own secrets, w
 The server is configured in one place, and the latch follows it.
 
 > [!NOTE]
-> The latches read their config with `wasi:config`, which is sync, while `componentized:secrets@0.1.0` init() is async. The async init() method must be called from an async caller before getting secret values.
+> The latches read their config with `wasi:config`, which is sync, while `componentized:secrets@0.1.1` init() is async. The async init() method must be called from an async caller before getting secret values.
 
 A `hostname` that is an IP address, like the connector's default of `127.0.0.1`, is allowed too, to that address only. The `tcp` component looks up an IP address as well, wasi:sockets returns it as is, so the lookup of `127.0.0.1` is allowed and vouches for the address `127.0.0.1`. Another address, or a name that resolves to the same address, is still denied.
 
@@ -34,7 +34,7 @@ The [`cli`](../cli/) is behind a gate with this latch, see also its test, [`test
 
 Imports:
 
-- `componentized:secrets/store@0.1.1-dev`: the connector's secrets, `hostname` and `port`
+- `componentized:secrets/store@0.1.1`: the connector's secrets, `hostname` and `port`
 - `wasi:logging/logging@0.1.0-draft`: logs an invalid config
 - `wasi:sockets/types@0.3.0`: the socket types of the operations being authorized
 
