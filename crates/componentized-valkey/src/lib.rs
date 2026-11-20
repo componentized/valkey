@@ -12,7 +12,7 @@
 //!
 //! ```text
 //! wit_bindgen::generate!({
-//!     with: { "componentized:valkey/types@0.3.0": componentized_valkey::types },
+//!     with: { "componentized:valkey/types@0.3.1-dev": componentized_valkey::types },
 //!     ...
 //! });
 //! ```
@@ -25,7 +25,7 @@ mod bindings {
             package componentized:valkey-crate;
 
             world types {
-                import componentized:valkey/types@0.3.0;
+                import componentized:valkey/types@0.3.1-dev;
             }
         ",
         world: "componentized:valkey-crate/types",

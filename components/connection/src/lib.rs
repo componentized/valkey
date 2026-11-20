@@ -840,7 +840,7 @@ wit_bindgen::generate!({
     world: "connection",
     // the resp types shared by every component
     with: {
-        "componentized:valkey/types@0.3.0": componentized_valkey::types,
+        "componentized:valkey/types@0.3.1-dev": componentized_valkey::types,
     },
     generate_all,
 });

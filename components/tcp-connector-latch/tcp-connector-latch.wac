@@ -8,7 +8,7 @@ let tcp-connector-constants = new local:tcp-connector-constants {
     ...
 };
 let lookup-config = new local:internal-tcp-connector-lookup-config {
-    "componentized:valkey/tcp-connector-constants@0.3.0": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0"],
+    "componentized:valkey/tcp-connector-constants@0.3.1-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.1-dev"],
     ...
 };
 // lookups are denied, except for the server's hostname
@@ -21,7 +21,7 @@ let connect = new local:dep-componentized-sockets-latch-deny-connect-unless-look
     ...
 };
 let egress-config = new local:internal-tcp-connector-egress-config {
-    "componentized:valkey/tcp-connector-constants@0.3.0": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0"],
+    "componentized:valkey/tcp-connector-constants@0.3.1-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.1-dev"],
     ...
 };
 // outbound traffic is denied, except to the server's port

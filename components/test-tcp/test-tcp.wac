@@ -4,7 +4,7 @@ let connection = new local:connection {
     ...
 };
 let tcp = new local:tcp {
-    "componentized:valkey/connection@0.3.0": connection.connection,
+    "componentized:valkey/connection@0.3.1-dev": connection.connection,
     ...
 };
 // the keys of the tcp-connector's secrets, and their defaults
@@ -12,9 +12,9 @@ let tcp-connector-constants = new local:tcp-connector-constants {
     ...
 };
 let connector = new local:tcp-connector {
-    "componentized:valkey/tcp-connector-constants@0.3.0": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0"],
-    "componentized:valkey/connection@0.3.0": connection.connection,
-    "componentized:valkey/tcp@0.3.0": tcp.tcp,
+    "componentized:valkey/tcp-connector-constants@0.3.1-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.1-dev"],
+    "componentized:valkey/connection@0.3.1-dev": connection.connection,
+    "componentized:valkey/tcp@0.3.1-dev": tcp.tcp,
     ...
 };
 
