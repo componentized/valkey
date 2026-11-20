@@ -9,10 +9,10 @@
 /// with them, subscriptions, push messages, and transactions. Higher level, typed operations are
 /// functions in the `commands` interface that borrow the connection.
 interface connection {
-    @since(version = 0.3.0-dev)
+    @since(version = 0.3.0)
     use types.{connect-opts, duration-milliseconds, error-code, resp-value, string-or-bytes, subscription-event, subscription-target};
 
-    @since(version = 0.3.0-dev)
+    @since(version = 0.3.0)
     resource connection {
         /// Establishes a connection over a transport.
         ///
@@ -32,11 +32,11 @@ interface connection {
         ///
         /// Async so the connection keeps working between commands after it returns, e.g. to read
         /// push messages and to send keep-alive pings.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         new: static async func(replies: stream<resp-value>, closed: future<result<_, error-code>>, opts: option<connect-opts>) -> tuple<stream<resp-value>, future<result<connection, error-code>>>;
 
         /// The server's properties from the reply to HELLO, e.g. `server`, `version` and `mode`.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         server-properties: func() -> list<tuple<string, resp-value>>;
 
         /// Sends a command and waits for its reply.
@@ -54,7 +54,7 @@ interface connection {
         /// `emit`.
         ///
         /// A command has at least one word, an empty command fails with a client error.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         exchange: async func(command: list<string-or-bytes>) -> result<resp-value, error-code>;
 
         /// Sends the commands one after another, with no other command sent between them, and waits
@@ -63,7 +63,7 @@ interface connection {
         /// Each command has its own result, in order, as if each was sent with `exchange`. Commands
         /// sharing a connection may otherwise be interleaved with other callers' commands, which
         /// matters for a sequence that must not be interrupted, e.g. MULTI, its commands and EXEC.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         exchange-all: async func(commands: list<list<string-or-bytes>>) -> list<result<resp-value, error-code>>;
 
         /// Sends a command without waiting for its reply, resolving once the command is written.
@@ -73,7 +73,7 @@ interface connection {
         /// `CLIENT REPLY SKIP`.
         ///
         /// A command has at least one word, an empty command fails with a client error.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         emit: async func(command: list<string-or-bytes>) -> result<_, error-code>;
 
         /// Marks the keys to watch, EXEC aborts the next transaction when any of them changed.
@@ -86,14 +86,14 @@ interface connection {
         /// https://valkey.io/commands/watch/
         ///
         /// At least one key, no keys fails with a client error.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         watch: async func(keys: list<string>) -> result<_, error-code>;
 
         /// Forgets all the watched keys.
         ///
         /// UNWATCH
         /// https://valkey.io/commands/unwatch/
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         unwatch: async func() -> result<_, error-code>;
 
         /// Runs the commands as a transaction, MULTI, each command, then EXEC, with no other command
@@ -110,7 +110,7 @@ interface connection {
         /// MULTI, EXEC
         /// https://valkey.io/commands/multi/
         /// https://valkey.io/commands/exec/
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         transaction: async func(commands: list<list<string-or-bytes>>) -> result<option<list<resp-value>>, error-code>;
 
         /// A new subscription, subscribed to nothing yet, see the subscription's `subscribe`.
@@ -124,7 +124,7 @@ interface connection {
         /// Fails with a client error when the connection component was built without pub/sub,
         /// e.g. `connection-minimal`. Its push messages are then all dead letters, and SUBSCRIBE and
         /// the like may still be sent with `exchange`.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         subscription: func() -> result<subscription, error-code>;
 
         /// The values nothing else claims, kept apart from replies.
@@ -137,7 +137,7 @@ interface connection {
         /// Each call returns a new stream that receives every value arriving after the call,
         /// values arriving while no stream is open are dropped. A stream that falls too far behind
         /// is closed rather than holding up replies, the values it missed are lost.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         dead-letters: func() -> stream<resp-value>;
 
         /// Resets the connection to the state of a new one, then repeats the handshake of `new`.
@@ -159,7 +159,7 @@ interface connection {
         ///
         /// RESET
         /// https://valkey.io/commands/reset/
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         reset: async func() -> result<_, error-code>;
 
         /// Sends PING when no command has been sent and no reply is outstanding for `interval`,
@@ -167,7 +167,7 @@ interface connection {
         ///
         /// Unlike TCP keep-alive, a PING counts as activity for the server's idle client timeout,
         /// and works over any transport.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         set-keep-alive: func(interval: option<duration-milliseconds>);
     }
 
@@ -177,7 +177,7 @@ interface connection {
     /// Subscriptions sharing a connection may overlap, the server stays subscribed to a target while
     /// any subscription has it. The subscription stays open until it is dropped, with or without
     /// targets or streams, then it unsubscribes from its targets. It keeps its connection open.
-    @since(version = 0.3.0-dev)
+    @since(version = 0.3.0)
     resource subscription {
         /// Subscribes to the targets, resolving once the server confirms each of them, see
         /// `subscription-event.subscribed`. Targets already subscribed to are left as they are. The
@@ -197,7 +197,7 @@ interface connection {
         /// https://valkey.io/commands/ssubscribe/
         ///
         /// At least one target, no targets fails with a client error.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         subscribe: async func(targets: list<subscription-target>) -> result<_, error-code>;
 
         /// The events arriving after the call: targets subscribed to and unsubscribed from, and
@@ -219,7 +219,7 @@ interface connection {
         /// closed rather than holding up the connection, its future resolves to `lagged`, and the
         /// events it missed, messages and changes of targets alike, are lost. The future resolves
         /// after the stream delivered what it holds, read the stream to its end first.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         events: func() -> tuple<stream<subscription-event>, future<result<_, error-code>>>;
 
         /// The targets the server confirmed, in the order they were subscribed to, until they are
@@ -228,7 +228,7 @@ interface connection {
         /// Once the connection closes, the targets confirmed until then are still listed, e.g. to
         /// subscribe to them on a new connection. `subscribe` and `unsubscribe` then fail with the
         /// error that closed the connection, and leave the targets as they are.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         targets: func() -> list<subscription-target>;
 
         /// Unsubscribes from the targets, none for every target, resolving once each is
@@ -247,7 +247,7 @@ interface connection {
         ///
         /// A list of targets has at least one target, otherwise fails with a client error. None
         /// unsubscribes from every target.
-        @since(version = 0.3.0-dev)
+        @since(version = 0.3.0)
         unsubscribe: async func(targets: option<list<subscription-target>>) -> result<_, error-code>;
     }
 }

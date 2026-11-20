@@ -11,7 +11,7 @@ import cli-types: wasi:cli/types@0.3.0;
 import stdin: wasi:cli/stdin@0.3.0;
 import stdout: wasi:cli/stdout@0.3.0;
 import stderr: wasi:cli/stderr@0.3.0;
-import valkey-types: componentized:valkey/types@0.3.0-dev;
+import valkey-types: componentized:valkey/types@0.3.0;
 
 // The gate, the latch, the logger and the secrets see the host, wasi:sockets included, the interfaces they
 // share with the components behind the gate are wired to the same imports.
@@ -49,29 +49,29 @@ let gate = new local:dep-componentized-sockets-gate {
 let connection = new local:connection {
     "wasi:clocks/types@0.3.0": clocks-types,
     "wasi:clocks/monotonic-clock@0.3.0": monotonic-clock,
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
+    "componentized:valkey/types@0.3.0": valkey-types,
 };
 // connections over wasi:sockets from the gate instead of the host
 let tcp = new local:tcp {
     "wasi:sockets/types@0.3.0": gate["wasi:sockets/types@0.3.0"],
     "wasi:sockets/ip-name-lookup@0.3.0": gate["wasi:sockets/ip-name-lookup@0.3.0"],
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
-    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/types@0.3.0": valkey-types,
+    "componentized:valkey/connection@0.3.0": connection.connection,
 };
 // the keys of the tcp-connector's secrets, and their defaults
 let tcp-connector-constants = new local:tcp-connector-constants {};
 let connector = new local:tcp-connector {
     "componentized:secrets/types@0.1.1": secrets["componentized:secrets/types@0.1.1"],
     "componentized:secrets/store@0.1.1": secrets["componentized:secrets/store@0.1.1"],
-    "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
-    "componentized:valkey/connection@0.3.0-dev": connection.connection,
-    "componentized:valkey/tcp@0.3.0-dev": tcp.tcp,
+    "componentized:valkey/tcp-connector-constants@0.3.0": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0"],
+    "componentized:valkey/types@0.3.0": valkey-types,
+    "componentized:valkey/connection@0.3.0": connection.connection,
+    "componentized:valkey/tcp@0.3.0": tcp.tcp,
 };
 let cli = new local:internal-cli {
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
-    "componentized:valkey/connection@0.3.0-dev": connection.connection,
-    "componentized:valkey/connector@0.3.0-dev": connector.connector,
+    "componentized:valkey/types@0.3.0": valkey-types,
+    "componentized:valkey/connection@0.3.0": connection.connection,
+    "componentized:valkey/connector@0.3.0": connector.connector,
     "wasi:cli/environment@0.3.0": environment,
     "wasi:cli/types@0.3.0": cli-types,
     "wasi:cli/stdin@0.3.0": stdin,

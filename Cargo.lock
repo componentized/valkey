@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "connection"
-version = "0.3.0-dev"
+version = "0.3.0"
 dependencies = [
  "componentized-valkey",
  "futures-channel",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "connection-minimal"
-version = "0.3.0-dev"
+version = "0.3.0"
 dependencies = [
  "componentized-valkey",
  "futures-channel",
@@ -1424,7 +1424,7 @@ dependencies = [
 
 [[package]]
 name = "test-commands-suite"
-version = "0.3.0-dev"
+version = "0.3.0"
 dependencies = [
  "componentized-valkey",
  "wit-bindgen",
@@ -1432,7 +1432,7 @@ dependencies = [
 
 [[package]]
 name = "test-harness"
-version = "0.3.0-dev"
+version = "0.3.0"
 dependencies = [
  "componentized-valkey",
  "tokio",

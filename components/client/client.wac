@@ -8,24 +8,24 @@ import monotonic-clock: wasi:clocks/monotonic-clock@0.3.0;
 import sockets-types: wasi:sockets/types@0.3.0;
 import ip-name-lookup: wasi:sockets/ip-name-lookup@0.3.0;
 import logging: wasi:logging/logging@0.1.0-draft;
-import valkey-types: componentized:valkey/types@0.3.0-dev;
+import valkey-types: componentized:valkey/types@0.3.0;
 import secrets-types: componentized:secrets/types@0.1.1;
 import secrets: componentized:secrets/store@0.1.1;
 
 let connection = new local:connection {
     "wasi:clocks/types@0.3.0": clocks-types,
     "wasi:clocks/monotonic-clock@0.3.0": monotonic-clock,
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
+    "componentized:valkey/types@0.3.0": valkey-types,
 };
 let tcp = new local:tcp {
     "wasi:sockets/types@0.3.0": sockets-types,
     "wasi:sockets/ip-name-lookup@0.3.0": ip-name-lookup,
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
-    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/types@0.3.0": valkey-types,
+    "componentized:valkey/connection@0.3.0": connection.connection,
 };
 let commands = new local:commands {
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
-    "componentized:valkey/connection@0.3.0-dev": connection.connection,
+    "componentized:valkey/types@0.3.0": valkey-types,
+    "componentized:valkey/connection@0.3.0": connection.connection,
 };
 
 // the keys of the tcp-connector's secrets, and their defaults
@@ -34,10 +34,10 @@ let tcp-connector-constants = new local:tcp-connector-constants {};
 let connector = new local:tcp-connector {
     "componentized:secrets/types@0.1.1": secrets-types,
     "componentized:secrets/store@0.1.1": secrets,
-    "componentized:valkey/tcp-connector-constants@0.3.0-dev": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0-dev"],
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
-    "componentized:valkey/connection@0.3.0-dev": connection.connection,
-    "componentized:valkey/tcp@0.3.0-dev": tcp.tcp,
+    "componentized:valkey/tcp-connector-constants@0.3.0": tcp-connector-constants["componentized:valkey/tcp-connector-constants@0.3.0"],
+    "componentized:valkey/types@0.3.0": valkey-types,
+    "componentized:valkey/connection@0.3.0": connection.connection,
+    "componentized:valkey/tcp@0.3.0": tcp.tcp,
 };
 
 // the keys of the as-keyvalue's secrets, and their defaults
@@ -58,11 +58,11 @@ let as-keyvalue-gate = new local:dep-componentized-secrets-gate {
 let keyvalue = new local:as-keyvalue {
     "componentized:secrets/types@0.1.1": secrets-types,
     "componentized:secrets/store@0.1.1": as-keyvalue-gate["componentized:secrets/store@0.1.1"],
-    "componentized:valkey/as-keyvalue-constants@0.3.0-dev": as-keyvalue-constants["componentized:valkey/as-keyvalue-constants@0.3.0-dev"],
-    "componentized:valkey/types@0.3.0-dev": valkey-types,
-    "componentized:valkey/connection@0.3.0-dev": connection.connection,
-    "componentized:valkey/connector@0.3.0-dev": connector.connector,
-    "componentized:valkey/commands@0.3.0-dev": commands.commands,
+    "componentized:valkey/as-keyvalue-constants@0.3.0": as-keyvalue-constants["componentized:valkey/as-keyvalue-constants@0.3.0"],
+    "componentized:valkey/types@0.3.0": valkey-types,
+    "componentized:valkey/connection@0.3.0": connection.connection,
+    "componentized:valkey/connector@0.3.0": connector.connector,
+    "componentized:valkey/commands@0.3.0": commands.commands,
 };
 
 export connection.connection;

@@ -1,17 +1,17 @@
 /// The keys of the `as-keyvalue`'s componentized:secrets, and their defaults. The values are
 /// provided by the `as-keyvalue-constants` component.
-@since(version = 0.3.0-dev)
+@since(version = 0.3.0)
 interface as-keyvalue-constants {
     /// The key of the prefix of the hash for each bucket, e.g. `app:` stores the bucket `users` in
     /// the hash `app:users`.
     ///
     /// @value "key-prefix"
-    @since(version = 0.3.0-dev)
+    @since(version = 0.3.0)
     key-prefix-key: func() -> string;
 
     /// The prefix of the hash for each bucket without one, the hash is named for the bucket.
     ///
     /// @value ""
-    @since(version = 0.3.0-dev)
+    @since(version = 0.3.0)
     key-prefix-default: func() -> string;
 }

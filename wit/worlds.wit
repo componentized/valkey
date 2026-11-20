@@ -1,4 +1,4 @@
-package componentized:valkey@0.3.0-dev;
+package componentized:valkey@0.3.0;
 
 world imports {
     import as-keyvalue-constants;
